@@ -22,6 +22,10 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     callbackRenders: s(0),
     triggeredBy: {},
     recreatedContextFrom: {},
+    providerAt: [],
+    creators: {},
+    staleMemo: {},
+    compiled: false,
     memo: false,
     locations: [],
     stable: true,
@@ -414,7 +418,8 @@ describe('Next.js internals (R4-01, R4-02)', async () => {
   const { SourceMapResolver } = await import('../src/profiler/sourcemaps.js');
   const { hideInternals } = await import('../src/report/aggregate.js');
   const map = (sources: string[]) =>
-    `x;\n//# sourceMappingURL=data:application/json,${encodeURIComponent(
+    // Split so test tooling does not mistake this literal for a real map comment.
+    `x;\n//# source${'MappingURL'}=data:application/json,${encodeURIComponent(
       JSON.stringify({ version: 3, sources, names: [], mappings: 'AAKA' }),
     )}`;
 
@@ -505,5 +510,52 @@ describe('snapshot update keeps flaky ranges (R4-06)', async () => {
     expect(keepRanges(snap([13, 18]), snap([12, 16])).scenarios.s?.p?.commits).toEqual([12, 18]);
     expect(keepRanges(snap(3), snap([12, 16])).scenarios.s?.p?.commits).toBe(3);
     expect(keepRanges(snap(5), snap(4)).scenarios.s?.p?.commits).toBe(5);
+  });
+});
+
+describe('fix hints that converge (R4-03..R4-10)', async () => {
+  const { hintFor } = await import('../src/report/hints.js');
+  const at = (c: ComponentReport) => ({ ...c, locations: ['src/Shop.tsx:25 (Shop)'] });
+
+  it('names every recreated prop and the component that creates it', () => {
+    const c = at(component(3));
+    c.unstableProps = { style: 3 };
+    c.callbackProps = { onAdd: 3 };
+    c.creators = { 'style|Page': 3, 'onAdd|Shop': 3 };
+    const hint = hintFor(c) ?? '';
+    expect(hint).toContain('`style` is recreated with equal data in `Page`');
+    expect(hint).toContain('`onAdd` is a new function with the same code in `Shop`');
+  });
+
+  it('points at the changing dependency of an existing useCallback', () => {
+    const c = at(component(3));
+    c.callbackProps = { onAdd: 3 };
+    c.creators = { 'onAdd|Shop': 3 };
+    c.staleMemo = { 'onAdd|Shop|#1 (an object)': 3 };
+    expect(hintFor(c)).toContain(
+      '`onAdd` is already memoized in `Shop`, but its dependency #1 (an object) changes',
+    );
+  });
+
+  it('never tells library components or children-only renders to use React.memo', () => {
+    const lib = at(component(3, 3, 3));
+    lib.definedIn = 'node_modules/styled-components/dist/index.js';
+    expect(hintFor(lib)).toContain('Nothing to change here');
+    const kids = at(component(3));
+    kids.unstableProps = { children: 3 };
+    expect(hintFor(kids)).toContain('React.memo will not help');
+  });
+
+  it('only blames a state owner when its cascade has avoidable renders', () => {
+    const owner = at(component(2));
+    owner.causes.state = 2;
+    const child = component(5);
+    child.triggeredBy = { Shop: 5 };
+    const necessary = phase({ Shop: owner, Row: child });
+    expect(hintFor(owner, necessary, 'Shop')).not.toContain('avoidable render(s) below');
+    child.avoidableRenders = s(5);
+    expect(hintFor(owner, phase({ Shop: owner, Row: child }), 'Shop')).toContain(
+      '5 avoidable render(s) below',
+    );
   });
 });

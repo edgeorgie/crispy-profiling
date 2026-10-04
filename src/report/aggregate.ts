@@ -10,6 +10,7 @@ import type {
   Stat,
 } from '../types.js';
 import { cmp, cmpNatural } from '../util/cmp.js';
+import { LIBRARY_FILE } from '../util/paths.js';
 import { VERSION } from '../version.js';
 
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -79,6 +80,10 @@ function aggregateComponent(
     callbackRenders: stat(pick((s) => s.callbackRenders ?? 0)),
     triggeredBy: medianCounts(samples, (s) => s.triggeredBy),
     recreatedContextFrom: medianCounts(samples, (s) => s.recreatedContextFrom),
+    providerAt: Object.keys(medianCounts(samples, (s) => s.providerAt)).slice(0, 3),
+    creators: medianCounts(samples, (s) => s.creators),
+    staleMemo: medianCounts(samples, (s) => s.staleMemo),
+    compiled: samples.some((s) => s?.compiled),
     memo: samples.some((s) => s?.memo),
     locations: Object.keys(medianCounts(samples, (s) => s.locations)).slice(0, 3),
     stable: renders.min === renders.max,
@@ -189,7 +194,7 @@ function budgetWarnings(scenario: Scenario, phases: Record<string, PhaseReport>)
  * keyed as `Name (file)` instead of the render-order based `Name`, `Name#2`.
  * Unique names keep their plain key. Also returns key -> definition file.
  */
-const LIBRARY_PATH = /(^|\/)node_modules(\/|_)|\.vite\/deps\/|(^|\/)next\/dist\/|_next_dist_/;
+const LIBRARY_PATH = LIBRARY_FILE;
 const locationFile = (loc: string) => loc.replace(/ \(.*\)$/, '').replace(/:\d+$/, '');
 
 /**
