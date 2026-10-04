@@ -32,6 +32,8 @@ export function installCrispyHook(): void {
     lastCommitNames: [],
     /** Component key -> component function (not serialized; read by the runner via CDP). */
     typeRefs: {},
+    /** Component name -> type identities in first-seen order (kept across navigations). */
+    identities: {},
     vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
   };
   w.__CRISPY__ = state;
@@ -58,6 +60,7 @@ export function installCrispyHook(): void {
       state.profilingBuild = prev.profilingBuild;
       state.vitals = prev.vitals;
       if (prev.hookErrors) state.hookErrors = prev.hookErrors;
+      if (prev.identities) state.identities = prev.identities;
       sessionStorage.removeItem(STORAGE_KEY);
     }
   } catch {}
@@ -72,6 +75,7 @@ export function installCrispyHook(): void {
           profilingBuild: state.profilingBuild,
           vitals: state.vitals,
           hookErrors: state.hookErrors,
+          identities: state.identities,
         }),
       );
     } catch {}
@@ -104,9 +108,26 @@ export function installCrispyHook(): void {
   let currentCommitNames: Record<string, true> = {};
 
   // Distinct component types that share a display name get distinct keys
-  // ("Item", "Item#2", ...) in first-seen order, which is deterministic.
+  // ("Item", "Item#2", ...) in first-seen order, which is deterministic. Each
+  // type is identified by a hash of its source (plus its order among types with
+  // identical source, e.g. styled components), and these identities survive full
+  // navigations, so `Item#2` means the same component in every document.
   const typeKeys = new WeakMap<object, string>();
-  const nameCounts: Record<string, number> = {};
+  const seenInDocument: Record<string, number> = {};
+
+  function fingerprint(fn: any): string {
+    let src = '';
+    try {
+      src = Function.prototype.toString.call(fn);
+    } catch {}
+    // FNV-1a: short, deterministic, good enough to tell components apart.
+    let h = 0x811c9dc5;
+    for (let i = 0; i < src.length; i++) {
+      h ^= src.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(36);
+  }
 
   function keyOf(fiber: any): string {
     const t = fiber.type;
@@ -114,13 +135,19 @@ export function installCrispyHook(): void {
     if (!t || (typeof t !== 'object' && typeof t !== 'function')) return name;
     let key = typeKeys.get(t);
     if (!key) {
-      const n = (nameCounts[name] || 0) + 1;
-      nameCounts[name] = n;
-      key = n === 1 ? name : `${name}#${n}`;
+      const fn = typeof t === 'function' ? t : t.render || t.type || t;
+      const fp = fingerprint(typeof fn === 'function' ? fn : null);
+      const nth = (seenInDocument[`${name}|${fp}`] || 0) + 1;
+      seenInDocument[`${name}|${fp}`] = nth;
+      if (!state.identities[name]) state.identities[name] = [];
+      const ids = state.identities[name];
+      let index = ids.indexOf(`${fp}:${nth}`);
+      if (index < 0) index = ids.push(`${fp}:${nth}`) - 1;
+      key = index === 0 ? name : `${name}#${index + 1}`;
       typeKeys.set(t, key);
       // The runner resolves where each component function is defined (via CDP)
       // to give same-named components stable, source-based identities.
-      state.typeRefs[key] = typeof t === 'function' ? t : t.render || t.type || t;
+      state.typeRefs[key] = fn;
     }
     return key;
   }

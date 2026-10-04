@@ -269,17 +269,6 @@ export async function runScenarioOnce(
     await waitForReact(page, url, config.timeoutMs, config.clock);
     await settle(ctx, 'load');
 
-    const hasExplicitPhase = scenario.steps[0]?.action === 'phase';
-    if (scenario.steps.length > 0 && !hasExplicitPhase) {
-      await setPhase(page, DEFAULT_PHASE_AFTER_LOAD);
-    }
-    for (const [i, step] of scenario.steps.entries()) {
-      await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
-        settle(ctx, `step ${i + 1} (${step.action})`),
-      );
-      if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
-    }
-
     const sourceMaps = new SourceMapResolver(async (u) => {
       try {
         if (/^https?:\/\//.test(u)) {
@@ -299,7 +288,35 @@ export async function runScenarioOnce(
         return null;
       }
     });
-    const definitions = await resolveDefinitions(page, cdp, scripts, sourceMaps);
+    // Definitions live in the page, so collect them before every navigation too.
+    // A key bound to different files in different documents is ambiguous: drop it.
+    const definitions: Record<string, string> = {};
+    const ambiguous = new Set<string>();
+    const collectDefinitions = async () => {
+      const found = await resolveDefinitions(page, cdp, scripts, sourceMaps).catch(() => ({}));
+      for (const [k, f] of Object.entries(found)) {
+        if (ambiguous.has(k)) continue;
+        if (definitions[k] === undefined) definitions[k] = f;
+        else if (definitions[k] !== f) {
+          ambiguous.add(k);
+          delete definitions[k];
+        }
+      }
+    };
+
+    const hasExplicitPhase = scenario.steps[0]?.action === 'phase';
+    if (scenario.steps.length > 0 && !hasExplicitPhase) {
+      await setPhase(page, DEFAULT_PHASE_AFTER_LOAD);
+    }
+    for (const [i, step] of scenario.steps.entries()) {
+      if (step.action === 'goto') await collectDefinitions();
+      await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
+        settle(ctx, `step ${i + 1} (${step.action})`),
+      );
+      if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
+    }
+
+    await collectDefinitions();
     const raw = await page.evaluate(() => {
       const s = (window as any).__CRISPY__;
       return JSON.parse(
