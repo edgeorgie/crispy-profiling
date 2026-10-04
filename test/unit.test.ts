@@ -4,6 +4,7 @@ import { buildReport, checkBudgets, stat } from '../src/report/aggregate.js';
 import { compareReports } from '../src/report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../src/report/markdown.js';
 import type { ComponentReport, CrispyReport, PhaseReport, RawRun } from '../src/types.js';
+import { cmpNatural } from '../src/util/cmp.js';
 
 const s = (n: number) => ({ median: n, min: n, max: n });
 
@@ -19,6 +20,9 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     unstableProps: {},
     callbackProps: {},
     callbackRenders: s(0),
+    triggeredBy: {},
+    recreatedContextFrom: {},
+    memo: false,
     locations: [],
     stable: true,
   };
@@ -192,6 +196,9 @@ describe('budget validation (C-17)', () => {
       unstableProps: {},
       callbackProps: {},
       callbackRenders: 0,
+      triggeredBy: {},
+      recreatedContextFrom: {},
+      memo: false,
       locations: {},
       causes: { props: 0, state: renders, context: 0, unstable: 0, callback: 0, parent: 0 },
       selfDurationMs: 0,
@@ -256,5 +263,60 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(snap.scenarios.home?.interaction?.components.Item?.renders).toEqual([10, 12]);
     expect(compareSnapshot(snap, make(12, 0)).passed).toBe(true);
     expect(compareSnapshot(snap, make(13, 0)).regressions[0]?.flaky).toBe(true);
+  });
+});
+
+describe('source maps', async () => {
+  const { SourceMapResolver } = await import('../src/profiler/sourcemaps.js');
+
+  it('resolves sectioned (index) source maps like Turbopack serves (R3-01)', async () => {
+    const files: Record<string, string> = {
+      'http://x.dev/chunk.js': 'console.log(1);\n//# sourceMappingURL=chunk.js.map',
+      'http://x.dev/chunk.js.map': JSON.stringify({
+        version: 3,
+        sections: [
+          {
+            offset: { line: 0, column: 0 },
+            map: { version: 3, sources: ['src/A.tsx'], names: [], mappings: 'AAKA' },
+          },
+        ],
+      }),
+    };
+    const resolver = new SourceMapResolver(async (u) => files[u] ?? null, '/nonexistent');
+    expect(await resolver.resolve('http://x.dev/chunk.js', 1, 1)).toEqual({
+      file: 'src/A.tsx',
+      line: 6,
+    });
+    expect(await resolver.rewriteLocation('http://x.dev/chunk.js:1:1 (App)')).toBe(
+      'src/A.tsx:6 (App)',
+    );
+  });
+
+  it('keeps absolute file paths readable (R3-10, R3-20)', async () => {
+    const resolver = new SourceMapResolver(async () => null, '/nonexistent');
+    expect(await resolver.rewriteLocation('/abs/src/main.jsx:8:1 (App)')).toBe(
+      '/abs/src/main.jsx:8 (App)',
+    );
+    expect(await resolver.rewriteLocation('http://localhost:5173/@fs/abs/ui/Fancy.tsx:3:5')).toBe(
+      '/abs/ui/Fancy.tsx:3',
+    );
+  });
+});
+
+describe('cmpNatural (R3-21)', () => {
+  it('sorts line numbers numerically and deterministically', () => {
+    const sites = [
+      'src/App.tsx:10 (App)',
+      'src/App.tsx:9 (App)',
+      'src/App.tsx:100 (App)',
+      'src/A.tsx:2',
+    ];
+    expect([...sites].sort(cmpNatural)).toEqual([
+      'src/A.tsx:2',
+      'src/App.tsx:9 (App)',
+      'src/App.tsx:10 (App)',
+      'src/App.tsx:100 (App)',
+    ]);
+    expect(cmpNatural('a01', 'a1')).not.toBe(0);
   });
 });

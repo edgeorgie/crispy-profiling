@@ -19,7 +19,7 @@ const DEFAULT_PHASE_AFTER_LOAD = 'interaction';
 
 /**
  * Resolves a Chromium binary. Order: config, CRISPY_CHROMIUM_PATH, Playwright's
- * own resolution (requires `npx playwright install chromium`).
+ * own resolution (requires `npx crispy-profiling install`).
  */
 function resolveExecutable(config: CrispyConfig): string | undefined {
   if (config.browser.executablePath) return config.browser.executablePath;
@@ -37,7 +37,7 @@ export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
     });
   } catch (err) {
     throw new Error(
-      `Could not launch Chromium. Install it with "npx playwright install chromium", ` +
+      `Could not launch Chromium. Install it with "npx crispy-profiling install", ` +
         `or set CRISPY_CHROMIUM_PATH / browser.executablePath / browser.channel.\n${(err as Error).message}`,
     );
   }
@@ -282,8 +282,19 @@ export async function runScenarioOnce(
 
     const sourceMaps = new SourceMapResolver(async (u) => {
       try {
-        const res = await context.request.get(u, { timeout: config.timeoutMs });
-        return res.ok() ? await res.text() : null;
+        if (/^https?:\/\//.test(u)) {
+          const res = await context.request.get(u, { timeout: config.timeoutMs });
+          return res.ok() ? await res.text() : null;
+        }
+        // Scripts without a fetchable URL (webpack eval modules, inline scripts):
+        // read their source from the page through the DevTools protocol.
+        for (const [scriptId, url] of scripts) {
+          if (url === u) {
+            const { scriptSource } = await cdp.send('Debugger.getScriptSource', { scriptId });
+            return scriptSource;
+          }
+        }
+        return null;
       } catch {
         return null;
       }

@@ -95,7 +95,8 @@ async function main(argv: string[]): Promise<number> {
         `${JSON.stringify(exampleConfig(values['base-url']), null, 2)}\n`,
       );
       log(
-        `Created ${DEFAULT_CONFIG_FILE}. Edit the scenarios, start your dev server and run "crispy run".`,
+        `Created ${DEFAULT_CONFIG_FILE}. Edit the scenario steps, start your dev server, then run ` +
+          `"crispy test" to record crispy.snap.json (commit it) or "crispy run" for a one-off report.`,
       );
       return 0;
     }

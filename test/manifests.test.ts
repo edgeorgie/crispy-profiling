@@ -15,10 +15,18 @@ describe('distribution manifests', () => {
     for (const p of server.packages) expect(p.version).toBe(pkg.version);
   });
 
+  it('pin the Action to the package version', () => {
+    expect(readFileSync('action.yml', 'utf8')).toMatch(
+      new RegExp(
+        `version:\\n    description: [^\\n]*\\n    default: ${pkg.version.replace(/\./g, '\\.')}\\n`,
+      ),
+    );
+  });
+
   it('point to the same npm package and MCP name', () => {
     expect(server.name).toBe(pkg.mcpName);
     expect(server.packages[0].identifier).toBe(pkg.name);
-    expect(plugin.mcpServers['crispy-profiling'].args).toContain(`${pkg.name}@latest`);
+    expect(plugin.mcpServers['crispy-profiling'].args).toContain(`${pkg.name}@${pkg.version}`);
     expect(marketplace.plugins[0].name).toBe(plugin.name);
   });
 

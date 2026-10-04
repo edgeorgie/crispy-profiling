@@ -33,18 +33,19 @@ npx crispy-profiling run -o .crispy/base.json                # exit 1 if a budge
 npx crispy-profiling compare .crispy/base.json .crispy/head.json
 ```
 
-Chromium is required once: `npx playwright install chromium`.
+Chromium is required once: `npx crispy-profiling install`.
 
 ## Workflow
 
-1. **Start the dev server** (development build, so component names are readable and
-   `selfDurationMs` exists). Confirm the URL responds.
+1. **Start the dev server** (development build, so component names are readable). Confirm the
+   URL responds.
 2. **Describe the slow interaction as steps** (`click`, `fill`, `type`, `press`, `hover`,
    `scroll`, `waitFor`, `wait`, `goto`, `phase`). Renders before the first step go to
    phase `load`; renders during steps go to `interaction` unless you name phases with
    `{ "action": "phase", "name": "..." }`.
 3. **Capture a baseline** before touching code (`outFile: ".crispy/base.json"`).
-4. **Read the report** — components are already sorted by `avoidableRenders`, then `renders`.
+4. **Read the report** — components are already sorted by fixable renders
+   (`avoidableRenders + callbackRenders`), then `renders`; read the **Why / how to fix** column.
 5. **Fix one cause at a time** using the table below.
 6. **Re-profile** to `.crispy/head.json` and run `compare_reports`. Keep the change only if
    the target component improved and nothing regressed. Report the before/after numbers.
@@ -53,8 +54,11 @@ Chromium is required once: `npx playwright install chromium`.
 
 Each component has `renders`, `avoidableRenders`, `callbackRenders`, `wastedRenders`, `causes`
 (`props`/`state`/`context`/`unstable`/`callback`/`parent`), `unstableProps` (keys recreated with equal data),
-`callbackProps` (recreated functions)
-and `changedProps` (prop keys whose identity changed, with counts).
+`callbackProps` (recreated functions), `changedProps` (prop keys whose identity changed, with counts),
+`triggeredBy` (components whose state update started the cascade), `recreatedContextFrom`
+(components whose provider recreates a context value) and `memo` (already wrapped in `React.memo`).
+The Markdown report has a **Why / how to fix** column with a ready-made hint per component: start
+there, and fix the trigger before touching the children it re-renders.
 
 | Signal | Likely cause | Fix |
 | --- | --- | --- |
@@ -64,14 +68,17 @@ and `changedProps` (prop keys whose identity changed, with counts).
 | `changedProps` lists a function (`onClick`, `onSelect`...) | Inline callback recreated every render | `useCallback` in the parent (and `React.memo` on the child) |
 | `changedProps` lists an object/array (`style`, `options`, `items`) | Literal recreated every render | `useMemo` or hoist the constant outside the component |
 | `changedProps` lists `children` | JSX children are new elements each time | Accept it, or pass stable elements / restructure composition |
+| `triggeredBy` names one component for many others | Its state update re-renders a large subtree | Move that state closer to where it is used, or make the props passed down stable so `React.memo` can skip them |
+| `recreatedContextFrom` names a component | Its provider `value` is a new object/function each render | `useMemo` the value (and `useCallback` functions inside it) in that component |
 | cause `context` on many components | A broad context value changes | Split the context, memoize the provider `value`, or select narrower state |
 | cause `state` with high `renders` | Frequent state updates (typing, scroll) | Debounce, `useDeferredValue`, keep the state local to the leaf |
 | `stable: false` (⚠️) | Counts differ between runs (timers, network, randomness) | Add `waitFor` steps or mock the nondeterminism before trusting deltas |
 
 Rules:
 - `React.memo` only helps if every prop is stable; check `changedProps` first.
-- Do not memoize everything. Fix components with the largest `renders × selfDurationMs`
-  or large `avoidableRenders`; leave cheap leaf components alone.
+- Do not memoize everything. Fix the components with the most `avoidableRenders` /
+  `callbackRenders` and the triggers of large cascades; leave cheap leaf components alone.
+  `selfDurationMs` only exists with `"timings": true` (off by default: not reproducible).
 - A component missing from a phase did not render in it (0 renders).
 - Production builds minify names; profile the development build.
 
@@ -79,9 +86,12 @@ Rules:
 
 If the project has a `crispy.snap.json`, run `test_render_snapshots` (or `npx crispy test`) after any
 change to React components. A failure lists the regressed component, the unstable prop, where it is
-rendered and a suggested fix — apply it and run again. The MCP tool is read-only: only after the user confirms the new counts
-are intended, pass `update: true` with `confirm: "accept-render-changes"` (CLI: `crispy test -u`). If there is no snapshot yet, `crispy test`
-creates one: tell the user to commit it.
+rendered and a suggested fix — apply it and run again. The MCP tool is read-only: only after the
+user confirms the new counts are intended, pass `update: true` with
+`confirm: "accept-render-changes"` (CLI: `crispy test -u`). **Never accept a snapshot change on
+your own to make the test pass** — that hides the regression the test exists to catch; show the
+user the diff and ask. If there is no snapshot yet, `crispy test` creates one: tell the user to
+commit it.
 
 ## Budgets (prevent regressions)
 

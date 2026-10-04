@@ -205,6 +205,9 @@ export function installCrispyHook(): void {
         unstableProps: {},
         callbackProps: {},
         callbackRenders: 0,
+        triggeredBy: {},
+        recreatedContextFrom: {},
+        memo: false,
         locations: {},
         causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
         selfDurationMs: 0,
@@ -321,18 +324,44 @@ export function installCrispyHook(): void {
     return a !== b ? 3 : worst;
   }
 
+  /** Contexts whose value was recreated with equal content (filled by contextChange). */
+  let recreatedContexts: any[] = [];
+
   function contextChange(prev: any, next: any): Change {
     let a = prev.dependencies?.firstContext;
     let b = next.dependencies?.firstContext;
     let worst: Change = 0;
+    recreatedContexts = [];
     while (a && b) {
       const c = classify(a.memoizedValue, b.memoizedValue);
+      if (c === 1 || c === 2) recreatedContexts.push(b.context);
       if (c > worst) worst = c;
       if (worst === 3) return 3;
       a = a.next;
       b = b.next;
     }
     return worst;
+  }
+
+  /** Name of the component that renders the provider of `context` above `fiber`. */
+  function providerOwner(fiber: any, context: any): string | null {
+    let f = fiber.return;
+    while (f) {
+      // ContextProvider fiber: type is the context (React 19) or {_context} (<= 18).
+      if (f.tag === 10 && (f.type === context || f.type?._context === context)) {
+        const owner = ownerName(f);
+        if (owner) return owner;
+        let up = f.return;
+        while (up && !COMPONENT_TAGS[up.tag]) up = up.return;
+        return up ? nameOf(up) : null;
+      }
+      f = f.return;
+    }
+    return null;
+  }
+
+  function isMemo(fiber: any): boolean {
+    return fiber.tag === 15 || fiber.return?.tag === 14;
   }
 
   /** Changed prop keys, split by how they changed. */
@@ -368,8 +397,14 @@ export function installCrispyHook(): void {
     addDuration(e, fiber);
   }
 
-  function recordUpdate(prev: any, next: any): void {
+  /**
+   * Records an update. `trigger` is the nearest ancestor whose own state really
+   * changed in this commit (the root cause of a cascade). Returns true when this
+   * component is itself a trigger.
+   */
+  function recordUpdate(prev: any, next: any, trigger: string | null): boolean {
     const e = entry(next);
+    if (isMemo(next)) e.memo = true;
     e.renders++;
     e.updates++;
     addDuration(e, next);
@@ -387,7 +422,13 @@ export function installCrispyHook(): void {
     if (p.changed.length) e.causes.props++;
     if (s === 3) e.causes.state++;
     if (c === 3) e.causes.context++;
-    if (p.changed.length > 0 || s === 3 || c === 3) return;
+    if (s === 3) return true;
+    if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
+    for (const ctx of recreatedContexts) {
+      const owner = providerOwner(next, ctx);
+      if (owner) e.recreatedContextFrom[owner] = (e.recreatedContextFrom[owner] || 0) + 1;
+    }
+    if (p.changed.length > 0 || c === 3) return false;
     // Nothing really changed. Recreated callbacks are reported separately: they
     // are avoidable only if the values they capture did not change.
     if (p.callbacks.length > 0 || s === 2 || c === 2) {
@@ -401,6 +442,7 @@ export function installCrispyHook(): void {
       e.wastedRenders++;
       e.avoidableRenders++;
     }
+    return false;
   }
 
   // Unusual fiber shapes must not lose the whole run: count the failure, keep the
@@ -428,10 +470,11 @@ export function installCrispyHook(): void {
     return (flags & PERFORMED_WORK) === PERFORMED_WORK;
   }
 
-  function updateSubtree(next: any, prev: any): void {
+  function updateSubtree(next: any, prev: any, trigger: string | null): void {
+    let below = trigger;
     if (COMPONENT_TAGS[next.tag] && didRender(next)) {
       try {
-        recordUpdate(prev, next);
+        if (recordUpdate(prev, next, trigger)) below = keyOf(next);
       } catch (err) {
         noteError(err);
       }
@@ -439,7 +482,7 @@ export function installCrispyHook(): void {
     if (next.child === prev.child) return; // whole subtree bailed out
     let child = next.child;
     while (child) {
-      if (child.alternate) updateSubtree(child, child.alternate);
+      if (child.alternate) updateSubtree(child, child.alternate, below);
       else mountSubtree(child);
       child = child.sibling;
     }
@@ -476,7 +519,7 @@ export function installCrispyHook(): void {
           child = child.sibling;
         }
       } else {
-        updateSubtree(current, prev);
+        updateSubtree(current, prev, null);
       }
       state.lastCommitNames = Object.keys(currentCommitNames).sort();
     } catch (err) {

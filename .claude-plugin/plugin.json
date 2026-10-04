@@ -16,7 +16,7 @@
   "mcpServers": {
     "crispy-profiling": {
       "command": "npx",
-      "args": ["-y", "crispy-profiling@latest", "mcp"]
+      "args": ["-y", "crispy-profiling@0.1.0", "mcp"]
     }
   }
 }

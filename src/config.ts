@@ -185,11 +185,12 @@ export function exampleConfig(baseUrl = 'http://localhost:5173'): CrispyConfigIn
       {
         name: 'home',
         path: '/',
+        // Replace with the interaction you want to guard: wait for the app, then act.
         steps: [
+          { action: 'waitFor', selector: 'button' },
           { action: 'phase', name: 'interaction' },
           { action: 'click', selector: 'button' },
         ],
-        budgets: { interaction: { maxAvoidableRenders: 50 } },
       },
     ],
   };

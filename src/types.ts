@@ -33,6 +33,12 @@ export interface RawComponentStats {
   callbackProps: Record<string, number>;
   /** Updates caused only by recreated callbacks (avoidable if their captured values didn't change). */
   callbackRenders: number;
+  /** Ancestor whose own state change started the cascade that re-rendered this component. */
+  triggeredBy: Record<string, number>;
+  /** Components whose context value was recreated with equal content (provider owners). */
+  recreatedContextFrom: Record<string, number>;
+  /** Wrapped in React.memo. */
+  memo: boolean;
   /** Number of updates attributed to each cause. A render can have several causes. */
   causes: Causes;
   /** Where the component is rendered ("file:line (Owner)") with how often. */
@@ -81,6 +87,12 @@ export interface ComponentReport {
   callbackProps: Record<string, number>;
   /** Updates caused only by recreated callbacks. */
   callbackRenders: Stat;
+  /** Root cause of cascades: ancestor whose own state change re-rendered this component. */
+  triggeredBy: Record<string, number>;
+  /** Provider owners whose context value was recreated with equal content. */
+  recreatedContextFrom: Record<string, number>;
+  /** Wrapped in React.memo. */
+  memo: boolean;
   /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */
   locations: string[];
   /** File where the component function is defined, when known (part of its identity). */

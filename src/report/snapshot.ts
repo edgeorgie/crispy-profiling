@@ -1,5 +1,6 @@
 import type { ComponentReport, CrispyReport, Stat } from '../types.js';
 import { cmp } from '../util/cmp.js';
+import { hintFor } from './hints.js';
 
 /**
  * Render snapshot: the expected render counts of every scenario, committed to the
@@ -125,35 +126,6 @@ export function parseSnapshot(text: string): RenderSnapshot {
   return json as RenderSnapshot;
 }
 
-/** Explains a regression with the data an agent or developer needs to fix it. */
-function hintFor(c: ComponentReport | undefined): string | undefined {
-  if (!c) return undefined;
-  const where = c.locations[0] ? ` (rendered at ${c.locations[0]})` : '';
-  const keys = (m: Record<string, number>) =>
-    Object.keys(m)
-      .slice(0, 3)
-      .map((k) => `\`${k}\``)
-      .join(', ');
-  if (Object.keys(c.unstableProps).length) {
-    return `${keys(c.unstableProps)} recreated on every render with equal data${where}: memoize it with useMemo or hoist it out of the component, and wrap the child in React.memo.`;
-  }
-  if (Object.keys(c.callbackProps).length) {
-    return `${keys(c.callbackProps)} is a new function with the same code on every render${where}. If the values it uses did not change, wrap it in useCallback with those values as dependencies (and React.memo the child); if they did change, this render is necessary.`;
-  }
-  if (c.causes.parent > 0) {
-    return `re-renders with identical props because its parent re-renders${where}: wrap in React.memo, or move the parent's state closer to where it is used.`;
-  }
-  if (c.causes.context > 0) {
-    return `re-renders on context changes${where}: split the context or memoize the provider value.`;
-  }
-  if (c.causes.state > 0) {
-    return `own state updates more often${where}: check for extra setState calls or effects.`;
-  }
-  const changed = Object.keys(c.changedProps).slice(0, 3);
-  if (changed.length) return `props changed: ${changed.map((k) => `\`${k}\``).join(', ')}${where}.`;
-  return undefined;
-}
-
 /**
  * Compares the current report with the committed snapshot. Any increase in
  * renders or avoidable renders is a regression; decreases are improvements that
@@ -255,13 +227,25 @@ export function compareSnapshot(
             expected: null,
             actual: full ? toCount(full.renders) : 0,
             status: onlyMounts ? 'new' : 'regressed',
-            ...(onlyMounts ? {} : { hint: hintFor(full) }),
+            ...(onlyMounts ? {} : { hint: hintFor(full, reportPhase, component) }),
           });
           continue;
         }
         const base = { scenario, phase, component };
-        check(base, 'renders', e.renders, full?.renders ?? zero, hintFor(full));
-        check(base, 'avoidable', e.avoidable, full?.avoidableRenders ?? zero, hintFor(full));
+        check(
+          base,
+          'renders',
+          e.renders,
+          full?.renders ?? zero,
+          hintFor(full, reportPhase, component),
+        );
+        check(
+          base,
+          'avoidable',
+          e.avoidable,
+          full?.avoidableRenders ?? zero,
+          hintFor(full, reportPhase, component),
+        );
       }
     }
   }
