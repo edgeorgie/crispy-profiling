@@ -217,3 +217,22 @@ describe('navigation', () => {
     expect(report.violations.map((v) => v.phase)).toEqual(['interaction']);
   });
 });
+
+describe('component identity', () => {
+  it('keeps distinct components that share a name apart and locates them (C-07)', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'dupes', path: '/?dupes' }],
+    });
+    const load = (await profile(config)).scenarios.dupes?.phases.load;
+    expect(load?.components.Item?.renders.median).toBe(1);
+    expect(load?.components['Item#2']?.renders.median).toBe(1);
+    // Rows are created inside an anonymous map callback; Header directly in App.
+    expect(load?.components.Row?.locations).toEqual([expect.stringMatching(/^bundle\.js:\d+$/)]);
+    expect(load?.components.Header?.locations).toEqual([
+      expect.stringMatching(/^bundle\.js:\d+ \(App\)$/),
+    ]);
+  });
+});
