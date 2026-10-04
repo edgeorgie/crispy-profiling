@@ -134,6 +134,7 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `topComponents` | `0` | Keep only the N most-rendered components per phase (`0` = all). |
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
+| `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
 | `snapshot` | `crispy.snap.json`, `0` | `file` (relative to the config file) and `tolerance` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
