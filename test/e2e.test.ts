@@ -216,7 +216,7 @@ describe('navigation', () => {
     });
     const report = await profile(config);
     const phases = report.scenarios.nav?.phases;
-    expect(Object.keys(phases ?? {})).toEqual(['load', 'after-nav', 'interaction']);
+    expect(Object.keys(phases ?? {})).toEqual(['load', 'interaction', 'after-nav']); // declaration order (R4-11)
     expect(phases?.interaction?.components.App?.renders.median).toBe(1);
     // App mounts again after the navigation, then updates on the click.
     expect(phases?.['after-nav']?.components.App?.mounts.median).toBe(1);
@@ -357,7 +357,7 @@ describe('iframes', () => {
       ],
     });
     const phases = (await profile(config)).scenarios.frame?.phases;
-    expect(Object.keys(phases ?? {})).toEqual(['load', 'after-nav', 'interaction']);
+    expect(Object.keys(phases ?? {})).toEqual(['load', 'interaction', 'after-nav']); // declaration order (R4-11)
     expect(phases?.interaction?.components.App?.renders.median).toBe(1);
   });
 });
@@ -411,8 +411,10 @@ describe('stable component identity across modules (R2-05)', () => {
       expect(keys).toEqual(
         expect.arrayContaining(['Item (src/ListItem.tsx)', 'Item (src/BannerItem.tsx)']),
       );
-      // Only the genuinely new component is reported; the list items still match.
-      expect(withBanner.result?.regressions.map((r) => r.component)).toEqual([
+      // Only the genuinely new component is reported, as an addition (R4-05); the list
+      // items still match.
+      expect(withBanner.result?.regressions).toEqual([]);
+      expect([...new Set(withBanner.result?.additions.map((r) => r.component))]).toEqual([
         'Item (src/BannerItem.tsx)',
       ]);
     } finally {
@@ -531,5 +533,16 @@ describe('root-cause hints (R3-04, R3-05)', () => {
     expect(hintFor(c?.Swatch, phase, 'Swatch')).toContain('already wrapped in React.memo');
     // App's count update started the cascade.
     expect(c?.CartShell?.triggeredBy).toEqual({ App: 1 });
+  });
+});
+
+describe('first-run errors (R4-19)', () => {
+  it('says the dev server is not running instead of a raw network error', async () => {
+    const config = parseConfig({
+      baseUrl: 'http://127.0.0.1:47123',
+      runs: 1,
+      scenarios: [{ name: 'x' }],
+    });
+    await expect(profile(config)).rejects.toThrow(/Is the dev server running\?/);
   });
 });

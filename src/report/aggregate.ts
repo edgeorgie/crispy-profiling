@@ -1,4 +1,4 @@
-import type { Budget, CrispyConfig, Scenario } from '../config.js';
+import { type Budget, type CrispyConfig, phasesOf, type Scenario } from '../config.js';
 import type {
   BudgetViolation,
   ComponentReport,
@@ -339,9 +339,15 @@ export function stabilizeKeys(runs: RawRun[]): {
     }
     return Object.entries(counts).sort((a, b) => b[1] - a[1] || cmpNatural(a[0], b[0]))[0]?.[0];
   };
+  // Components made by a library factory (styled.div, withRouter(Page)) are
+  // always keyed by site: adding a second one must not rename the first.
+  const isFactory = (name: string, g: { files: Set<string> }) =>
+    (/^styled\./.test(name) || /\(.+\)$/.test(name)) &&
+    g.files.size > 0 &&
+    [...g.files].every((f) => LIBRARY_PATH.test(f));
   const bySite = new Set<string>();
   for (const [name, g] of Object.entries(groups)) {
-    if (g.keys.size < 2 || byFile(name)) continue;
+    if ((g.keys.size < 2 && !isFactory(name, g)) || byFile(name)) continue;
     const ok = runs.every((r) => {
       const sites = keysOf(r)
         .filter((k) => base(k) === name)
@@ -401,10 +407,10 @@ export function buildReport(
 
     const phaseNames = new Set<string>();
     for (const r of runs) for (const p of Object.keys(r.phases)) phaseNames.add(p);
-    // "load" first, then the remaining phases alphabetically.
-    const order = [...phaseNames].sort((a, b) =>
-      a === 'load' ? -1 : b === 'load' ? 1 : cmp(a, b),
-    );
+    // Phases in the order the scenario declares them ("load" first).
+    const declared = phasesOf(scenario);
+    const rank = (p: string) => (declared.includes(p) ? declared.indexOf(p) : declared.length);
+    const order = [...phaseNames].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
     const phases: Record<string, PhaseReport> = {};
     for (const p of order) {
       phases[p] = aggregatePhase(runs, p, config);

@@ -184,10 +184,21 @@ export function createServer(): McpServer {
             for (const k of Object.keys(p.components)) keys.add(k);
         }
         // Exact key first, then keys sharing the base name (`Item (src/a.tsx)`, `Item#2`).
-        const base = (k: string) => k.replace(/ \(.*\)$/, '').replace(/#\d+$/, '');
+        // `Item (src/a.tsx)`, `Item#2` and `styled.div @ src/Card.tsx:12` all match
+        // `Item` / `styled.div`; case only matters when it disambiguates.
+        const base = (k: string) =>
+          k
+            .replace(/ @ .*$/, '')
+            .replace(/ \(.*\)$/, '')
+            .replace(/#\d+$/, '');
+        const byBase = (eq: (a: string, b: string) => boolean) =>
+          [...keys].filter((k) => eq(base(k), base(component))).sort(cmp);
+        const exact = byBase((a, b) => a === b);
         const wanted = keys.has(component)
           ? [component]
-          : [...keys].filter((k) => base(k) === base(component)).sort(cmp);
+          : exact.length
+            ? exact
+            : byBase((a, b) => a.toLowerCase() === b.toLowerCase());
         const found: Record<string, unknown> = {};
         for (const s of Object.values(report.scenarios)) {
           for (const [phase, p] of Object.entries(s.phases)) {

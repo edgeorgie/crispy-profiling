@@ -19,9 +19,9 @@ Prefer the MCP tools when they are available (server `crispy-profiling`):
 
 | Tool | Use it to |
 | --- | --- |
+| `test_render_snapshots` | **Start here** when the project has a `crispy.config.json`: check counts against the committed `crispy.snap.json` (snapshot tests for re-renders). |
 | `profile_url` | Profile one URL (+ optional steps). Pass `outFile` to keep the JSON. |
 | `run_scenarios` | Run the scenarios of a `crispy.config.json` (with budgets). |
-| `test_render_snapshots` | Check counts against the committed `crispy.snap.json` (snapshot tests for re-renders). |
 | `compare_reports` | Diff a baseline report against a new one. |
 | `inspect_component` | Full causes + changed prop keys for one component. |
 
@@ -29,7 +29,8 @@ Otherwise use the CLI (`npx crispy-profiling <command>`):
 
 ```bash
 npx crispy-profiling init --base-url http://localhost:5173   # creates crispy.config.json
-npx crispy-profiling run -o .crispy/base.json                # exit 1 if a budget is exceeded
+npx crispy-profiling test        # writes crispy.snap.json the first time, then guards it
+npx crispy-profiling run -o .crispy/base.json                # one-off report with fix hints
 npx crispy-profiling compare .crispy/base.json .crispy/head.json
 ```
 
@@ -43,12 +44,15 @@ Chromium is required once: `npx crispy-profiling install`.
    `scroll`, `waitFor`, `wait`, `goto`, `phase`). Renders before the first step go to
    phase `load`; renders during steps go to `interaction` unless you name phases with
    `{ "action": "phase", "name": "..." }`.
-3. **Capture a baseline** before touching code (`outFile: ".crispy/base.json"`).
+3. **Capture a baseline** before touching code: `crispy test` (records `crispy.snap.json` if it
+   does not exist) or a report with `outFile: ".crispy/base.json"`.
 4. **Read the report** — components are already sorted by fixable renders
    (`avoidableRenders + callbackRenders`), then `renders`; read the **Why / how to fix** column.
 5. **Fix one cause at a time** using the table below.
-6. **Re-profile** to `.crispy/head.json` and run `compare_reports`. Keep the change only if
-   the target component improved and nothing regressed. Report the before/after numbers.
+6. **Verify**: run `test_render_snapshots` again (🟢 improved, nothing 🔴), or re-profile to
+   `.crispy/head.json` and run `compare_reports`. Keep the change only if the target component
+   improved and nothing regressed. Report the before/after numbers. A 🔁 renamed or ⚠️ new row is
+   not a failure.
 
 ## Reading the numbers
 

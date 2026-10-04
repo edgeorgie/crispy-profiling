@@ -1,5 +1,6 @@
 import type { ComponentReport, CrispyReport, Stat } from '../types.js';
 import { cmp } from '../util/cmp.js';
+import { LIBRARY_FILE } from '../util/paths.js';
 import { hintFor } from './hints.js';
 
 /**
@@ -47,6 +48,8 @@ export interface SnapshotChange {
   hint?: string;
   /** For `renamed`: the component's key in the snapshot. */
   renamedFrom?: string;
+  /** New component that already renders avoidably (reported, not failing). */
+  warning?: true;
 }
 
 export interface SnapshotResult {
@@ -58,7 +61,11 @@ export interface SnapshotResult {
   additions: SnapshotChange[];
 }
 
-const phaseOrder = (a: string, b: string) => (a === 'load' ? -1 : b === 'load' ? 1 : cmp(a, b));
+/** Sorts phase names by their position in `order` (the report's, i.e. declaration order). */
+const inOrder = (names: Iterable<string>, order: string[]) => {
+  const rank = (p: string) => (order.includes(p) ? order.indexOf(p) : order.length);
+  return [...new Set(names)].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
+};
 
 export function toSnapshot(report: CrispyReport): RenderSnapshot {
   const scenarios: RenderSnapshot['scenarios'] = {};
@@ -66,7 +73,7 @@ export function toSnapshot(report: CrispyReport): RenderSnapshot {
     const s = report.scenarios[name];
     if (!s) continue;
     const phases: Record<string, PhaseSnapshot> = {};
-    for (const phase of Object.keys(s.phases).sort(phaseOrder)) {
+    for (const phase of Object.keys(s.phases)) {
       const p = s.phases[phase];
       if (!p) continue;
       const components: PhaseSnapshot['components'] = {};
@@ -134,7 +141,11 @@ export function parseSnapshot(text: string): RenderSnapshot {
  * can be locked in with `--update`. New components that only mount are additions.
  */
 /** Display name without the disambiguation suffix ("Item (src/a.tsx)", "Item#2" -> "Item"). */
-const baseName = (k: string) => k.replace(/ \(.*\)$/, '').replace(/#\d+$/, '');
+const baseName = (k: string) =>
+  k
+    .replace(/ @ .*$/, '')
+    .replace(/ \(.*\)$/, '')
+    .replace(/#\d+$/, '');
 
 /**
  * Matches snapshot components to current ones by (name, definition file) when
@@ -143,9 +154,15 @@ const baseName = (k: string) => k.replace(/ \(.*\)$/, '').replace(/#\d+$/, '');
  */
 function alignKeys(exp: PhaseSnapshot, current: Record<string, ComponentReport>): PhaseSnapshot {
   const byIdentity = new Map<string, string>();
+  const ambiguous = new Set<string>();
   for (const [k, c] of Object.entries(current)) {
-    if (c.definedIn) byIdentity.set(`${baseName(k)}|${c.definedIn}`, k);
+    // Library factories (styled.div…) all share the library's file: not an identity.
+    if (!c.definedIn || LIBRARY_FILE.test(c.definedIn)) continue;
+    const id = `${baseName(k)}|${c.definedIn}`;
+    if (byIdentity.has(id)) ambiguous.add(id);
+    byIdentity.set(id, k);
   }
+  for (const id of ambiguous) byIdentity.delete(id);
   const components: PhaseSnapshot['components'] = {};
   for (const [k, v] of Object.entries(exp.components)) {
     const match = !current[k] && v.file ? byIdentity.get(`${baseName(k)}|${v.file}`) : undefined;
@@ -158,15 +175,22 @@ function alignKeys(exp: PhaseSnapshot, current: Record<string, ComponentReport>)
 const sameCount = (a: Count, b: Count) => lo(a) === lo(b) && hi(a) === hi(b);
 
 /**
- * Whether a component missing from a snapshot phase is a harmless addition.
- * Never when some renders were avoidable or recreated callbacks. Otherwise yes
- * if it only mounts, or if it is new UI the snapshot never saw (it may
- * legitimately update); a known component that starts updating is a regression.
+ * How to treat a component missing from a snapshot phase:
+ * - a component the snapshot knows (other phases) that starts updating, or
+ *   renders avoidably, is a regression;
+ * - new UI is an addition; if it already renders avoidably it carries a
+ *   warning, and fails only with `failOnNewAvoidable`.
  */
-function isCleanAddition(c: ComponentReport | undefined, knownElsewhere: boolean): boolean {
-  if (!c) return true;
-  if (c.avoidableRenders.max > 0 || c.callbackRenders.max > 0) return false;
-  return c.updates.max === 0 || !knownElsewhere;
+function additionStatus(
+  c: ComponentReport | undefined,
+  knownElsewhere: boolean,
+  failOnNewAvoidable = false,
+): 'new' | 'warn' | 'regressed' {
+  if (!c) return 'new';
+  const fixable = c.avoidableRenders.max > 0 || c.callbackRenders.max > 0;
+  if (knownElsewhere) return c.updates.max === 0 && !fixable ? 'new' : 'regressed';
+  if (!fixable) return 'new';
+  return failOnNewAvoidable ? 'regressed' : 'warn';
 }
 
 /** Component keys recorded in any phase of a snapshot scenario. */
@@ -180,9 +204,28 @@ const knownIn = (phases: Record<string, PhaseSnapshot> | undefined) =>
 function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, string> {
   const renames = new Map<string, string>();
   const added = Object.keys(current.components).filter((k) => !exp.components[k]);
+  const taken = () => [...renames.values()];
+  // Same component under a new key (`styled.h3` became `styled.h3 @ src/Card.tsx:28`).
   for (const old of Object.keys(exp.components).sort(cmp)) {
     const e = exp.components[old];
-    if (!e?.file || current.components[old]) continue;
+    if (!e || current.components[old]) continue;
+    const candidates = added.filter((k) => {
+      const c = current.components[k];
+      return (
+        c !== undefined &&
+        baseName(k) === baseName(old) &&
+        !taken().includes(k) &&
+        sameCount(c.renders, e.renders) &&
+        sameCount(c.avoidable, e.avoidable)
+      );
+    });
+    if (candidates.length === 1) renames.set(old, candidates[0] as string);
+  }
+  for (const old of Object.keys(exp.components).sort(cmp)) {
+    if (renames.has(old)) continue;
+    const e = exp.components[old];
+    // A library file (styled-components…) is shared by many components: not an identity.
+    if (!e?.file || LIBRARY_FILE.test(e.file) || current.components[old]) continue;
     const candidates = added.filter((k) => {
       const c = current.components[k];
       return (
@@ -196,6 +239,21 @@ function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, 
     // Ambiguous (several identical candidates): don't guess.
     if (candidates.length === 1) renames.set(old, candidates[0] as string);
   }
+  // Renamed and moved to another file: accept only an unambiguous 1:1 match.
+  const removed = Object.keys(exp.components)
+    .filter((k) => !current.components[k] && !renames.has(k))
+    .sort(cmp);
+  const same = (a: string, b: string) => {
+    const e = exp.components[a];
+    const c = current.components[b];
+    return !!e && !!c && sameCount(c.renders, e.renders) && sameCount(c.avoidable, e.avoidable);
+  };
+  const free = added.filter((k) => ![...renames.values()].includes(k));
+  for (const old of removed) {
+    const matches = free.filter((k) => same(old, k));
+    const rivals = removed.filter((o) => matches[0] !== undefined && same(o, matches[0]));
+    if (matches.length === 1 && rivals.length === 1) renames.set(old, matches[0] as string);
+  }
   return renames;
 }
 
@@ -205,6 +263,7 @@ export function compareSnapshot(
   tolerance = 0,
   /** When only some scenarios ran, don't report the others as removed. */
   partial = false,
+  failOnNewAvoidable = false,
 ): SnapshotResult {
   const current = toSnapshot(report);
   const changes: SnapshotChange[] = [];
@@ -236,9 +295,10 @@ export function compareSnapshot(
     const expectedPhases = snapshot.scenarios[scenario];
     const actualPhases = current.scenarios[scenario] ?? {};
     const known = knownIn(expectedPhases);
-    const phaseNames = [
-      ...new Set([...Object.keys(expectedPhases ?? {}), ...Object.keys(actualPhases)]),
-    ].sort(phaseOrder);
+    const phaseNames = inOrder(
+      [...Object.keys(actualPhases), ...Object.keys(expectedPhases ?? {})],
+      Object.keys(actualPhases),
+    );
     for (const phase of phaseNames) {
       const reportPhase = report.scenarios[scenario]?.phases[phase];
       const rawExp = expectedPhases?.[phase];
@@ -281,8 +341,8 @@ export function compareSnapshot(
         const e = exp.components[component];
         const full = reportPhase?.components[component];
         if (!e) {
-          // New UI is an addition unless it already renders avoidably.
-          const clean = isCleanAddition(full, known.has(component));
+          const status = additionStatus(full, known.has(component), failOnNewAvoidable);
+          const hint = status === 'new' ? undefined : hintFor(full, reportPhase, component);
           changes.push({
             scenario,
             phase,
@@ -290,8 +350,9 @@ export function compareSnapshot(
             metric: 'renders',
             expected: null,
             actual: full ? toCount(full.renders) : 0,
-            status: clean ? 'new' : 'regressed',
-            ...(clean ? {} : { hint: hintFor(full, reportPhase, component) }),
+            status: status === 'regressed' ? 'regressed' : 'new',
+            ...(status === 'warn' && { warning: true }),
+            ...(hint && { hint }),
           });
           continue;
         }
@@ -396,7 +457,7 @@ export function mergeAdditions(snapshot: RenderSnapshot, report: CrispyReport): 
       }
       const full = report.scenarios[scenario]?.phases[phase]?.components ?? {};
       for (const [name, counts] of Object.entries(p.components)) {
-        if (!t.components[name] && isCleanAddition(full[name], known.has(name))) {
+        if (!t.components[name] && additionStatus(full[name], known.has(name)) !== 'regressed') {
           t.components[name] = counts;
         }
       }
@@ -410,7 +471,7 @@ export function mergeAdditions(snapshot: RenderSnapshot, report: CrispyReport): 
   for (const s of Object.keys(merged.scenarios).sort(cmp)) {
     const phases = merged.scenarios[s] ?? {};
     ordered.scenarios[s] = {};
-    for (const p of Object.keys(phases).sort(phaseOrder)) {
+    for (const p of inOrder(Object.keys(phases), Object.keys(current.scenarios[s] ?? {}))) {
       (ordered.scenarios[s] as Record<string, PhaseSnapshot>)[p] = phases[p] as PhaseSnapshot;
     }
   }
@@ -449,7 +510,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   for (const c of sorted) {
     const values = `${fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
     lines.push(
-      `| ${ICON[c.status]} ${c.status} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
+      `| ${c.warning ? '⚠️ new' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
     );
   }
   lines.push('');

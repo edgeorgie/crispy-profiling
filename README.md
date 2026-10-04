@@ -94,10 +94,12 @@ When something regresses you get the component, the cause, where it is rendered 
 
 Rules: any increase in commits, renders or avoidable renders fails (`snapshot.tolerance` allows
 slack), and every metric is checked independently, so an improvement never hides a regression.
-Counts that varied between runs are stored as `[min, max]` ranges and only fail outside them.
-Decreases pass and suggest `-u`. New UI passes and is reported (record it with `-u`) unless it
-already renders avoidably; a known component that starts re-rendering in a phase still fails. A
-pure rename (same file, same counts) is reported as 🔁 renamed, not as a regression.
+Counts that varied between runs are stored as `[min, max]` ranges and only fail outside them
+(`-u` keeps the known range instead of narrowing it). Decreases pass and suggest `-u`. New UI
+passes and is reported (record it with `-u`); if it already renders avoidably it is flagged ⚠️
+(set `snapshot.failOnNewAvoidable` to fail instead). A known component that starts re-rendering
+in a phase still fails. A rename, even combined with a move to another file, with the same counts
+is reported as 🔁 renamed, not as a regression.
 `crispy test` never edits the committed file on its own; the
 snapshot always covers every component (even with `topComponents`); budgets still apply.
 
@@ -141,7 +143,7 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
 | `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
-| `snapshot` | `crispy.snap.json`, `0` | `file` (relative to the config file) and `tolerance` used by `crispy test`. |
+| `snapshot` | `crispy.snap.json`, `0`, `false` | `file` (relative to the config file), `tolerance` and `failOnNewAvoidable` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
 **Steps:** `click`, `hover`, `fill`, `type`, `press`, `scroll`, `waitFor`, `wait`, `goto`, `phase`.
