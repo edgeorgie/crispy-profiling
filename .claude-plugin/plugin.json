@@ -1,0 +1,22 @@
+{
+  "name": "crispy-profiling",
+  "displayName": "Crispy Profiling",
+  "version": "0.1.0",
+  "description": "Deterministic React render profiling: find wasted re-renders, their causes, and verify fixes with before/after numbers.",
+  "author": {
+    "name": "Edwin Jorge",
+    "url": "https://github.com/edgeorgie"
+  },
+  "homepage": "https://github.com/edgeorgie/crispy-profilling#readme",
+  "repository": "https://github.com/edgeorgie/crispy-profilling",
+  "license": "MIT",
+  "keywords": ["react", "performance", "re-renders", "profiling", "mcp"],
+  "documentationUrl": "https://github.com/edgeorgie/crispy-profilling#readme",
+  "supportUrl": "https://github.com/edgeorgie/crispy-profilling/issues",
+  "mcpServers": {
+    "crispy-profiling": {
+      "command": "npx",
+      "args": ["-y", "crispy-profiling@latest", "mcp"]
+    }
+  }
+}
