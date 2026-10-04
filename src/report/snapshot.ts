@@ -339,6 +339,37 @@ export function compareSnapshot(
 }
 
 /**
+ * When accepting new counts (`--update`), keeps the known variation of flaky
+ * metrics: a value that varied before or varies now, and overlaps the old
+ * range, is stored as the union of both, so a lucky run never narrows
+ * `[12, 16]` down to `12`. Values outside the old range replace it.
+ */
+export function keepRanges(next: RenderSnapshot, previous: RenderSnapshot): RenderSnapshot {
+  const union = (a: Count, b: Count | undefined): Count => {
+    if (b === undefined || (!Array.isArray(a) && !Array.isArray(b))) return a;
+    // Entirely outside the known range: a real change, not variation.
+    if (hi(a) < lo(b) || lo(a) > hi(b)) return a;
+    const min = Math.min(lo(a), lo(b));
+    const max = Math.max(hi(a), hi(b));
+    return min === max ? min : [min, max];
+  };
+  for (const [scenario, phases] of Object.entries(next.scenarios)) {
+    for (const [phase, p] of Object.entries(phases)) {
+      const old = previous.scenarios[scenario]?.[phase];
+      if (!old) continue;
+      p.commits = union(p.commits, old.commits);
+      for (const [name, c] of Object.entries(p.components)) {
+        const o = old.components[name];
+        if (!o) continue;
+        c.renders = union(c.renders, o.renders);
+        c.avoidable = union(c.avoidable, o.avoidable);
+      }
+    }
+  }
+  return next;
+}
+
+/**
  * Snapshot to write: the current counts, but without silently accepting
  * regressions — used to record new scenarios/phases/components on a normal run.
  */

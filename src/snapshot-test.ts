@@ -5,6 +5,7 @@ import type { CrispyConfig } from './config.js';
 import { profile } from './profiler/run.js';
 import {
   compareSnapshot,
+  keepRanges,
   mergeAdditions,
   parseSnapshot,
   type RenderSnapshot,
@@ -94,7 +95,7 @@ export async function runSnapshotTest(
         markdown: `## 🥓 crispy render snapshots: ❌ missing\n\nNo snapshot at \`${shown}\`. Run \`crispy test\` locally (or \`crispy test -u\`) and commit the file.\n${extra}`,
       };
     }
-    let next = toSnapshot(report);
+    let next = previous ? keepRanges(toSnapshot(report), previous) : toSnapshot(report);
     if (previous && options.only?.length) {
       // Keep the scenarios that did not run.
       next = { schemaVersion: 1, scenarios: { ...previous.scenarios, ...next.scenarios } };

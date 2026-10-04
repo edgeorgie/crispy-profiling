@@ -189,7 +189,7 @@ function budgetWarnings(scenario: Scenario, phases: Record<string, PhaseReport>)
  * keyed as `Name (file)` instead of the render-order based `Name`, `Name#2`.
  * Unique names keep their plain key. Also returns key -> definition file.
  */
-const LIBRARY_PATH = /(^|\/)node_modules(\/|_)|\.vite\/deps\/|(^|\/)next\/dist\//;
+const LIBRARY_PATH = /(^|\/)node_modules(\/|_)|\.vite\/deps\/|(^|\/)next\/dist\/|_next_dist_/;
 const locationFile = (loc: string) => loc.replace(/ \(.*\)$/, '').replace(/:\d+$/, '');
 
 /**
@@ -202,17 +202,46 @@ export function hideInternals(runs: RawRun[]): { runs: RawRun[]; hidden: number 
   for (const r of runs) {
     for (const [k, f] of Object.entries(r.definitions ?? {})) files[k] ??= f;
   }
+  const isLibrary = (k: string) => {
+    const f = files[k];
+    return f !== undefined && LIBRARY_PATH.test(f);
+  };
   const internal = new Set<string>();
-  const seen = new Set<string>();
   for (const r of runs) {
     for (const p of Object.values(r.phases)) {
       for (const [k, c] of Object.entries(p.components)) {
-        seen.add(k);
-        const file = files[k];
-        if (!file || !LIBRARY_PATH.test(file)) continue;
+        if (!isLibrary(k)) continue;
         const sites = Object.keys(c.locations ?? {});
         if (sites.every((loc) => LIBRARY_PATH.test(locationFile(loc)))) internal.add(k);
       }
+    }
+  }
+  // Roots that only render library code (e.g. Next's dev overlay, its own React
+  // root): everything in them is internal, even components whose definition
+  // could not be resolved (rendered while the page was navigating away).
+  for (const r of runs) {
+    const keysByRoot: Record<string, Set<string>> = {};
+    const rootsByKey: Record<string, string[]> = {};
+    for (const p of Object.values(r.phases)) {
+      for (const [k, c] of Object.entries(p.components)) {
+        for (const root of Object.keys(c.roots ?? {})) {
+          keysByRoot[root] ??= new Set();
+          keysByRoot[root].add(k);
+          rootsByKey[k] ??= [];
+          if (!rootsByKey[k].includes(root)) rootsByKey[k].push(root);
+        }
+      }
+    }
+    const libraryRoots = new Set(
+      Object.entries(keysByRoot)
+        .filter(([, keys]) => {
+          const known = [...keys].filter((k) => files[k] !== undefined);
+          return known.length > 0 && known.every(isLibrary);
+        })
+        .map(([root]) => root),
+    );
+    for (const [k, roots] of Object.entries(rootsByKey)) {
+      if (roots.every((root) => libraryRoots.has(root))) internal.add(k);
     }
   }
   // A component rendered by app code in any phase/run is not internal.
@@ -225,7 +254,14 @@ export function hideInternals(runs: RawRun[]): { runs: RawRun[]; hidden: number 
       }
     }
   }
-  if (internal.size === 0) return { runs, hidden: 0 };
+  // Count only commits that rendered at least one visible component: commits
+  // that only touched framework internals vary between runs.
+  const visibleCommits = (p: RawRun['phases'][string]) =>
+    p.commitKeys
+      ? Object.entries(p.commitKeys)
+          .filter(([sig]) => sig.split('\n').some((k) => !internal.has(k)))
+          .reduce((n, [, count]) => n + count, 0)
+      : p.commits;
   const filtered = runs.map((r) => ({
     ...r,
     phases: Object.fromEntries(
@@ -233,6 +269,7 @@ export function hideInternals(runs: RawRun[]): { runs: RawRun[]; hidden: number 
         phase,
         {
           ...p,
+          commits: visibleCommits(p),
           components: Object.fromEntries(
             Object.entries(p.components).filter(([k]) => !internal.has(k)),
           ),
@@ -378,7 +415,8 @@ export function buildReport(
       phases,
       // Budgets are checked on the full component list, before `topComponents` trims it.
       violations: checkBudgets(scenario.name, phases, scenario.budgets),
-      ...(visible.hidden > 0 && { hiddenInternals: visible.hidden }),
+      // Varies with dev-server state (cold compiles render extra internals).
+      ...(config.timings && visible.hidden > 0 && { hiddenInternals: visible.hidden }),
       warnings: [
         ...new Set([...runs.flatMap((r) => r.warnings ?? []), ...budgetWarnings(scenario, phases)]),
       ].sort(cmp),

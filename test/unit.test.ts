@@ -409,3 +409,101 @@ describe('per-run key stabilization (R3-09)', async () => {
     ]);
   });
 });
+
+describe('Next.js internals (R4-01, R4-02)', async () => {
+  const { SourceMapResolver } = await import('../src/profiler/sourcemaps.js');
+  const { hideInternals } = await import('../src/report/aggregate.js');
+  const map = (sources: string[]) =>
+    `x;\n//# sourceMappingURL=data:application/json,${encodeURIComponent(
+      JSON.stringify({ version: 3, sources, names: [], mappings: 'AAKA' }),
+    )}`;
+
+  it('places library sources under node_modules, never on this machine', async () => {
+    const files: Record<string, string> = {
+      // Turbopack: Next's prebuilt dev overlay maps to its own repo layout.
+      'http://x.dev/_next/static/chunks/0w6x_next_dist_compiled_index.js': map([
+        'webpack://next/src/next-devtools/dev-overlay.tsx',
+      ]),
+      // webpack: Next's maps resolve to directories of the machine running the app.
+      'webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/link.js': map([
+        'webpack-internal:///tmp/someone/src/client/app-dir/link.tsx',
+      ]),
+      // App code keeps its project path.
+      'http://x.dev/_next/static/chunks/components_List.js': map([
+        'file:///repo/components/List.tsx',
+      ]),
+    };
+    const resolver = new SourceMapResolver(async (u) => files[u] ?? null, '/repo');
+    const at = (url: string) => resolver.resolve(url, 1, 1);
+    expect(await at('http://x.dev/_next/static/chunks/0w6x_next_dist_compiled_index.js')).toEqual({
+      file: 'node_modules/next/src/next-devtools/dev-overlay.tsx',
+      line: 6,
+    });
+    expect(
+      await at('webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/link.js'),
+    ).toEqual({ file: 'node_modules/next/dist/client/link.js', line: 1 });
+    expect(await at('http://x.dev/_next/static/chunks/components_List.js')).toEqual({
+      file: 'components/List.tsx',
+      line: 6,
+    });
+  });
+
+  it('hides library-only roots and counts only commits with visible components', () => {
+    const raw = (roots: string[], locations: Record<string, number> = {}) =>
+      ({
+        renders: 1,
+        mounts: 1,
+        updates: 0,
+        wastedRenders: 0,
+        avoidableRenders: 0,
+        changedProps: {},
+        unstableProps: {},
+        callbackProps: {},
+        callbackRenders: 0,
+        triggeredBy: {},
+        recreatedContextFrom: {},
+        memo: false,
+        locations,
+        causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
+        selfDurationMs: 0,
+        roots: Object.fromEntries(roots.map((r) => [r, 1])),
+      }) as RawRun['phases'][string]['components'][string];
+    const run: RawRun = {
+      reactVersion: '19',
+      profilingBuild: true,
+      phases: {
+        load: {
+          commits: 5,
+          components: {
+            App: raw(['0.1']),
+            Overlay: raw(['0.2']),
+            // Rendered while navigating away: no definition, same overlay root.
+            e4: raw(['0.2']),
+          },
+          commitKeys: { App: 1, 'Overlay\ne4': 3 },
+        },
+      },
+      vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
+      warnings: [],
+      definitions: { App: 'app/page.tsx', Overlay: 'node_modules/next/src/overlay.tsx' },
+    };
+    const { runs, hidden } = hideInternals([run]);
+    expect(Object.keys(runs[0]?.phases.load?.components ?? {})).toEqual(['App']);
+    expect(runs[0]?.phases.load?.commits).toBe(1);
+    expect(hidden).toBe(2);
+  });
+});
+
+describe('snapshot update keeps flaky ranges (R4-06)', async () => {
+  const { keepRanges } = await import('../src/report/snapshot.js');
+  const snap = (commits: number | [number, number]) => ({
+    schemaVersion: 1 as const,
+    scenarios: { s: { p: { commits, components: {} } } },
+  });
+  it('widens overlapping ranges and replaces real changes', () => {
+    expect(keepRanges(snap(12), snap([12, 16])).scenarios.s?.p?.commits).toEqual([12, 16]);
+    expect(keepRanges(snap([13, 18]), snap([12, 16])).scenarios.s?.p?.commits).toEqual([12, 18]);
+    expect(keepRanges(snap(3), snap([12, 16])).scenarios.s?.p?.commits).toBe(3);
+    expect(keepRanges(snap(5), snap(4)).scenarios.s?.p?.commits).toBe(5);
+  });
+});
