@@ -20,6 +20,11 @@ export interface SnapshotTestOptions {
   update?: boolean;
   /** CI mode: a missing snapshot fails instead of being written. */
   ci?: boolean;
+  /**
+   * Read-only mode (used by the MCP server): never create or modify the snapshot,
+   * even when it is missing. Only an explicit `update` writes.
+   */
+  readOnly?: boolean;
   /** Only run these scenarios (others keep their snapshot). */
   only?: string[];
   /** Directory the snapshot path is relative to (the config file's directory). */
@@ -79,14 +84,14 @@ export async function runSnapshotTest(
   const previous = existsSync(file) ? parseSnapshot(await readFile(file, 'utf8')) : null;
 
   if (options.update || !previous) {
-    if (!previous && options.ci) {
+    if (!previous && (options.ci || (options.readOnly && !options.update))) {
       return {
         exitCode: 1,
         file,
         written: false,
         result: null,
         report,
-        markdown: `## 🥓 crispy render snapshots: ❌ missing\n\nNo snapshot at \`${shown}\`. Run \`crispy test\` locally and commit the file.\n${extra}`,
+        markdown: `## 🥓 crispy render snapshots: ❌ missing\n\nNo snapshot at \`${shown}\`. Run \`crispy test\` locally (or \`crispy test -u\`) and commit the file.\n${extra}`,
       };
     }
     let next = toSnapshot(report);
@@ -116,12 +121,12 @@ export async function runSnapshotTest(
     config.snapshot.tolerance,
     !!options.only?.length,
   );
-  let written = false;
-  if (result.additions.length && !options.ci) {
-    await save(file, mergeAdditions(previous, report));
-    written = true;
-  }
-  const note = written ? `\nNew scenarios/phases/components were recorded in \`${shown}\`.\n` : '';
+  // Never modify a committed snapshot as a side effect: new entries are only
+  // recorded with --update, so every change to the file is a reviewed decision.
+  const written = false;
+  const note = result.additions.length
+    ? `\n${result.additions.length} new scenario/phase/component entr${result.additions.length === 1 ? 'y is' : 'ies are'} not in \`${shown}\` yet: run \`crispy test -u\` to record ${result.additions.length === 1 ? 'it' : 'them'}.\n`
+    : '';
   return {
     exitCode: result.passed && !budgetsFail ? 0 : 1,
     file,
