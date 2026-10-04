@@ -148,13 +148,31 @@ async function settleWithClock(ctx: SettleContext, label: string): Promise<void>
 const settle = (ctx: SettleContext, label: string) =>
   ctx.config.clock ? settleWithClock(ctx, label) : settleRealTime(ctx, label);
 
+/** Polled from Node: in-page rAF/timer polling would stall under a fake clock. */
+async function waitForReact(page: Page, url: string, timeoutMs: number, clock: boolean) {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await page.evaluate(() => (window as any).__CRISPY__?.reactDetected === true))) {
+    if (Date.now() > deadline) {
+      throw new Error(`React was not detected on ${url}. Is it a React (>=16) app?`);
+    }
+    if (clock) await page.clock.runFor(POLL_MS);
+    await page.waitForTimeout(POLL_MS);
+  }
+}
+
 async function setPhase(page: Page, name: string): Promise<void> {
   await page.evaluate((n) => {
     (window as any).__CRISPY__.phase = n;
   }, name);
 }
 
-async function runStep(page: Page, step: Step, baseUrl: string, timeoutMs: number): Promise<void> {
+async function runStep(
+  page: Page,
+  step: Step,
+  baseUrl: string,
+  timeoutMs: number,
+  clock: boolean,
+): Promise<void> {
   const opts = { timeout: timeoutMs };
   switch (step.action) {
     case 'click':
@@ -188,6 +206,7 @@ async function runStep(page: Page, step: Step, baseUrl: string, timeoutMs: numbe
       return;
     case 'goto':
       await page.goto(new URL(step.path, baseUrl).toString(), { ...opts, waitUntil: 'load' });
+      await waitForReact(page, page.url(), timeoutMs, clock);
       return;
     case 'phase':
       return setPhase(page, step.name);
@@ -209,15 +228,7 @@ export async function runScenarioOnce(
     await page.addInitScript({ content: crispyHookSource() });
     const url = new URL(scenario.path, config.baseUrl).toString();
     await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
-    // Polled from Node: in-page rAF/timer polling would stall under a fake clock.
-    const detectDeadline = Date.now() + config.timeoutMs;
-    while (!(await page.evaluate(() => (window as any).__CRISPY__?.reactDetected === true))) {
-      if (Date.now() > detectDeadline) {
-        throw new Error(`React was not detected on ${url}. Is it a React (>=16) app?`);
-      }
-      if (config.clock) await page.clock.runFor(POLL_MS);
-      await page.waitForTimeout(POLL_MS);
-    }
+    await waitForReact(page, url, config.timeoutMs, config.clock);
     await settle(ctx, 'load');
 
     const hasExplicitPhase = scenario.steps[0]?.action === 'phase';
@@ -225,7 +236,7 @@ export async function runScenarioOnce(
       await setPhase(page, DEFAULT_PHASE_AFTER_LOAD);
     }
     for (const [i, step] of scenario.steps.entries()) {
-      await runStep(page, step, config.baseUrl, config.timeoutMs);
+      await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock);
       if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
     }
 
