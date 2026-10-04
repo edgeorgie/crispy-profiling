@@ -62,6 +62,12 @@ describe('MCP server', () => {
     expect(missing.isError).toBe(true);
     expect(textOf(missing)).toContain('Did you mean: Header');
 
+    const lower = await client.callTool({
+      name: 'inspect_component',
+      arguments: { reportPath: outFile, component: 'header' },
+    });
+    expect(JSON.parse(textOf(lower))['page/interaction'].wastedRenders.median).toBe(1);
+
     const cmp = await client.callTool({
       name: 'compare_reports',
       arguments: { basePath: outFile, headPath: outFile },
