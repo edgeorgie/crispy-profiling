@@ -1,4 +1,12 @@
-import { createContext, memo, useCallback, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useDeferredValue,
+  useEffect,
+  useState,
+} from 'react';
 import { createRoot } from 'react-dom/client';
 
 // Replaced at build time: false = naive implementation, true = optimized one.
@@ -70,6 +78,35 @@ const unreadableFn = () =>
     },
   });
 
+// Concurrent rendering: an expensive list driven by a deferred value.
+function SlowCell({ text, i }: { text: string; i: number }) {
+  const end = performance.now() + 0.5;
+  while (performance.now() < end) {
+    // simulate an expensive render
+  }
+  return <li>{`${text}-${i}`}</li>;
+}
+const CELLS = Array.from({ length: 200 }, (_, i) => i);
+const SlowList = memo(function SlowList({ text }: { text: string }) {
+  return (
+    <ul>
+      {CELLS.map((i) => (
+        <SlowCell key={i} text={text} i={i} />
+      ))}
+    </ul>
+  );
+});
+function Deferred() {
+  const [value, setValue] = useState('');
+  const deferred = useDeferredValue(value);
+  return (
+    <>
+      <input id="deferred-input" value={value} onChange={(e) => setValue(e.target.value)} />
+      <SlowList text={deferred} />
+    </>
+  );
+}
+
 function App() {
   const [data, setData] = useState('none');
   const [count, setCount] = useState(0);
@@ -102,6 +139,7 @@ function App() {
       </button>
       {location.search.includes('ticker') && <Ticker />}
       {location.search.includes('boom') && <Boom fn={unreadableFn()} />}
+      {location.search.includes('deferred') && <Deferred />}
       {location.search.includes('dupes') && (
         <>
           <ItemA />

@@ -121,6 +121,7 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `runs` | `3` | Runs per scenario; the report keeps median/min/max and flags unstable counts. |
 | `settleMs` | `300` | A step is "settled" after this long without React commits **and** without in-flight network requests. |
 | `maxSettleMs` | `10000` | Max wait per step. Pages that never settle (polling, animations) produce a warning in the report instead of hanging. |
+| `cpuThrottle` | `1` | Slow the CPU down (e.g. `4`) to check counts on a slow CI runner or low-end device. Counts should not change. |
 | `clock` | `false` | Control timers with a fake clock (`setTimeout`, `setInterval`, `requestAnimationFrame`, `Date`, `performance`) so polling/animated apps give deterministic counts. |
 | `timeoutMs` | `30000` | Max time for navigation, a step or settling. |
 | `timings` | `false` | Add component self time + LCP/CLS/long tasks. Off by default: timings are not reproducible. |
@@ -131,6 +132,8 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
 **Steps:** `click`, `hover`, `fill`, `type`, `press`, `scroll`, `waitFor`, `wait`, `goto`, `phase`.
+`type` presses one key at a time and waits for React to finish (including deferred values and
+transitions) before the next key, so concurrent features give the same counts on fast and slow CPUs.
 Renders before the first step are recorded in phase `load`; renders during steps go to
 `interaction` unless you name phases yourself with `{ "action": "phase", "name": "..." }`.
 

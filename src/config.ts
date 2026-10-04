@@ -82,6 +82,11 @@ export const ConfigSchema = z.object({
    */
   clock: z.boolean().default(false),
   /**
+   * Slow the CPU down by this factor (Chrome DevTools throttling), e.g. 4 to
+   * simulate a slow CI runner or a low-end device. Counts should not change.
+   */
+  cpuThrottle: z.number().min(1).max(20).default(1),
+  /**
    * Include wall-clock timings (component self time, LCP, CLS, long tasks).
    * Off by default because timings make reports non-reproducible.
    */
