@@ -234,13 +234,15 @@ describe('component identity', () => {
       scenarios: [{ name: 'dupes', path: '/?dupes' }],
     });
     const load = (await profile(config)).scenarios.dupes?.phases.load;
-    expect(load?.components.Item?.renders.median).toBe(1);
-    expect(load?.components['Item#2']?.renders.median).toBe(1);
     // Source maps resolve the exact JSX line in the original file; the owner comes
     // from _debugOwner, so Rows created in a .map callback still name App.
     const { readFileSync } = await import('node:fs');
     const src = readFileSync('test/fixtures/app/App.tsx', 'utf8').split('\n');
     const lineOf = (needle: string) => src.findIndex((l) => l.includes(needle)) + 1;
+    // Both are defined in the same file, so they are keyed by where they render (R3-07).
+    const site = (needle: string) => `Item @ test/fixtures/app/App.tsx:${lineOf(needle)}`;
+    expect(load?.components[site('<ItemA />')]?.renders.median).toBe(1);
+    expect(load?.components[site('<ItemB />')]?.renders.median).toBe(1);
     expect(load?.components.Row?.locations).toEqual([
       `test/fixtures/app/App.tsx:${lineOf('<Row key=')} (App)`,
     ]);
@@ -413,6 +415,47 @@ describe('stable component identity across modules (R2-05)', () => {
       expect(withBanner.result?.regressions.map((r) => r.component)).toEqual([
         'Item (src/BannerItem.tsx)',
       ]);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('component identity across navigations (R3-08)', () => {
+  it('keeps same-named components apart when a later document renders them in another order', async () => {
+    const { buildModuleFixture, serveModules } = await import('./helpers.js');
+    const app = await serveModules(await buildModuleFixture());
+    try {
+      const config = parseConfig({
+        baseUrl: app.url,
+        runs: 1,
+        settleMs: 150,
+        scenarios: [
+          {
+            name: 'nav',
+            path: '/',
+            steps: [
+              { action: 'click', selector: '#inc' },
+              { action: 'phase', name: 'banner' },
+              // The new document renders BannerItem's `Item` before the list items.
+              { action: 'goto', path: '/?banner' },
+              { action: 'click', selector: '#inc' },
+            ],
+          },
+        ],
+      });
+      const phases = (await profile(config)).scenarios.nav?.phases;
+      const renders = (phase: string) =>
+        Object.fromEntries(
+          Object.entries(phases?.[phase]?.components ?? {})
+            .filter(([k]) => k.startsWith('Item'))
+            .map(([k, c]) => [k, c.renders.median]),
+        );
+      expect(renders('interaction')).toEqual({ 'Item (src/ListItem.tsx)': 2 });
+      expect(renders('banner')).toEqual({
+        'Item (src/BannerItem.tsx)': 2,
+        'Item (src/ListItem.tsx)': 4,
+      });
     } finally {
       await app.close();
     }

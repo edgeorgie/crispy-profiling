@@ -243,59 +243,103 @@ export function hideInternals(runs: RawRun[]): { runs: RawRun[]; hidden: number 
   return { runs: filtered, hidden: internal.size };
 }
 
+/**
+ * Keys components that share a name by their definition file (`Item (src/a.tsx)`)
+ * so they never mix up. Each run is renamed with its own definitions: `Item#2`
+ * may be a different component in each run when modules load in another order.
+ */
 export function stabilizeKeys(runs: RawRun[]): {
   runs: RawRun[];
   definedIn: Record<string, string>;
 } {
-  const files: Record<string, string> = {};
-  for (const r of runs) {
-    for (const [k, f] of Object.entries(r.definitions ?? {})) files[k] ??= f;
-  }
   const base = (k: string) => k.replace(/#\d+$/, '');
-  const groups: Record<string, string[]> = {};
+  const keysOf = (r: RawRun) => {
+    const keys = new Set<string>();
+    for (const p of Object.values(r.phases)) for (const k of Object.keys(p.components)) keys.add(k);
+    return [...keys];
+  };
+  // Per name: every key and file seen in any run, and whether files tell them apart.
+  const groups: Record<string, { keys: Set<string>; files: Set<string>; resolvable: boolean }> = {};
   for (const r of runs) {
-    for (const p of Object.values(r.phases)) {
-      for (const k of Object.keys(p.components)) {
-        const name = base(k);
-        if (!groups[name]) groups[name] = [];
-        if (!groups[name].includes(k)) groups[name].push(k);
-      }
+    const perRun: Record<string, string[]> = {};
+    for (const k of keysOf(r)) {
+      const name = base(k);
+      groups[name] ??= { keys: new Set(), files: new Set(), resolvable: true };
+      const g = groups[name];
+      g.keys.add(k);
+      const f = r.definitions?.[k];
+      if (f) g.files.add(f);
+      else g.resolvable = false;
+      perRun[name] ??= [];
+      perRun[name].push(f ?? '');
+    }
+    // Two keys with the same file in one run cannot be told apart by file.
+    for (const [name, fs] of Object.entries(perRun)) {
+      if (new Set(fs).size !== fs.length)
+        (groups[name] as { resolvable: boolean }).resolvable = false;
     }
   }
-  const rename: Record<string, string> = {};
-  for (const [name, keys] of Object.entries(groups)) {
-    if (keys.length < 2) continue;
-    const fs = keys.map((k) => files[k]);
-    if (fs.some((f) => !f) || new Set(fs).size !== fs.length) continue;
-    keys.forEach((k, i) => {
-      rename[k] = `${name} (${fs[i]})`;
+  const byFile = (name: string) => {
+    const g = groups[name];
+    return !!g && g.resolvable && (g.keys.size > 1 || g.files.size > 1);
+  };
+
+  // When files cannot tell them apart (styled-components, HOC factories, several
+  // components in one file), fall back to where each one is rendered: the JSX
+  // site does not depend on render order the way `Item#2` does.
+  const siteOf = (r: RawRun, k: string): string | undefined => {
+    const counts: Record<string, number> = {};
+    for (const p of Object.values(r.phases)) {
+      for (const [loc, n] of Object.entries(p.components[k]?.locations ?? {})) {
+        const site = loc.replace(/ \(.*\)$/, '');
+        counts[site] = (counts[site] ?? 0) + n;
+      }
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1] || cmpNatural(a[0], b[0]))[0]?.[0];
+  };
+  const bySite = new Set<string>();
+  for (const [name, g] of Object.entries(groups)) {
+    if (g.keys.size < 2 || byFile(name)) continue;
+    const ok = runs.every((r) => {
+      const sites = keysOf(r)
+        .filter((k) => base(k) === name)
+        .map((k) => siteOf(r, k));
+      return sites.every(Boolean) && new Set(sites).size === sites.length;
     });
+    if (ok) bySite.add(name);
   }
+
   const definedIn: Record<string, string> = {};
-  for (const [k, f] of Object.entries(files)) definedIn[rename[k] ?? k] = f;
-  if (Object.keys(rename).length === 0) return { runs, definedIn };
-  const renamed = runs.map((r) => ({
-    ...r,
-    phases: Object.fromEntries(
-      Object.entries(r.phases).map(([phase, p]) => [
-        phase,
-        {
-          ...p,
-          components: Object.fromEntries(
-            Object.entries(p.components).map(([k, v]) => [
-              rename[k] ?? k,
-              {
-                ...v,
-                triggeredBy: Object.fromEntries(
-                  Object.entries(v.triggeredBy ?? {}).map(([t, n]) => [rename[t] ?? t, n]),
-                ),
-              },
-            ]),
-          ),
-        },
-      ]),
-    ),
-  }));
+  const renamed = runs.map((r) => {
+    const rename: Record<string, string> = {};
+    for (const k of keysOf(r)) {
+      const f = r.definitions?.[k];
+      const site = bySite.has(base(k)) ? siteOf(r, k) : undefined;
+      const key = byFile(base(k)) && f ? `${base(k)} (${f})` : site ? `${base(k)} @ ${site}` : k;
+      if (key !== k) rename[k] = key;
+      if (f) definedIn[key] ??= f;
+    }
+    if (Object.keys(rename).length === 0) return r;
+    const remap = (m: Record<string, number> | undefined) =>
+      Object.fromEntries(Object.entries(m ?? {}).map(([t, n]) => [rename[t] ?? t, n]));
+    return {
+      ...r,
+      phases: Object.fromEntries(
+        Object.entries(r.phases).map(([phase, p]) => [
+          phase,
+          {
+            ...p,
+            components: Object.fromEntries(
+              Object.entries(p.components).map(([k, v]) => [
+                rename[k] ?? k,
+                { ...v, triggeredBy: remap(v.triggeredBy) },
+              ]),
+            ),
+          },
+        ]),
+      ),
+    };
+  });
   return { runs: renamed, definedIn };
 }
 

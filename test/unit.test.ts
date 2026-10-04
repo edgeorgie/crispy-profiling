@@ -320,3 +320,92 @@ describe('cmpNatural (R3-21)', () => {
     expect(cmpNatural('a01', 'a1')).not.toBe(0);
   });
 });
+
+describe('render snapshot churn (round-3 fixes)', async () => {
+  const { compareSnapshot, mergeAdditions, toSnapshot } = await import('../src/report/snapshot.js');
+  const withFile = (c: ComponentReport, file: string) => ({ ...c, definedIn: file });
+
+  it('treats a pure rename as renamed, not as a regression (R3-06)', () => {
+    const before = report({ interaction: phase({ Card: withFile(component(4), 'src/Card.tsx') }) });
+    const after = report({
+      interaction: phase({ ProductCard: withFile(component(4), 'src/Card.tsx') }),
+    });
+    const r = compareSnapshot(toSnapshot(before), after);
+    expect(r.passed).toBe(true);
+    expect(r.changes.map((c) => [c.status, c.renamedFrom, c.component])).toEqual([
+      ['renamed', 'Card', 'ProductCard'],
+    ]);
+    // A rename with different counts is not a pure rename: old one gone, new one added.
+    const changed = report({
+      interaction: phase({ ProductCard: withFile(component(9), 'src/Card.tsx') }),
+    });
+    expect(compareSnapshot(toSnapshot(before), changed).changes.map((c) => c.status)).toEqual([
+      'improved',
+      'new',
+    ]);
+    expect(
+      Object.keys(
+        mergeAdditions(toSnapshot(before), after).scenarios.home?.interaction?.components ?? {},
+      ),
+    ).toEqual(['ProductCard']);
+  });
+
+  it('accepts new UI that updates, unless it renders avoidably (R3-14)', () => {
+    const before = report({ interaction: phase({ App: component(1) }) });
+    const updating = report({ interaction: phase({ App: component(1), Toast: component(3, 2) }) });
+    const r = compareSnapshot(toSnapshot(before), updating);
+    expect(r.passed).toBe(true);
+    expect(r.additions.map((c) => c.component)).toEqual(['Toast']);
+    const wasteful = report({
+      interaction: phase({ App: component(1), Toast: component(3, 2, 2) }),
+    });
+    expect(compareSnapshot(toSnapshot(before), wasteful).passed).toBe(false);
+  });
+});
+
+describe('per-run key stabilization (R3-09)', async () => {
+  const { stabilizeKeys } = await import('../src/report/aggregate.js');
+  const raw = (renders: number) =>
+    ({
+      renders,
+      mounts: renders,
+      updates: 0,
+      wastedRenders: 0,
+      avoidableRenders: 0,
+      changedProps: {},
+      unstableProps: {},
+      callbackProps: {},
+      callbackRenders: 0,
+      triggeredBy: {},
+      recreatedContextFrom: {},
+      memo: false,
+      locations: {},
+      causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
+      selfDurationMs: 0,
+    }) as RawRun['phases'][string]['components'][string];
+  const run = (definitions: Record<string, string>): RawRun => ({
+    reactVersion: '19',
+    profilingBuild: true,
+    phases: { load: { commits: 1, components: { Item: raw(1), 'Item#2': raw(5) } } },
+    vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
+    warnings: [],
+    definitions,
+  });
+
+  it('does not mix components whose numbered keys differ between runs', () => {
+    // Run 2 loaded the modules in the other order, so `Item#2` is the other component.
+    const { runs } = stabilizeKeys([
+      run({ Item: 'src/a.tsx', 'Item#2': 'src/b.tsx' }),
+      run({ Item: 'src/b.tsx', 'Item#2': 'src/a.tsx' }),
+    ]);
+    const counts = runs.map((r) =>
+      Object.fromEntries(
+        Object.entries(r.phases.load?.components ?? {}).map(([k, v]) => [k, v.renders]),
+      ),
+    );
+    expect(counts).toEqual([
+      { 'Item (src/a.tsx)': 1, 'Item (src/b.tsx)': 5 },
+      { 'Item (src/b.tsx)': 1, 'Item (src/a.tsx)': 5 },
+    ]);
+  });
+});
