@@ -483,7 +483,8 @@ describe('framework internals (R2-24)', () => {
       const comps = hidden.scenarios.lib?.phases.interaction?.components ?? {};
       expect(Object.keys(comps)).toContain('LibButton');
       expect(Object.keys(comps)).not.toContain('LibInner');
-      expect(hidden.scenarios.lib?.hiddenInternals).toBe(1);
+      // The count depends on dev-server state, so it is only reported with timings.
+      expect(hidden.scenarios.lib?.hiddenInternals).toBeUndefined();
 
       const shown = await run(true);
       expect(Object.keys(shown.scenarios.lib?.phases.interaction?.components ?? {})).toContain(
