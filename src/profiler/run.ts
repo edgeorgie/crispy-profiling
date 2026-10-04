@@ -242,6 +242,10 @@ export async function runScenarioOnce(
       await page.clock.install({ time: CLOCK_START });
       await page.clock.pauseAt(CLOCK_START + 1);
     }
+    if (config.cpuThrottle > 1) {
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: config.cpuThrottle });
+    }
     await page.addInitScript({ content: crispyHookSource() });
     const url = new URL(scenario.path, config.baseUrl).toString();
     await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
