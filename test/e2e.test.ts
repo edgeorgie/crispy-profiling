@@ -235,13 +235,18 @@ describe('component identity', () => {
     const load = (await profile(config)).scenarios.dupes?.phases.load;
     expect(load?.components.Item?.renders.median).toBe(1);
     expect(load?.components['Item#2']?.renders.median).toBe(1);
-    // The owner comes from _debugOwner, so Rows created in a .map callback still name App.
+    // Source maps resolve the exact JSX line in the original file; the owner comes
+    // from _debugOwner, so Rows created in a .map callback still name App.
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('test/fixtures/app/App.tsx', 'utf8').split('\n');
+    const lineOf = (needle: string) => src.findIndex((l) => l.includes(needle)) + 1;
     expect(load?.components.Row?.locations).toEqual([
-      expect.stringMatching(/^bundle\.js:\d+ \(App\)$/),
+      `test/fixtures/app/App.tsx:${lineOf('<Row key=')} (App)`,
     ]);
     expect(load?.components.Header?.locations).toEqual([
-      expect.stringMatching(/^bundle\.js:\d+ \(App\)$/),
+      `test/fixtures/app/App.tsx:${lineOf('<Header title=')} (App)`,
     ]);
+    expect(load?.components.Header?.definedIn).toBe('test/fixtures/app/App.tsx');
   });
 });
 
@@ -279,7 +284,7 @@ describe('render snapshots (crispy test)', () => {
     const first = await runSnapshotTest(config(fastUrl), { baseDir: dir });
     expect(first.written).toBe(true);
     expect(readFileSync(join(dir, 'crispy.snap.json'), 'utf8')).toContain(
-      '"Row": { "renders": 20, "avoidable": 0, "file": "bundle.js" }',
+      '"Row": { "renders": 20, "avoidable": 0, "file": "test/fixtures/app/App.tsx" }',
     );
     expect((await runSnapshotTest(config(fastUrl), { baseDir: dir })).exitCode).toBe(0);
 
@@ -394,16 +399,18 @@ describe('stable component identity across modules (R2-05)', () => {
     try {
       const base = await runSnapshotTest(config('/'), { baseDir: dir });
       const item = base.report.scenarios.list?.phases.interaction?.components.Item;
-      expect(item?.definedIn).toBe('ListItem.js');
+      expect(item?.definedIn).toBe('src/ListItem.tsx');
 
       const withBanner = await runSnapshotTest(config('/?banner'), { baseDir: dir, ci: true });
       const keys = Object.keys(
         withBanner.report.scenarios.list?.phases.interaction?.components ?? {},
       );
-      expect(keys).toEqual(expect.arrayContaining(['Item (ListItem.js)', 'Item (BannerItem.js)']));
+      expect(keys).toEqual(
+        expect.arrayContaining(['Item (src/ListItem.tsx)', 'Item (src/BannerItem.tsx)']),
+      );
       // Only the genuinely new component is reported; the list items still match.
       expect(withBanner.result?.regressions.map((r) => r.component)).toEqual([
-        'Item (BannerItem.js)',
+        'Item (src/BannerItem.tsx)',
       ]);
     } finally {
       await app.close();

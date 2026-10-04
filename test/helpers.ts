@@ -25,6 +25,7 @@ export async function buildFixture(): Promise<Record<'slow' | 'fast', string>> {
       outfile: join(dir, 'bundle.js'),
       format: 'iife',
       jsx: 'automatic',
+      sourcemap: 'inline',
       define: { __FAST__: String(variant === 'fast'), 'process.env.NODE_ENV': '"development"' },
       logLevel: 'silent',
     });
@@ -82,6 +83,7 @@ export async function buildModuleFixture(): Promise<string> {
       jsx: 'automatic',
       jsxDev: true,
       sourcefile: `src/${file}.tsx`,
+      sourcemap: 'inline',
     });
     writeFileSync(join(dir, `${file}.js`), out.code);
   }
