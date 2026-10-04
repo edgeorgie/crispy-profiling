@@ -1,0 +1,15 @@
+{
+  "name": "crispy-profiling",
+  "description": "React render profiling tools for AI coding agents",
+  "owner": {
+    "name": "Edwin Jorge",
+    "url": "https://github.com/edgeorgie"
+  },
+  "plugins": [
+    {
+      "name": "crispy-profiling",
+      "source": "./",
+      "description": "Find and fix wasted React re-renders with deterministic before/after numbers (MCP server + skill)."
+    }
+  ]
+}
