@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { DEFAULT_CONFIG_FILE, exampleConfig, loadConfig } from './config.js';
 import { profile } from './profiler/run.js';
@@ -15,6 +17,7 @@ const HELP = `crispy ${VERSION} — deterministic React render profiling
 
 Usage:
   crispy init [--base-url <url>]            Create ${DEFAULT_CONFIG_FILE}
+  crispy install [--with-deps]              Download the Chromium build crispy uses
   crispy run [options]                      Run scenarios and write a report
       -c, --config <file>      Config file (default: ${DEFAULT_CONFIG_FILE})
       -o, --out <file>         JSON report path (default: .crispy/report.json)
@@ -71,6 +74,15 @@ async function main(argv: string[]): Promise<number> {
         `Created ${DEFAULT_CONFIG_FILE}. Edit the scenarios, start your dev server and run "crispy run".`,
       );
       return 0;
+    }
+    case 'install': {
+      // Use the exact playwright-core crispy depends on, so browser revisions match.
+      const require = createRequire(import.meta.url);
+      const cliPath = join(dirname(require.resolve('playwright-core/package.json')), 'cli.js');
+      const child = spawn(process.execPath, [cliPath, 'install', ...rest, 'chromium'], {
+        stdio: 'inherit',
+      });
+      return new Promise<number>((done) => child.on('exit', (code) => done(code ?? 2)));
     }
     case 'run': {
       const { values } = parseArgs({
