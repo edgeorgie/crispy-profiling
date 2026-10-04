@@ -284,12 +284,38 @@ export function stabilizeKeys(runs: RawRun[]): {
     return !!g && g.resolvable && (g.keys.size > 1 || g.files.size > 1);
   };
 
+  // When files cannot tell them apart (styled-components, HOC factories, several
+  // components in one file), fall back to where each one is rendered: the JSX
+  // site does not depend on render order the way `Item#2` does.
+  const siteOf = (r: RawRun, k: string): string | undefined => {
+    const counts: Record<string, number> = {};
+    for (const p of Object.values(r.phases)) {
+      for (const [loc, n] of Object.entries(p.components[k]?.locations ?? {})) {
+        const site = loc.replace(/ \(.*\)$/, '');
+        counts[site] = (counts[site] ?? 0) + n;
+      }
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1] || cmpNatural(a[0], b[0]))[0]?.[0];
+  };
+  const bySite = new Set<string>();
+  for (const [name, g] of Object.entries(groups)) {
+    if (g.keys.size < 2 || byFile(name)) continue;
+    const ok = runs.every((r) => {
+      const sites = keysOf(r)
+        .filter((k) => base(k) === name)
+        .map((k) => siteOf(r, k));
+      return sites.every(Boolean) && new Set(sites).size === sites.length;
+    });
+    if (ok) bySite.add(name);
+  }
+
   const definedIn: Record<string, string> = {};
   const renamed = runs.map((r) => {
     const rename: Record<string, string> = {};
     for (const k of keysOf(r)) {
       const f = r.definitions?.[k];
-      const key = byFile(base(k)) && f ? `${base(k)} (${f})` : k;
+      const site = bySite.has(base(k)) ? siteOf(r, k) : undefined;
+      const key = byFile(base(k)) && f ? `${base(k)} (${f})` : site ? `${base(k)} @ ${site}` : k;
       if (key !== k) rename[k] = key;
       if (f) definedIn[key] ??= f;
     }

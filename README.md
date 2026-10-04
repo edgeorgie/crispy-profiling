@@ -95,8 +95,10 @@ When something regresses you get the component, the cause, where it is rendered 
 Rules: any increase in commits, renders or avoidable renders fails (`snapshot.tolerance` allows
 slack), and every metric is checked independently, so an improvement never hides a regression.
 Counts that varied between runs are stored as `[min, max]` ranges and only fail outside them.
-Decreases pass and suggest `-u`; new components that only mount pass and are reported (record them
-with `-u`) — `crispy test` never edits the committed file on its own; the
+Decreases pass and suggest `-u`. New UI passes and is reported (record it with `-u`) unless it
+already renders avoidably; a known component that starts re-rendering in a phase still fails. A
+pure rename (same file, same counts) is reported as 🔁 renamed, not as a regression.
+`crispy test` never edits the committed file on its own; the
 snapshot always covers every component (even with `topComponents`); budgets still apply.
 
 ## Configuration
@@ -173,7 +175,7 @@ even when `topComponents` trims the report.
 | `recreatedContextFrom` | Components that own a context provider whose `value` was recreated with equal content (e.g. `value={{ user, logout }}`) — memoize the value there. |
 | `memo` | `true` when the component is wrapped in `React.memo`, so hints never suggest wrapping it again. |
 | `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site, most frequent first), resolved through source maps when available. |
-| `Item (src/List.tsx)` keys | Components are identified by name **and the file that defines them** (resolved through the DevTools protocol). Distinct components that share a name are keyed as `Name (file)`, so adding an unrelated `Item` never renames existing ones; snapshots store the file and keep matching. When files cannot tell them apart (single bundle), numbered keys (`Item#2`) are used. |
+| `Item (src/List.tsx)` keys | Components are identified by name **and the file that defines them** (resolved through the DevTools protocol). Distinct components that share a name are keyed as `Name (file)`, so adding an unrelated `Item` never renames existing ones; snapshots store the file and keep matching. When files cannot tell them apart (styled-components, HOC factories, several components in one file), they are keyed by where they render (`Item @ src/Card.tsx:12`); numbered keys (`Item#2`) are the last resort. Keys stay the same across `goto` navigations. |
 | `definedIn` | File where the component function is defined. |
 | `stable` | `false` when counts differ between runs (timers, network, randomness). |
 

@@ -234,13 +234,15 @@ describe('component identity', () => {
       scenarios: [{ name: 'dupes', path: '/?dupes' }],
     });
     const load = (await profile(config)).scenarios.dupes?.phases.load;
-    expect(load?.components.Item?.renders.median).toBe(1);
-    expect(load?.components['Item#2']?.renders.median).toBe(1);
     // Source maps resolve the exact JSX line in the original file; the owner comes
     // from _debugOwner, so Rows created in a .map callback still name App.
     const { readFileSync } = await import('node:fs');
     const src = readFileSync('test/fixtures/app/App.tsx', 'utf8').split('\n');
     const lineOf = (needle: string) => src.findIndex((l) => l.includes(needle)) + 1;
+    // Both are defined in the same file, so they are keyed by where they render (R3-07).
+    const site = (needle: string) => `Item @ test/fixtures/app/App.tsx:${lineOf(needle)}`;
+    expect(load?.components[site('<ItemA />')]?.renders.median).toBe(1);
+    expect(load?.components[site('<ItemB />')]?.renders.median).toBe(1);
     expect(load?.components.Row?.locations).toEqual([
       `test/fixtures/app/App.tsx:${lineOf('<Row key=')} (App)`,
     ]);
