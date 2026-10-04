@@ -37,6 +37,14 @@ export interface RawComponentStats {
   triggeredBy: Record<string, number>;
   /** Components whose context value was recreated with equal content (provider owners). */
   recreatedContextFrom: Record<string, number>;
+  /** Where those providers are rendered ("file:line (Owner)"), with counts. */
+  providerAt?: Record<string, number>;
+  /** "prop|Creator": the component that created a recreated prop value (forwarders skipped). */
+  creators?: Record<string, number>;
+  /** "prop|Creator|#2 (an object)": the prop comes from useCallback/useMemo whose deps changed. */
+  staleMemo?: Record<string, number>;
+  /** Compiled by React Compiler. */
+  compiled?: boolean;
   /** Wrapped in React.memo. */
   memo: boolean;
   /** Number of updates attributed to each cause. A render can have several causes. */
@@ -95,6 +103,14 @@ export interface ComponentReport {
   triggeredBy: Record<string, number>;
   /** Provider owners whose context value was recreated with equal content. */
   recreatedContextFrom: Record<string, number>;
+  /** Where those providers are rendered ("file:line (Owner)"), most frequent first. */
+  providerAt: string[];
+  /** "prop|Creator": the component that created a recreated prop value (forwarders skipped). */
+  creators: Record<string, number>;
+  /** "prop|Creator|#2 (an object)": the prop comes from useCallback/useMemo whose dependencies changed. */
+  staleMemo: Record<string, number>;
+  /** Compiled by React Compiler. */
+  compiled: boolean;
   /** Wrapped in React.memo. */
   memo: boolean;
   /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */

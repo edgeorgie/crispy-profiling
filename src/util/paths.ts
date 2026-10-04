@@ -9,3 +9,7 @@ export function shortPath(url: string): string {
       .replace(/[?#].*$/, '')
   );
 }
+
+/** Library code: node_modules, Vite's prebundled deps, Next's dist chunks. */
+export const LIBRARY_FILE =
+  /(^|\/)node_modules(\/|_)|\.vite\/deps\/|(^|\/)next\/dist\/|_next_dist_/;

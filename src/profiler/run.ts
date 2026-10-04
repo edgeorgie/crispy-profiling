@@ -238,6 +238,12 @@ async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Pro
         next[mapped] = (next[mapped] ?? 0) + n;
       }
       c.locations = next;
+      const providers: Record<string, number> = {};
+      for (const [loc, n] of Object.entries(c.providerAt ?? {})) {
+        const mapped = await sourceMaps.rewriteLocation(loc);
+        providers[mapped] = (providers[mapped] ?? 0) + n;
+      }
+      c.providerAt = providers;
     }
   }
 }

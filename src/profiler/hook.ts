@@ -244,7 +244,11 @@ export function installCrispyHook(): void {
         callbackRenders: 0,
         triggeredBy: {},
         recreatedContextFrom: {},
+        providerAt: {},
+        creators: {},
+        staleMemo: {},
         memo: false,
+        compiled: false,
         locations: {},
         causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
         selfDurationMs: 0,
@@ -253,6 +257,9 @@ export function installCrispyHook(): void {
     }
     if (!e.roots) e.roots = {};
     e.roots[currentRoot] = 1;
+    if (isMemo(fiber)) e.memo = true;
+    // React Compiler output keeps its cache in updateQueue.memoCache.
+    if (fiber.updateQueue?.memoCache) e.compiled = true;
     const loc = locationOf(fiber);
     if (loc && (e.locations[loc] || Object.keys(e.locations).length < 10)) {
       e.locations[loc] = (e.locations[loc] || 0) + 1;
@@ -383,18 +390,73 @@ export function installCrispyHook(): void {
   }
 
   /** Name of the component that renders the provider of `context` above `fiber`. */
-  function providerOwner(fiber: any, context: any): string | null {
+  function providerOwner(fiber: any, context: any): { owner: string; at: string | null } | null {
     let f = fiber.return;
     while (f) {
       // ContextProvider fiber: type is the context (React 19) or {_context} (<= 18).
       if (f.tag === 10 && (f.type === context || f.type?._context === context)) {
+        const at = locationOf(f);
         const owner = ownerName(f);
-        if (owner) return owner;
+        if (owner) return { owner, at };
         let up = f.return;
         while (up && !COMPONENT_TAGS[up.tag]) up = up.return;
-        return up ? nameOf(up) : null;
+        return up ? { owner: nameOf(up), at } : null;
       }
       f = f.return;
+    }
+    return null;
+  }
+
+  /** The component that created `value`, skipping owners that received it as a prop. */
+  function creatorOf(fiber: any, value: any): any {
+    let owner = fiber._debugOwner;
+    for (let i = 0; owner && owner.type !== undefined && i < 20; i++) {
+      const props = owner.memoizedProps;
+      let forwarded = false;
+      if (props && typeof props === 'object') {
+        for (const k in props) {
+          if (props[k] === value) {
+            forwarded = true;
+            break;
+          }
+        }
+      }
+      if (!forwarded) return COMPONENT_TAGS[owner.tag] ? owner : null;
+      owner = owner._debugOwner;
+    }
+    return null;
+  }
+
+  const kindOf = (v: any) =>
+    typeof v === 'function'
+      ? 'a function'
+      : Array.isArray(v)
+        ? 'an array'
+        : v && typeof v === 'object'
+          ? 'an object'
+          : typeof v;
+
+  /**
+   * When `value` is the result of a useCallback/useMemo in `owner`: the
+   * dependencies that changed, e.g. "#2 (an object)" (1-based), or "" when the
+   * hook has no dependency list. null when the value is not memoized there.
+   */
+  function changedMemoDeps(owner: any, value: any): string | null {
+    let h = owner.memoizedState;
+    let old = owner.alternate ? owner.alternate.memoizedState : null;
+    for (let i = 0; h && typeof h === 'object' && 'next' in h && i < 200; i++) {
+      if (isMemoHook(h) && h.memoizedState[0] === value) {
+        const deps = h.memoizedState[1];
+        const prevDeps = old && isMemoHook(old) ? old.memoizedState[1] : null;
+        if (!deps || !prevDeps) return '';
+        const out: string[] = [];
+        for (let d = 0; d < deps.length; d++) {
+          if (!Object.is(deps[d], prevDeps[d])) out.push(`#${d + 1} (${kindOf(deps[d])})`);
+        }
+        return out.join(', ');
+      }
+      h = h.next;
+      old = old ? old.next : null;
     }
     return null;
   }
@@ -443,7 +505,6 @@ export function installCrispyHook(): void {
    */
   function recordUpdate(prev: any, next: any, trigger: string | null): boolean {
     const e = entry(next);
-    if (isMemo(next)) e.memo = true;
     e.renders++;
     e.updates++;
     addDuration(e, next);
@@ -464,8 +525,25 @@ export function installCrispyHook(): void {
     if (s === 3) return true;
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
     for (const ctx of recreatedContexts) {
-      const owner = providerOwner(next, ctx);
-      if (owner) e.recreatedContextFrom[owner] = (e.recreatedContextFrom[owner] || 0) + 1;
+      const found = providerOwner(next, ctx);
+      if (!found) continue;
+      e.recreatedContextFrom[found.owner] = (e.recreatedContextFrom[found.owner] || 0) + 1;
+      if (found.at) e.providerAt[found.at] = (e.providerAt[found.at] || 0) + 1;
+    }
+    // For recreated props: which component created the value (owners that only
+    // forwarded it are skipped), and whether it came from a useCallback/useMemo
+    // whose dependencies changed.
+    for (const k of p.unstable.concat(p.callbacks)) {
+      const value = next.memoizedProps[k];
+      const creator = creatorOf(next, value);
+      if (!creator) continue;
+      const by = `${k}|${keyOf(creator)}`;
+      e.creators[by] = (e.creators[by] || 0) + 1;
+      const deps = changedMemoDeps(creator, value);
+      if (deps) {
+        const id = `${by}|${deps}`;
+        e.staleMemo[id] = (e.staleMemo[id] || 0) + 1;
+      }
     }
     if (p.changed.length > 0 || c === 3) return false;
     // Nothing really changed. Recreated callbacks are reported separately: they
