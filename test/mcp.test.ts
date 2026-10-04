@@ -34,6 +34,7 @@ describe('MCP server', () => {
       'inspect_component',
       'profile_url',
       'run_scenarios',
+      'test_render_snapshots',
     ]);
   });
 
