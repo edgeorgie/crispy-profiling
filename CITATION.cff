@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: If you use crispy-profiling in research or a publication, please cite it.
+title: crispy-profiling
+abstract: Deterministic React render profiling for humans, CI and AI agents.
+authors:
+  - given-names: Edwin
+    family-names: Jorge
+    alias: edgeorgie
+repository-code: https://github.com/edgeorgie/crispy-profilling
+license: MIT
+keywords: [react, performance, profiling, mcp, ai-agents]
