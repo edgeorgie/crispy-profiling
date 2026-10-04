@@ -30,7 +30,7 @@ const toCount = (s: Stat): Count => (s.min === s.max ? s.median : [s.min, s.max]
 const fmt = (c: Count | null) =>
   c === null ? '—' : Array.isArray(c) ? `${c[0]}..${c[1]}` : `${c}`;
 
-export type SnapshotStatus = 'regressed' | 'improved' | 'new' | 'removed';
+export type SnapshotStatus = 'regressed' | 'improved' | 'new' | 'removed' | 'renamed';
 
 export interface SnapshotChange {
   scenario: string;
@@ -45,6 +45,8 @@ export interface SnapshotChange {
   status: SnapshotStatus;
   /** Short explanation and suggested fix for regressions, from the current report. */
   hint?: string;
+  /** For `renamed`: the component's key in the snapshot. */
+  renamedFrom?: string;
 }
 
 export interface SnapshotResult {
@@ -153,6 +155,50 @@ function alignKeys(exp: PhaseSnapshot, current: Record<string, ComponentReport>)
   return { ...exp, components };
 }
 
+const sameCount = (a: Count, b: Count) => lo(a) === lo(b) && hi(a) === hi(b);
+
+/**
+ * Whether a component missing from a snapshot phase is a harmless addition.
+ * Never when some renders were avoidable or recreated callbacks. Otherwise yes
+ * if it only mounts, or if it is new UI the snapshot never saw (it may
+ * legitimately update); a known component that starts updating is a regression.
+ */
+function isCleanAddition(c: ComponentReport | undefined, knownElsewhere: boolean): boolean {
+  if (!c) return true;
+  if (c.avoidableRenders.max > 0 || c.callbackRenders.max > 0) return false;
+  return c.updates.max === 0 || !knownElsewhere;
+}
+
+/** Component keys recorded in any phase of a snapshot scenario. */
+const knownIn = (phases: Record<string, PhaseSnapshot> | undefined) =>
+  new Set(Object.values(phases ?? {}).flatMap((p) => Object.keys(p.components)));
+
+/**
+ * Pure renames: a snapshot component missing now and a new component defined in
+ * the same file with identical counts. Returns snapshot key -> current key.
+ */
+function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, string> {
+  const renames = new Map<string, string>();
+  const added = Object.keys(current.components).filter((k) => !exp.components[k]);
+  for (const old of Object.keys(exp.components).sort(cmp)) {
+    const e = exp.components[old];
+    if (!e?.file || current.components[old]) continue;
+    const candidates = added.filter((k) => {
+      const c = current.components[k];
+      return (
+        c !== undefined &&
+        c.file === e.file &&
+        ![...renames.values()].includes(k) &&
+        sameCount(c.renders, e.renders) &&
+        sameCount(c.avoidable, e.avoidable)
+      );
+    });
+    // Ambiguous (several identical candidates): don't guess.
+    if (candidates.length === 1) renames.set(old, candidates[0] as string);
+  }
+  return renames;
+}
+
 export function compareSnapshot(
   snapshot: RenderSnapshot,
   report: CrispyReport,
@@ -189,6 +235,7 @@ export function compareSnapshot(
   for (const scenario of Object.keys(current.scenarios).sort(cmp)) {
     const expectedPhases = snapshot.scenarios[scenario];
     const actualPhases = current.scenarios[scenario] ?? {};
+    const known = knownIn(expectedPhases);
     const phaseNames = [
       ...new Set([...Object.keys(expectedPhases ?? {}), ...Object.keys(actualPhases)]),
     ].sort(phaseOrder);
@@ -210,6 +257,23 @@ export function compareSnapshot(
       // Extra commits (e.g. setState-in-effect cascades) are a regression on their own.
       check({ scenario, phase }, 'commits', exp.commits, reportPhase?.commits ?? zero);
 
+      const renames = detectRenames(exp, actualPhases[phase] ?? { commits: 0, components: {} });
+      for (const [from, to] of renames) {
+        const e = exp.components[from];
+        delete exp.components[from];
+        if (e) exp.components[to] = e;
+        changes.push({
+          scenario,
+          phase,
+          component: to,
+          metric: 'renders',
+          expected: e?.renders ?? null,
+          actual: e?.renders ?? null,
+          status: 'renamed',
+          renamedFrom: from,
+        });
+      }
+
       const names = [
         ...new Set([...Object.keys(exp.components), ...Object.keys(reportPhase?.components ?? {})]),
       ].sort(cmp);
@@ -217,8 +281,8 @@ export function compareSnapshot(
         const e = exp.components[component];
         const full = reportPhase?.components[component];
         if (!e) {
-          // New UI that only mounts is an addition; new components that update are not.
-          const onlyMounts = (full?.updates.median ?? 0) === 0;
+          // New UI is an addition unless it already renders avoidably.
+          const clean = isCleanAddition(full, known.has(component));
           changes.push({
             scenario,
             phase,
@@ -226,8 +290,8 @@ export function compareSnapshot(
             metric: 'renders',
             expected: null,
             actual: full ? toCount(full.renders) : 0,
-            status: onlyMounts ? 'new' : 'regressed',
-            ...(onlyMounts ? {} : { hint: hintFor(full, reportPhase, component) }),
+            status: clean ? 'new' : 'regressed',
+            ...(clean ? {} : { hint: hintFor(full, reportPhase, component) }),
           });
           continue;
         }
@@ -270,7 +334,7 @@ export function compareSnapshot(
     changes,
     regressions,
     improvements: changes.filter((c) => c.status === 'improved'),
-    additions: changes.filter((c) => c.status === 'new'),
+    additions: changes.filter((c) => c.status === 'new' || c.status === 'renamed'),
   };
 }
 
@@ -283,6 +347,7 @@ export function mergeAdditions(snapshot: RenderSnapshot, report: CrispyReport): 
   const merged: RenderSnapshot = JSON.parse(JSON.stringify(snapshot));
   for (const [scenario, phases] of Object.entries(current.scenarios)) {
     const target = merged.scenarios[scenario];
+    const known = knownIn(snapshot.scenarios[scenario]);
     if (!target) {
       merged.scenarios[scenario] = phases;
       continue;
@@ -293,10 +358,14 @@ export function mergeAdditions(snapshot: RenderSnapshot, report: CrispyReport): 
         target[phase] = p;
         continue;
       }
-      // New components that only mount are recorded; anything else waits for --update.
+      // Renames and clean new components are recorded; anything else waits for --update.
+      for (const [from, to] of detectRenames(t, p)) {
+        t.components[to] = t.components[from] as PhaseSnapshot['components'][string];
+        delete t.components[from];
+      }
       const full = report.scenarios[scenario]?.phases[phase]?.components ?? {};
       for (const [name, counts] of Object.entries(p.components)) {
-        if (!t.components[name] && (full[name]?.updates.median ?? 0) === 0) {
+        if (!t.components[name] && isCleanAddition(full[name], known.has(name))) {
           t.components[name] = counts;
         }
       }
@@ -321,6 +390,7 @@ const ICON: Record<SnapshotStatus, string> = {
   regressed: '🔴',
   improved: '🟢',
   new: '🆕',
+  renamed: '🔁',
   removed: '➖',
 };
 
@@ -341,14 +411,14 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
     '| | Scenario / phase | Component | Metric | Snapshot → now | Why / how to fix |',
     '| --- | --- | --- | --- | --- | --- |',
   );
-  const order: SnapshotStatus[] = ['regressed', 'new', 'improved', 'removed'];
+  const order: SnapshotStatus[] = ['regressed', 'new', 'renamed', 'improved', 'removed'];
   const sorted = [...result.changes].sort(
     (a, b) => order.indexOf(a.status) - order.indexOf(b.status),
   );
   for (const c of sorted) {
     const values = `${fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
     lines.push(
-      `| ${ICON[c.status]} ${c.status} | ${c.scenario} / ${c.phase} | ${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
+      `| ${ICON[c.status]} ${c.status} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
     );
   }
   lines.push('');

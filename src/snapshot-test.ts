@@ -125,7 +125,7 @@ export async function runSnapshotTest(
   // recorded with --update, so every change to the file is a reviewed decision.
   const written = false;
   const note = result.additions.length
-    ? `\n${result.additions.length} new scenario/phase/component entr${result.additions.length === 1 ? 'y is' : 'ies are'} not in \`${shown}\` yet: run \`crispy test -u\` to record ${result.additions.length === 1 ? 'it' : 'them'}.\n`
+    ? `\n${result.additions.length} new or renamed scenario/phase/component entr${result.additions.length === 1 ? 'y is' : 'ies are'} not in \`${shown}\` yet: run \`crispy test -u\` to record ${result.additions.length === 1 ? 'it' : 'them'}.\n`
     : '';
   return {
     exitCode: result.passed && !budgetsFail ? 0 : 1,

@@ -320,3 +320,45 @@ describe('cmpNatural (R3-21)', () => {
     expect(cmpNatural('a01', 'a1')).not.toBe(0);
   });
 });
+
+describe('render snapshot churn (round-3 fixes)', async () => {
+  const { compareSnapshot, mergeAdditions, toSnapshot } = await import('../src/report/snapshot.js');
+  const withFile = (c: ComponentReport, file: string) => ({ ...c, definedIn: file });
+
+  it('treats a pure rename as renamed, not as a regression (R3-06)', () => {
+    const before = report({ interaction: phase({ Card: withFile(component(4), 'src/Card.tsx') }) });
+    const after = report({
+      interaction: phase({ ProductCard: withFile(component(4), 'src/Card.tsx') }),
+    });
+    const r = compareSnapshot(toSnapshot(before), after);
+    expect(r.passed).toBe(true);
+    expect(r.changes.map((c) => [c.status, c.renamedFrom, c.component])).toEqual([
+      ['renamed', 'Card', 'ProductCard'],
+    ]);
+    // A rename with different counts is not a pure rename: old one gone, new one added.
+    const changed = report({
+      interaction: phase({ ProductCard: withFile(component(9), 'src/Card.tsx') }),
+    });
+    expect(compareSnapshot(toSnapshot(before), changed).changes.map((c) => c.status)).toEqual([
+      'improved',
+      'new',
+    ]);
+    expect(
+      Object.keys(
+        mergeAdditions(toSnapshot(before), after).scenarios.home?.interaction?.components ?? {},
+      ),
+    ).toEqual(['ProductCard']);
+  });
+
+  it('accepts new UI that updates, unless it renders avoidably (R3-14)', () => {
+    const before = report({ interaction: phase({ App: component(1) }) });
+    const updating = report({ interaction: phase({ App: component(1), Toast: component(3, 2) }) });
+    const r = compareSnapshot(toSnapshot(before), updating);
+    expect(r.passed).toBe(true);
+    expect(r.additions.map((c) => c.component)).toEqual(['Toast']);
+    const wasteful = report({
+      interaction: phase({ App: component(1), Toast: component(3, 2, 2) }),
+    });
+    expect(compareSnapshot(toSnapshot(before), wasteful).passed).toBe(false);
+  });
+});
