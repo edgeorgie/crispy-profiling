@@ -127,16 +127,10 @@ export function installCrispyHook(): void {
 
   const JSX_FRAME = /\b(jsxs?|jsxDEV|createElement)\b/;
 
-  /** Strips origin, bundler prefixes and query so locations are portable. */
-  function shortPath(url: string): string {
-    return url
-      .replace(/^webpack-internal:\/\/\/(\([^)]*\)\/)?(\.\/)?/, '')
-      .replace(/^[a-z]+:\/\/[^/]*\//i, '')
-      .replace(/[?#][^:]*$/, '');
-  }
-
   /** Parses "at Name (url:line:col)" or "at url:line:col"; urls may contain parentheses. */
-  function parseFrame(line: string): { fn: string | null; file: string; line: string } | null {
+  function parseFrame(
+    line: string,
+  ): { fn: string | null; file: string; line: string; col: string } | null {
     const t = line.trim();
     if (t.indexOf('at ') !== 0) return null;
     let rest = t.slice(3);
@@ -147,7 +141,7 @@ export function installCrispyHook(): void {
       rest = rest.slice(open + 2, -1);
     }
     const m = rest.match(/^(.*):(\d+):(\d+)$/);
-    return m ? { fn, file: m[1] as string, line: m[2] as string } : null;
+    return m ? { fn, file: m[1] as string, line: m[2] as string, col: m[3] as string } : null;
   }
 
   function ownerName(fiber: any): string | null {
@@ -170,7 +164,9 @@ export function installCrispyHook(): void {
     const owner = ownerName(fiber);
     const suffix = owner ? ` (${owner})` : '';
     const src = fiber._debugSource;
-    if (src?.fileName) return `${shortPath(String(src.fileName))}:${src.lineNumber}${suffix}`;
+    if (src?.fileName) {
+      return `${String(src.fileName)}:${src.lineNumber}:${src.columnNumber ?? 1}${suffix}`;
+    }
     const dbg = fiber._debugStack;
     if (!dbg || typeof dbg !== 'object') return null;
     if (locationCache.has(dbg)) return locationCache.get(dbg) as string | null;
@@ -183,7 +179,8 @@ export function installCrispyHook(): void {
         const f = parseFrame(lines[i + 1] as string);
         if (f) {
           const who = owner ?? f.fn;
-          found = `${shortPath(f.file)}:${f.line}${who ? ` (${who})` : ''}`;
+          // Full URL and column: the runner maps it through source maps, then shortens it.
+          found = `${f.file}:${f.line}:${f.col}${who ? ` (${who})` : ''}`;
         }
         break;
       }
