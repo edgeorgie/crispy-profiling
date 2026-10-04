@@ -493,3 +493,17 @@ describe('Next.js internals (R4-01, R4-02)', async () => {
     expect(hidden).toBe(2);
   });
 });
+
+describe('snapshot update keeps flaky ranges (R4-06)', async () => {
+  const { keepRanges } = await import('../src/report/snapshot.js');
+  const snap = (commits: number | [number, number]) => ({
+    schemaVersion: 1 as const,
+    scenarios: { s: { p: { commits, components: {} } } },
+  });
+  it('widens overlapping ranges and replaces real changes', () => {
+    expect(keepRanges(snap(12), snap([12, 16])).scenarios.s?.p?.commits).toEqual([12, 16]);
+    expect(keepRanges(snap([13, 18]), snap([12, 16])).scenarios.s?.p?.commits).toEqual([12, 18]);
+    expect(keepRanges(snap(3), snap([12, 16])).scenarios.s?.p?.commits).toBe(3);
+    expect(keepRanges(snap(5), snap(4)).scenarios.s?.p?.commits).toBe(5);
+  });
+});
