@@ -362,3 +362,50 @@ describe('render snapshot churn (round-3 fixes)', async () => {
     expect(compareSnapshot(toSnapshot(before), wasteful).passed).toBe(false);
   });
 });
+
+describe('per-run key stabilization (R3-09)', async () => {
+  const { stabilizeKeys } = await import('../src/report/aggregate.js');
+  const raw = (renders: number) =>
+    ({
+      renders,
+      mounts: renders,
+      updates: 0,
+      wastedRenders: 0,
+      avoidableRenders: 0,
+      changedProps: {},
+      unstableProps: {},
+      callbackProps: {},
+      callbackRenders: 0,
+      triggeredBy: {},
+      recreatedContextFrom: {},
+      memo: false,
+      locations: {},
+      causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
+      selfDurationMs: 0,
+    }) as RawRun['phases'][string]['components'][string];
+  const run = (definitions: Record<string, string>): RawRun => ({
+    reactVersion: '19',
+    profilingBuild: true,
+    phases: { load: { commits: 1, components: { Item: raw(1), 'Item#2': raw(5) } } },
+    vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
+    warnings: [],
+    definitions,
+  });
+
+  it('does not mix components whose numbered keys differ between runs', () => {
+    // Run 2 loaded the modules in the other order, so `Item#2` is the other component.
+    const { runs } = stabilizeKeys([
+      run({ Item: 'src/a.tsx', 'Item#2': 'src/b.tsx' }),
+      run({ Item: 'src/b.tsx', 'Item#2': 'src/a.tsx' }),
+    ]);
+    const counts = runs.map((r) =>
+      Object.fromEntries(
+        Object.entries(r.phases.load?.components ?? {}).map(([k, v]) => [k, v.renders]),
+      ),
+    );
+    expect(counts).toEqual([
+      { 'Item (src/a.tsx)': 1, 'Item (src/b.tsx)': 5 },
+      { 'Item (src/b.tsx)': 1, 'Item (src/a.tsx)': 5 },
+    ]);
+  });
+});
