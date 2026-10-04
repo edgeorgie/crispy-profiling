@@ -114,8 +114,13 @@ export const ConfigSchema = z.object({
       file: z.string().default('crispy.snap.json'),
       /** Allowed increase (absolute) before a component counts as regressed. */
       tolerance: z.number().int().min(0).default(0),
+      /**
+       * Fail when a component that is not in the snapshot yet already renders
+       * avoidably. Off by default: new UI is reported with a warning instead.
+       */
+      failOnNewAvoidable: z.boolean().default(false),
     })
-    .default({ file: 'crispy.snap.json', tolerance: 0 }),
+    .default({ file: 'crispy.snap.json', tolerance: 0, failOnNewAvoidable: false }),
   scenarios: z.array(ScenarioSchema).min(1),
 });
 export type CrispyConfig = z.infer<typeof ConfigSchema>;

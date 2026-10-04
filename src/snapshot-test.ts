@@ -121,6 +121,7 @@ export async function runSnapshotTest(
     report,
     config.snapshot.tolerance,
     !!options.only?.length,
+    config.snapshot.failOnNewAvoidable,
   );
   // Never modify a committed snapshot as a side effect: new entries are only
   // recorded with --update, so every change to the file is a reviewed decision.

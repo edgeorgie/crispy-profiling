@@ -354,7 +354,27 @@ describe('render snapshot churn (round-3 fixes)', async () => {
     ).toEqual(['ProductCard']);
   });
 
-  it('accepts new UI that updates, unless it renders avoidably (R3-14)', () => {
+  it('treats an unambiguous rename plus move to another file as renamed (R4-05)', () => {
+    const before = report({ interaction: phase({ Card: withFile(component(4), 'src/Card.tsx') }) });
+    const moved = report({
+      interaction: phase({ ProductCard: withFile(component(4), 'src/shop/ProductCard.tsx') }),
+    });
+    expect(compareSnapshot(toSnapshot(before), moved).changes.map((c) => c.status)).toEqual([
+      'renamed',
+    ]);
+    // Two candidates with identical counts: ambiguous, so no guess.
+    const two = report({
+      interaction: phase({
+        A: withFile(component(4), 'src/a.tsx'),
+        B: withFile(component(4), 'src/b.tsx'),
+      }),
+    });
+    expect(compareSnapshot(toSnapshot(before), two).changes.map((c) => c.status)).not.toContain(
+      'renamed',
+    );
+  });
+
+  it('accepts new UI that updates and warns when it renders avoidably (R3-14, R4-05)', () => {
     const before = report({ interaction: phase({ App: component(1) }) });
     const updating = report({ interaction: phase({ App: component(1), Toast: component(3, 2) }) });
     const r = compareSnapshot(toSnapshot(before), updating);
@@ -363,7 +383,11 @@ describe('render snapshot churn (round-3 fixes)', async () => {
     const wasteful = report({
       interaction: phase({ App: component(1), Toast: component(3, 2, 2) }),
     });
-    expect(compareSnapshot(toSnapshot(before), wasteful).passed).toBe(false);
+    // Reported with a warning by default; fails only with failOnNewAvoidable (R4-05).
+    const warned = compareSnapshot(toSnapshot(before), wasteful);
+    expect(warned.passed).toBe(true);
+    expect(warned.additions[0]?.warning).toBe(true);
+    expect(compareSnapshot(toSnapshot(before), wasteful, 0, false, true).passed).toBe(false);
   });
 });
 
@@ -557,5 +581,41 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
     expect(hintFor(owner, phase({ Shop: owner, Row: child }), 'Shop')).toContain(
       '5 avoidable render(s) below',
     );
+  });
+});
+
+describe('library factory keys (R4-15)', async () => {
+  const { stabilizeKeys } = await import('../src/report/aggregate.js');
+  it('keys a single styled component by its site, so adding a second one renames nothing', () => {
+    const c = {
+      renders: 1,
+      mounts: 1,
+      updates: 0,
+      wastedRenders: 0,
+      avoidableRenders: 0,
+      changedProps: {},
+      unstableProps: {},
+      callbackProps: {},
+      callbackRenders: 0,
+      triggeredBy: {},
+      recreatedContextFrom: {},
+      memo: false,
+      locations: { 'src/Card.tsx:27 (ProductCard)': 1 },
+      causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
+      selfDurationMs: 0,
+    } as RawRun['phases'][string]['components'][string];
+    const { runs } = stabilizeKeys([
+      {
+        reactVersion: '19',
+        profilingBuild: true,
+        phases: { load: { commits: 1, components: { 'styled.div': c } } },
+        vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
+        warnings: [],
+        definitions: { 'styled.div': 'node_modules/styled-components/dist/index.js' },
+      },
+    ]);
+    expect(Object.keys(runs[0]?.phases.load?.components ?? {})).toEqual([
+      'styled.div @ src/Card.tsx:27',
+    ]);
   });
 });
