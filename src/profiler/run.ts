@@ -28,6 +28,29 @@ function resolveExecutable(config: CrispyConfig): string | undefined {
   return undefined;
 }
 
+/** Drops Playwright's boxed "run npx playwright install" banner: crispy has its own command. */
+const withoutBanner = (message: string) =>
+  message
+    .split('\n')
+    .filter((l) => !/[╔╗╚╝║═]/.test(l))
+    .join('\n')
+    .trim();
+
+/** Turns "connection refused" into an actionable message. */
+async function gotoApp(page: Page, url: string, timeout: number): Promise<void> {
+  try {
+    await page.goto(url, { waitUntil: 'load', timeout });
+  } catch (err) {
+    const message = (err as Error).message;
+    if (/ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_CONNECTION_RESET/.test(message)) {
+      throw new Error(
+        `Nothing is listening at ${new URL(url).origin}. Is the dev server running? Start it (e.g. "npm run dev") and check baseUrl in crispy.config.json.`,
+      );
+    }
+    throw err;
+  }
+}
+
 export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
   try {
     return await chromium.launch({
@@ -38,7 +61,7 @@ export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
   } catch (err) {
     throw new Error(
       `Could not launch Chromium. Install it with "npx crispy-profiling install", ` +
-        `or set CRISPY_CHROMIUM_PATH / browser.executablePath / browser.channel.\n${(err as Error).message}`,
+        `or set CRISPY_CHROMIUM_PATH / browser.executablePath / browser.channel.\n${withoutBanner((err as Error).message)}`,
     );
   }
 }
@@ -271,7 +294,7 @@ export async function runScenarioOnce(
     }
     await page.addInitScript({ content: crispyHookSource() });
     const url = new URL(scenario.path, config.baseUrl).toString();
-    await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
+    await gotoApp(page, url, config.timeoutMs);
     await waitForReact(page, url, config.timeoutMs, config.clock);
     await settle(ctx, 'load');
 
