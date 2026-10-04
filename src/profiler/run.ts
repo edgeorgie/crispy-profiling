@@ -44,6 +44,7 @@ export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
 /** Requests that never "finish" by design; they must not block settling. */
 const LONG_LIVED_TYPES = new Set(['websocket', 'eventsource']);
 const POLL_MS = 25;
+const CLOCK_START = Date.UTC(2026, 0, 1);
 
 /**
  * Tracks in-flight network requests so a step is only considered settled when
@@ -90,11 +91,10 @@ const readActivity = (page: Page) =>
 
 function warnNotSettled(ctx: SettleContext, label: string, names: string[]): void {
   const busy = names.length ? ` Last commit rendered: ${names.slice(0, 5).join(', ')}.` : '';
-  const hint = ctx.config.clock
-    ? ''
-    : ' If the app polls or animates, set "clock": true to control timers.';
   ctx.warnings.push(
-    `${label}: page did not settle within ${ctx.config.maxSettleMs} ms (React kept committing or requests stayed in flight); counts may vary.${busy}${hint}`,
+    ctx.config.clock
+      ? `${label}: still committing after ${ctx.config.maxSettleMs} ms of virtual time (timers keep firing); counting stopped there, so counts stay deterministic.${busy}`
+      : `${label}: page did not settle within ${ctx.config.maxSettleMs} ms (React kept committing or requests stayed in flight); counts may vary.${busy} If the app polls or animates, set "clock": true to control timers.`,
   );
 }
 
@@ -224,7 +224,11 @@ export async function runScenarioOnce(
     const warnings: string[] = [];
     const ctx: SettleContext = { page, network: new NetworkTracker(page), config, warnings };
     // A fixed start time keeps Date-dependent output identical between runs.
-    if (config.clock) await page.clock.install({ time: '2026-01-01T00:00:00Z' });
+    if (config.clock) {
+      // install() lets time flow; pausing makes it advance only through runFor().
+      await page.clock.install({ time: CLOCK_START });
+      await page.clock.pauseAt(CLOCK_START + 1);
+    }
     await page.addInitScript({ content: crispyHookSource() });
     const url = new URL(scenario.path, config.baseUrl).toString();
     await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
