@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
-    "playwright-core": "^1.50.0",
+    "playwright-core": "^1.63.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {
