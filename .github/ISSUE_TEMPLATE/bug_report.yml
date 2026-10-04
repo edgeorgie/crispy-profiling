@@ -1,0 +1,29 @@
+name: Bug report
+description: Something is measured wrong or crispy crashes
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the command or MCP tool call, and the output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: A small React component + crispy.config.json is ideal.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: crispy 0.1.0, React 19.1, Node 22, macOS
+    validations:
+      required: true

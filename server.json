@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.edgeorgie/crispy-profiling",
+  "title": "Crispy Profiling",
+  "description": "Deterministic React render profiling: renders, wasted renders and their causes per component.",
+  "repository": {
+    "url": "https://github.com/edgeorgie/crispy-profilling",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "crispy-profiling",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+    }
+  ]
+}
