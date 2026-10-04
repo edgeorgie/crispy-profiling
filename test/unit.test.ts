@@ -418,7 +418,8 @@ describe('Next.js internals (R4-01, R4-02)', async () => {
   const { SourceMapResolver } = await import('../src/profiler/sourcemaps.js');
   const { hideInternals } = await import('../src/report/aggregate.js');
   const map = (sources: string[]) =>
-    `x;\n//# sourceMappingURL=data:application/json,${encodeURIComponent(
+    // Split so test tooling does not mistake this literal for a real map comment.
+    `x;\n//# source${'MappingURL'}=data:application/json,${encodeURIComponent(
       JSON.stringify({ version: 3, sources, names: [], mappings: 'AAKA' }),
     )}`;
 
