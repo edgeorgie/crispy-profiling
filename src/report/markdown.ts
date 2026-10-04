@@ -1,11 +1,7 @@
 import type { CompareResult, CrispyReport } from '../types.js';
+import { hintFor } from './hints.js';
 
 const esc = (s: string) => s.replace(/\|/g, '\\|');
-
-function topKeys(counts: Record<string, number>, n = 3): string {
-  const entries = Object.entries(counts).slice(0, n);
-  return entries.length ? entries.map(([k, v]) => `\`${esc(k)}\`×${v}`).join(', ') : '—';
-}
 
 /** Short, agent- and PR-friendly summary of a report. */
 export function reportToMarkdown(report: CrispyReport, top = 10): string {
@@ -20,13 +16,24 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
       lines.push(
         `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted), ${p.totalCallbackRenders.median} from recreated callbacks`,
         '',
-        '| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Unstable props | Callback props | Rendered at |',
-        '| --- | ---: | ---: | ---: | --- | --- | --- | --- |',
+        '| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Rendered at | Why / how to fix |',
+        '| --- | ---: | ---: | ---: | --- | --- | --- |',
       );
-      for (const [name, c] of Object.entries(p.components).slice(0, top)) {
+      // Top components, plus every component whose own state changed: the likely
+      // root causes must never be cut off.
+      const entries = Object.entries(p.components);
+      const shown = entries.filter(([, c], i) => i < top || c.causes.state > 0);
+      for (const [name, c] of shown) {
         const flaky = c.stable ? '' : ' ⚠️';
+        const hint = hintFor(c, p, name) ?? '';
         lines.push(
-          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.callbackRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.callback}/${c.causes.parent} | ${topKeys(c.unstableProps)} | ${topKeys(c.callbackProps)} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} |`,
+          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.callbackRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.callback}/${c.causes.parent} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} | ${esc(hint)} |`,
+        );
+      }
+      if (entries.length > shown.length) {
+        lines.push(
+          '',
+          `…and ${entries.length - shown.length} more component(s) in the JSON report.`,
         );
       }
       lines.push('');

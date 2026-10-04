@@ -46,7 +46,7 @@ describe('MCP server', () => {
     });
     expect(res.isError).toBeFalsy();
     expect(textOf(res)).toContain('Phase `interaction`');
-    expect(textOf(res)).toContain('`onSelect`×20');
+    expect(textOf(res)).toContain('`onSelect` is a new function');
 
     const inspect = await client.callTool({
       name: 'inspect_component',
