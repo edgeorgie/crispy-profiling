@@ -76,8 +76,6 @@ When something regresses you get the component, the cause, where it is rendered 
 ```json
 "interaction": {
   "commits": 1,
-  "renders": 4,
-  "avoidable": 3,
   "components": {
     "App": { "renders": 1, "avoidable": 0 },
     "Header": { "renders": 1, "avoidable": 1 }
@@ -85,9 +83,11 @@ When something regresses you get the component, the cause, where it is rendered 
 }
 ```
 
-Rules: any increase in renders or avoidable renders fails (`snapshot.tolerance` allows slack);
-decreases pass and suggest `-u`; new components that only mount are recorded automatically; budgets
-still apply.
+Rules: any increase in commits, renders or avoidable renders fails (`snapshot.tolerance` allows
+slack), and every metric is checked independently, so an improvement never hides a regression.
+Counts that varied between runs are stored as `[min, max]` ranges and only fail outside them.
+Decreases pass and suggest `-u`; new components that only mount are recorded automatically; the
+snapshot always covers every component (even with `topComponents`); budgets still apply.
 
 ## Configuration
 

@@ -69,7 +69,11 @@ export async function runSnapshotTest(
 ): Promise<SnapshotTestOutcome> {
   const file = resolve(options.baseDir ?? process.cwd(), config.snapshot.file);
   const shown = relative(process.cwd(), file) || file;
-  const report = await profile(config, { only: options.only, log: options.log });
+  // Snapshots always cover every component, even when `topComponents` trims reports.
+  const report = await profile(
+    { ...config, topComponents: 0 },
+    { only: options.only, log: options.log },
+  );
   const extra = budgetsMarkdown(report);
   const budgetsFail = report.violations.length > 0;
   const previous = existsSync(file) ? parseSnapshot(await readFile(file, 'utf8')) : null;

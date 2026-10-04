@@ -1,4 +1,4 @@
-import type { ComponentReport, CrispyReport } from '../types.js';
+import type { ComponentReport, CrispyReport, Stat } from '../types.js';
 import { cmp } from '../util/cmp.js';
 
 /**
@@ -11,12 +11,22 @@ export interface RenderSnapshot {
   scenarios: Record<string, Record<string, PhaseSnapshot>>;
 }
 
+/**
+ * A count, or a `[min, max]` range when it varied between runs (flaky). Ranges
+ * are compared loosely: only values outside the range count as changes.
+ */
+export type Count = number | [number, number];
+
 export interface PhaseSnapshot {
-  commits: number;
-  renders: number;
-  avoidable: number;
-  components: Record<string, { renders: number; avoidable: number }>;
+  commits: Count;
+  components: Record<string, { renders: Count; avoidable: Count }>;
 }
+
+const lo = (c: Count) => (Array.isArray(c) ? c[0] : c);
+const hi = (c: Count) => (Array.isArray(c) ? c[1] : c);
+const toCount = (s: Stat): Count => (s.min === s.max ? s.median : [s.min, s.max]);
+const fmt = (c: Count | null) =>
+  c === null ? '—' : Array.isArray(c) ? `${c[0]}..${c[1]}` : `${c}`;
 
 export type SnapshotStatus = 'regressed' | 'improved' | 'new' | 'removed';
 
@@ -26,8 +36,10 @@ export interface SnapshotChange {
   /** Undefined for phase-level changes (commit counts). */
   component?: string;
   metric: 'renders' | 'avoidable' | 'commits';
-  expected: number | null;
-  actual: number | null;
+  expected: Count | null;
+  actual: Count | null;
+  /** The snapshot or the current run varied between runs; treat with care. */
+  flaky?: boolean;
   status: SnapshotStatus;
   /** Short explanation and suggested fix for regressions, from the current report. */
   hint?: string;
@@ -56,14 +68,9 @@ export function toSnapshot(report: CrispyReport): RenderSnapshot {
       const components: PhaseSnapshot['components'] = {};
       for (const c of Object.keys(p.components).sort(cmp)) {
         const r = p.components[c] as ComponentReport;
-        components[c] = { renders: r.renders.median, avoidable: r.avoidableRenders.median };
+        components[c] = { renders: toCount(r.renders), avoidable: toCount(r.avoidableRenders) };
       }
-      phases[phase] = {
-        commits: p.commits.median,
-        renders: p.totalRenders.median,
-        avoidable: p.totalAvoidableRenders.median,
-        components,
-      };
+      phases[phase] = { commits: toCount(p.commits), components };
     }
     scenarios[name] = phases;
   }
@@ -83,9 +90,7 @@ export function serializeSnapshot(snapshot: RenderSnapshot): string {
     const entries = Object.entries(phases);
     entries.forEach(([phase, p], pi) => {
       out.push(`      ${q(phase)}: {`);
-      out.push(`        "commits": ${p.commits},`);
-      out.push(`        "renders": ${p.renders},`);
-      out.push(`        "avoidable": ${p.avoidable},`);
+      out.push(`        "commits": ${q(p.commits)},`);
       const comps = Object.entries(p.components);
       if (comps.length === 0) out.push('        "components": {}');
       else {
@@ -93,7 +98,7 @@ export function serializeSnapshot(snapshot: RenderSnapshot): string {
         comps.forEach(([c, v], ci) => {
           const comma = ci < comps.length - 1 ? ',' : '';
           out.push(
-            `          ${q(c)}: { "renders": ${v.renders}, "avoidable": ${v.avoidable} }${comma}`,
+            `          ${q(c)}: { "renders": ${q(v.renders)}, "avoidable": ${q(v.avoidable)} }${comma}`,
           );
         });
         out.push('        }');
@@ -155,6 +160,29 @@ export function compareSnapshot(
   const current = toSnapshot(report);
   const changes: SnapshotChange[] = [];
 
+  /**
+   * Compares one metric. Regression: even the best current run exceeds the
+   * snapshot's upper bound (+ tolerance). Improvement: even the worst current
+   * run is below the snapshot's lower bound. Every metric is checked, so an
+   * improvement in one never hides a regression in another.
+   */
+  const check = (
+    base: Omit<SnapshotChange, 'metric' | 'expected' | 'actual' | 'status'>,
+    metric: SnapshotChange['metric'],
+    expected: Count,
+    actual: Stat,
+    hint?: string,
+  ) => {
+    const flaky = Array.isArray(expected) || actual.min !== actual.max;
+    const entry = { ...base, metric, expected, actual: toCount(actual), ...(flaky && { flaky }) };
+    if (actual.min > hi(expected) + tolerance) {
+      changes.push({ ...entry, status: 'regressed', ...(hint && { hint }) });
+    } else if (actual.max < lo(expected)) {
+      changes.push({ ...entry, status: 'improved' });
+    }
+  };
+  const zero: Stat = { median: 0, min: 0, max: 0 };
+
   for (const scenario of Object.keys(current.scenarios).sort(cmp)) {
     const expectedPhases = snapshot.scenarios[scenario];
     const actualPhases = current.scenarios[scenario] ?? {};
@@ -163,25 +191,26 @@ export function compareSnapshot(
     ].sort(phaseOrder);
     for (const phase of phaseNames) {
       const exp = expectedPhases?.[phase];
-      const act = actualPhases[phase];
+      const reportPhase = report.scenarios[scenario]?.phases[phase];
       if (!exp) {
         changes.push({
           scenario,
           phase,
-          metric: 'renders',
+          metric: 'commits',
           expected: null,
-          actual: act?.renders ?? 0,
+          actual: reportPhase ? toCount(reportPhase.commits) : 0,
           status: 'new',
         });
         continue;
       }
-      const reportPhase = report.scenarios[scenario]?.phases[phase];
+      // Extra commits (e.g. setState-in-effect cascades) are a regression on their own.
+      check({ scenario, phase }, 'commits', exp.commits, reportPhase?.commits ?? zero);
+
       const names = [
-        ...new Set([...Object.keys(exp.components), ...Object.keys(act?.components ?? {})]),
+        ...new Set([...Object.keys(exp.components), ...Object.keys(reportPhase?.components ?? {})]),
       ].sort(cmp);
       for (const component of names) {
         const e = exp.components[component];
-        const a = act?.components[component];
         const full = reportPhase?.components[component];
         if (!e) {
           // New UI that only mounts is an addition; new components that update are not.
@@ -192,41 +221,15 @@ export function compareSnapshot(
             component,
             metric: 'renders',
             expected: null,
-            actual: a?.renders ?? 0,
+            actual: full ? toCount(full.renders) : 0,
             status: onlyMounts ? 'new' : 'regressed',
             ...(onlyMounts ? {} : { hint: hintFor(full) }),
           });
           continue;
         }
-        for (const metric of ['avoidable', 'renders'] as const) {
-          const expected = e[metric];
-          const actual = a?.[metric] ?? 0;
-          if (actual > expected + tolerance) {
-            changes.push({
-              scenario,
-              phase,
-              component,
-              metric,
-              expected,
-              actual,
-              status: 'regressed',
-              hint: hintFor(full),
-            });
-            break; // one entry per component is enough
-          }
-          if (actual < expected) {
-            changes.push({
-              scenario,
-              phase,
-              component,
-              metric,
-              expected,
-              actual,
-              status: 'improved',
-            });
-            break;
-          }
-        }
+        const base = { scenario, phase, component };
+        check(base, 'renders', e.renders, full?.renders ?? zero, hintFor(full));
+        check(base, 'avoidable', e.avoidable, full?.avoidableRenders ?? zero, hintFor(full));
       }
     }
   }
@@ -327,7 +330,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
     (a, b) => order.indexOf(a.status) - order.indexOf(b.status),
   );
   for (const c of sorted) {
-    const values = `${c.expected ?? '—'} → ${c.actual ?? '—'}`;
+    const values = `${fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
     lines.push(
       `| ${ICON[c.status]} ${c.status} | ${c.scenario} / ${c.phase} | ${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
     );

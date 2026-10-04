@@ -216,3 +216,40 @@ describe('budget validation (C-17)', () => {
     ]);
   });
 });
+
+describe('render snapshot comparison (round-2 fixes)', async () => {
+  const { compareSnapshot, toSnapshot } = await import('../src/report/snapshot.js');
+  const make = (renders: number, avoidable: number, commits = 1) => {
+    const c = component(renders, renders, avoidable);
+    c.avoidableRenders = s(avoidable);
+    const p = phase({ Item: c });
+    p.commits = s(commits);
+    return report({ interaction: p });
+  };
+
+  it('never hides a renders regression behind an avoidable improvement (R2-01)', () => {
+    const r = compareSnapshot(toSnapshot(make(10, 10)), make(20, 0));
+    expect(r.passed).toBe(false);
+    expect(r.regressions.map((c) => [c.metric, c.expected, c.actual])).toEqual([
+      ['renders', 10, 20],
+    ]);
+    expect(r.improvements.map((c) => c.metric)).toEqual(['avoidable']);
+  });
+
+  it('fails when commits grow (R2-11)', () => {
+    const r = compareSnapshot(toSnapshot(make(10, 0, 2)), make(10, 0, 50));
+    expect(r.regressions.map((c) => [c.metric, c.expected, c.actual])).toEqual([
+      ['commits', 2, 50],
+    ]);
+  });
+
+  it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
+    const flaky = make(10, 0);
+    const item = flaky.scenarios.home?.phases.interaction?.components.Item;
+    if (item) item.renders = { median: 11, min: 10, max: 12 };
+    const snap = toSnapshot(flaky);
+    expect(snap.scenarios.home?.interaction?.components.Item?.renders).toEqual([10, 12]);
+    expect(compareSnapshot(snap, make(12, 0)).passed).toBe(true);
+    expect(compareSnapshot(snap, make(13, 0)).regressions[0]?.flaky).toBe(true);
+  });
+});
