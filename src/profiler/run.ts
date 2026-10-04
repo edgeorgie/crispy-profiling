@@ -252,11 +252,16 @@ export async function runScenarioOnce(
           profilingBuild: s.profilingBuild,
           phases: s.phases,
           vitals: s.vitals,
-          error: s.error ?? null,
+          hookErrors: s.hookErrors ?? null,
         }),
       );
     });
-    if (raw.error) throw new Error(`crispy hook failed in the page: ${raw.error}`);
+    if (raw.hookErrors) {
+      warnings.push(
+        `the render hook could not analyze ${raw.hookErrors.count} component render(s); they are missing from the counts (first error: ${raw.hookErrors.first}). Please report it with your React version.`,
+      );
+    }
+    delete raw.hookErrors;
     return { ...raw, warnings } as RawRun;
   } finally {
     await context.close();
