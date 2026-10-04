@@ -19,7 +19,7 @@ const DEFAULT_PHASE_AFTER_LOAD = 'interaction';
 
 /**
  * Resolves a Chromium binary. Order: config, CRISPY_CHROMIUM_PATH, Playwright's
- * own resolution (requires `npx playwright install chromium`).
+ * own resolution (requires `npx crispy-profiling install`).
  */
 function resolveExecutable(config: CrispyConfig): string | undefined {
   if (config.browser.executablePath) return config.browser.executablePath;
@@ -37,7 +37,7 @@ export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
     });
   } catch (err) {
     throw new Error(
-      `Could not launch Chromium. Install it with "npx playwright install chromium", ` +
+      `Could not launch Chromium. Install it with "npx crispy-profiling install", ` +
         `or set CRISPY_CHROMIUM_PATH / browser.executablePath / browser.channel.\n${(err as Error).message}`,
     );
   }
