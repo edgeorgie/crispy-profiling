@@ -34,6 +34,8 @@ export function installCrispyHook(): void {
     typeRefs: {},
     /** Component name -> type identities in first-seen order (kept across navigations). */
     identities: {},
+    /** Increments on every full navigation; part of root labels. */
+    documentIndex: 0,
     vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
   };
   w.__CRISPY__ = state;
@@ -61,6 +63,7 @@ export function installCrispyHook(): void {
       state.vitals = prev.vitals;
       if (prev.hookErrors) state.hookErrors = prev.hookErrors;
       if (prev.identities) state.identities = prev.identities;
+      state.documentIndex = (prev.documentIndex || 0) + 1;
       sessionStorage.removeItem(STORAGE_KEY);
     }
   } catch {}
@@ -76,6 +79,7 @@ export function installCrispyHook(): void {
           vitals: state.vitals,
           hookErrors: state.hookErrors,
           identities: state.identities,
+          documentIndex: state.documentIndex,
         }),
       );
     } catch {}
@@ -216,6 +220,12 @@ export function installCrispyHook(): void {
     return found;
   }
 
+  // Each React root gets a label ("document.order"), so the runner can tell
+  // apart roots that only render library code (e.g. a framework dev overlay).
+  const rootLabels = new WeakMap<object, string>();
+  let rootCount = 0;
+  let currentRoot = '';
+
   function entry(fiber: any): any {
     const comps = phaseData().components;
     const name = keyOf(fiber);
@@ -241,6 +251,8 @@ export function installCrispyHook(): void {
       };
       comps[name] = e;
     }
+    if (!e.roots) e.roots = {};
+    e.roots[currentRoot] = 1;
     const loc = locationOf(fiber);
     if (loc && (e.locations[loc] || Object.keys(e.locations).length < 10)) {
       e.locations[loc] = (e.locations[loc] || 0) + 1;
@@ -536,6 +548,12 @@ export function installCrispyHook(): void {
       state.commitCount++;
       state.lastCommitAt = performance.now();
       currentCommitNames = {};
+      let label = rootLabels.get(root);
+      if (!label) {
+        label = `${state.documentIndex}.${++rootCount}`;
+        rootLabels.set(root, label);
+      }
+      currentRoot = label;
       const wasMounted = prev && prev.memoizedState && prev.memoizedState.element != null;
       const isMounted = current.memoizedState && current.memoizedState.element != null;
       if (!isMounted) return;
@@ -549,6 +567,14 @@ export function installCrispyHook(): void {
         updateSubtree(current, prev, null);
       }
       state.lastCommitNames = Object.keys(currentCommitNames).sort();
+      // Which components each commit rendered, so commits can be counted after
+      // framework internals are filtered out (deduplicated by component set).
+      if (state.lastCommitNames.length) {
+        const p = phaseData();
+        if (!p.commitKeys) p.commitKeys = {};
+        const sig = state.lastCommitNames.join('\n');
+        p.commitKeys[sig] = (p.commitKeys[sig] || 0) + 1;
+      }
     } catch (err) {
       noteError(err);
     }

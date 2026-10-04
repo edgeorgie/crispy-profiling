@@ -45,11 +45,15 @@ export interface RawComponentStats {
   locations: Record<string, number>;
   /** Sum of selfBaseDuration in ms (only available in development/profiling builds). */
   selfDurationMs: number;
+  /** React roots ("document.order") the component rendered in. */
+  roots?: Record<string, 1>;
 }
 
 export interface RawPhase {
   commits: number;
   components: Record<string, RawComponentStats>;
+  /** Component keys rendered by each commit ("\n"-joined, sorted) -> number of commits. */
+  commitKeys?: Record<string, number>;
 }
 
 export interface RawRun {
@@ -129,7 +133,10 @@ export interface ScenarioReport {
   violations: BudgetViolation[];
   /** Deduplicated warnings from all runs (e.g. "never settled"). */
   warnings: string[];
-  /** Framework/library internals hidden from the report (see `includeInternals`). */
+  /**
+   * Number of framework/library internals hidden from the report (see `includeInternals`).
+   * Only with `timings: true`: it depends on dev-server state, so it is not reproducible.
+   */
   hiddenInternals?: number;
 }
 
