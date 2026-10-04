@@ -1,0 +1,332 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "baseUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "runs": {
+      "default": 3,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "viewport": {
+      "default": {
+        "width": 1280,
+        "height": 800
+      },
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 9007199254740991
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["width", "height"]
+    },
+    "settleMs": {
+      "default": 300,
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 10000
+    },
+    "timeoutMs": {
+      "default": 30000,
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 300000
+    },
+    "timings": {
+      "default": false,
+      "type": "boolean"
+    },
+    "topComponents": {
+      "default": 0,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "compare": {
+      "default": {
+        "rendersIncreasePct": 10,
+        "minRendersDelta": 1
+      },
+      "type": "object",
+      "properties": {
+        "rendersIncreasePct": {
+          "default": 10,
+          "type": "number",
+          "minimum": 0
+        },
+        "minRendersDelta": {
+          "default": 1,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "browser": {
+      "default": {
+        "headless": true
+      },
+      "type": "object",
+      "properties": {
+        "executablePath": {
+          "type": "string"
+        },
+        "channel": {
+          "type": "string"
+        },
+        "headless": {
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "scenarios": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-_]*$"
+          },
+          "path": {
+            "default": "/",
+            "type": "string"
+          },
+          "steps": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "click"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["action", "selector"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "hover"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["action", "selector"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "fill"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["action", "selector", "value"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "type"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": "string"
+                    },
+                    "delayMs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": ["action", "selector", "value"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "press"
+                    },
+                    "key": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "selector": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["action", "key"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "waitFor"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["action", "selector"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "wait"
+                    },
+                    "ms": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 60000
+                    }
+                  },
+                  "required": ["action", "ms"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "scroll"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "selector": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["action", "y"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "goto"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["action", "path"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "phase"
+                    },
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-_]*$"
+                    }
+                  },
+                  "required": ["action", "name"]
+                }
+              ]
+            }
+          },
+          "budgets": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "maxCommits": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "maxTotalRenders": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "maxWastedRenders": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "components": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "maxRenders": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxWastedRenders": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": ["name"]
+      }
+    }
+  },
+  "required": ["baseUrl", "scenarios"],
+  "$id": "https://raw.githubusercontent.com/edgeorgie/crispy-profilling/main/schema/crispy.config.schema.json",
+  "title": "crispy-profiling config"
+}
