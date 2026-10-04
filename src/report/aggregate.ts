@@ -77,6 +77,9 @@ function aggregateComponent(
     unstableProps: medianCounts(samples, (s) => s.unstableProps),
     callbackProps: medianCounts(samples, (s) => s.callbackProps),
     callbackRenders: stat(pick((s) => s.callbackRenders ?? 0)),
+    triggeredBy: medianCounts(samples, (s) => s.triggeredBy),
+    recreatedContextFrom: medianCounts(samples, (s) => s.recreatedContextFrom),
+    memo: samples.some((s) => s?.memo),
     locations: Object.keys(medianCounts(samples, (s) => s.locations)).slice(0, 3),
     stable: renders.min === renders.max,
   };
@@ -279,7 +282,15 @@ export function stabilizeKeys(runs: RawRun[]): {
         {
           ...p,
           components: Object.fromEntries(
-            Object.entries(p.components).map(([k, v]) => [rename[k] ?? k, v]),
+            Object.entries(p.components).map(([k, v]) => [
+              rename[k] ?? k,
+              {
+                ...v,
+                triggeredBy: Object.fromEntries(
+                  Object.entries(v.triggeredBy ?? {}).map(([t, n]) => [rename[t] ?? t, n]),
+                ),
+              },
+            ]),
           ),
         },
       ]),
