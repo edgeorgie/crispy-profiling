@@ -20,13 +20,13 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
       lines.push(
         `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted)`,
         '',
-        '| Component | Renders | Avoidable | Causes (props/state/context/unstable/parent) | Unstable props | Changed props |',
-        '| --- | ---: | ---: | --- | --- | --- |',
+        '| Component | Renders | Avoidable | Causes (props/state/context/unstable/parent) | Unstable props | Changed props | Rendered at |',
+        '| --- | ---: | ---: | --- | --- | --- | --- |',
       );
       for (const [name, c] of Object.entries(p.components).slice(0, top)) {
         const flaky = c.stable ? '' : ' ⚠️';
         lines.push(
-          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.parent} | ${topKeys(c.unstableProps)} | ${topKeys(c.changedProps)} |`,
+          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.parent} | ${topKeys(c.unstableProps)} | ${topKeys(c.changedProps)} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} |`,
         );
       }
       lines.push('');

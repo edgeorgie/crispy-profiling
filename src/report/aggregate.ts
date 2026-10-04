@@ -75,6 +75,7 @@ function aggregateComponent(
     },
     changedProps: medianCounts(samples, (s) => s.changedProps),
     unstableProps: medianCounts(samples, (s) => s.unstableProps),
+    locations: [...new Set(samples.flatMap((s) => s?.locations ?? []))].sort(cmp).slice(0, 3),
     stable: renders.min === renders.max,
   };
   if (timings) report.selfDurationMs = stat(pick((s) => s.selfDurationMs));

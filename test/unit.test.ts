@@ -17,6 +17,7 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     causes: { props: 0, state: 0, context: 0, unstable: 0, parent: wasted },
     changedProps: {},
     unstableProps: {},
+    locations: [],
     stable: true,
   };
 }
