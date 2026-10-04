@@ -419,6 +419,47 @@ describe('stable component identity across modules (R2-05)', () => {
   });
 });
 
+describe('component identity across navigations (R3-08)', () => {
+  it('keeps same-named components apart when a later document renders them in another order', async () => {
+    const { buildModuleFixture, serveModules } = await import('./helpers.js');
+    const app = await serveModules(await buildModuleFixture());
+    try {
+      const config = parseConfig({
+        baseUrl: app.url,
+        runs: 1,
+        settleMs: 150,
+        scenarios: [
+          {
+            name: 'nav',
+            path: '/',
+            steps: [
+              { action: 'click', selector: '#inc' },
+              { action: 'phase', name: 'banner' },
+              // The new document renders BannerItem's `Item` before the list items.
+              { action: 'goto', path: '/?banner' },
+              { action: 'click', selector: '#inc' },
+            ],
+          },
+        ],
+      });
+      const phases = (await profile(config)).scenarios.nav?.phases;
+      const renders = (phase: string) =>
+        Object.fromEntries(
+          Object.entries(phases?.[phase]?.components ?? {})
+            .filter(([k]) => k.startsWith('Item'))
+            .map(([k, c]) => [k, c.renders.median]),
+        );
+      expect(renders('interaction')).toEqual({ 'Item (src/ListItem.tsx)': 2 });
+      expect(renders('banner')).toEqual({
+        'Item (src/BannerItem.tsx)': 2,
+        'Item (src/ListItem.tsx)': 4,
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe('framework internals (R2-24)', () => {
   it('hides components only library code renders, keeps library components the app renders', async () => {
     const { buildModuleFixture, serveModules } = await import('./helpers.js');
