@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { relative } from 'node:path';
 import { originalPositionFor, TraceMap } from '@jridgewell/trace-mapping';
 import { shortPath } from '../util/paths.js';
@@ -49,10 +50,12 @@ export class SourceMapResolver {
 
   /** Turns a resolved source URL into a short project-relative path. */
   private display(source: string): string {
-    let path = shortPath(source).replace(/^(\.\/)+/, '');
+    const path = shortPath(source).replace(/^(\.\/)+/, '');
     // Sources that resolve to absolute file-system paths: make them project-relative.
     const abs = `/${path}`;
-    if (abs.startsWith(this.root)) path = relative(this.root, abs);
+    if (abs.startsWith(`${this.root}/`)) return relative(this.root, abs);
+    // A real file outside the project (e.g. a monorepo sibling): keep it absolute.
+    if (existsSync(abs)) return abs;
     return path;
   }
 
