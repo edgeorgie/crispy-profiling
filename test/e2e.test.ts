@@ -290,3 +290,33 @@ describe('render snapshots (crispy test)', () => {
     expect((await runSnapshotTest(config(slowUrl), { baseDir: dir, ci: true })).exitCode).toBe(0);
   });
 });
+
+describe('concurrent rendering', () => {
+  it('gives the same counts on a fast and a 6x slower CPU (R2-02)', async () => {
+    const run = async (cpuThrottle: number) => {
+      const config = parseConfig({
+        baseUrl: slowUrl,
+        runs: 2,
+        settleMs: 150,
+        cpuThrottle,
+        scenarios: [
+          {
+            name: 'deferred',
+            path: '/?deferred',
+            steps: [
+              { action: 'type', selector: '#deferred-input', value: 'abcdefgh', delayMs: 40 },
+            ],
+          },
+        ],
+      });
+      const p = (await profile(config)).scenarios.deferred?.phases.interaction;
+      return { cells: p?.components.SlowCell?.renders, stable: p?.components.SlowCell?.stable };
+    };
+    const fast = await run(1);
+    const slow = await run(6);
+    expect(fast.stable).toBe(true);
+    // 8 keystrokes × 200 cells, each keystroke fully rendered before the next.
+    expect(fast.cells?.median).toBe(1600);
+    expect(slow.cells).toEqual(fast.cells);
+  });
+});
