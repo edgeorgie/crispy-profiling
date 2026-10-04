@@ -34,6 +34,38 @@ export function installCrispyHook(): void {
   };
   w.__CRISPY__ = state;
 
+  // Full navigations (scenario `goto` steps or app-initiated reloads) create a new
+  // document and a fresh hook. Carry the collected data over through sessionStorage
+  // so earlier phases are not lost. Each profiling run uses a new browser context,
+  // so nothing leaks between runs.
+  const STORAGE_KEY = '__crispy_state__';
+  try {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const prev = JSON.parse(saved);
+      state.phases = prev.phases;
+      state.phase = prev.phase;
+      state.profilingBuild = prev.profilingBuild;
+      state.vitals = prev.vitals;
+      if (prev.error) state.error = prev.error;
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {}
+  w.addEventListener('pagehide', () => {
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          phases: state.phases,
+          phase: state.phase,
+          profilingBuild: state.profilingBuild,
+          vitals: state.vitals,
+          error: state.error,
+        }),
+      );
+    } catch {}
+  });
+
   function phaseData(): any {
     let p = state.phases[state.phase];
     if (!p) {
