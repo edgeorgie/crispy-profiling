@@ -93,6 +93,12 @@ export const ConfigSchema = z.object({
   timings: z.boolean().default(false),
   /** Number of components to keep per phase in the report (sorted by renders). 0 = all. */
   topComponents: z.number().int().min(0).default(0),
+  /**
+   * Show framework/library internals: components defined in node_modules that
+   * only library code renders (e.g. Next.js router internals). Hidden by default;
+   * library components your code renders directly are always shown.
+   */
+  includeInternals: z.boolean().default(false),
   compare: CompareOptionsSchema.default({ rendersIncreasePct: 10, minRendersDelta: 1 }),
   browser: z
     .object({
