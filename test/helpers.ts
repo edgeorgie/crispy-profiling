@@ -30,6 +30,14 @@ export async function buildFixture(): Promise<Record<'slow' | 'fast', string>> {
       logLevel: 'silent',
     });
     writeFileSync(join(dir, 'index.html'), HTML);
+    // The same bundle executed through eval with a webpack-internal:/// URL, like
+    // webpack's development "eval-source-map" mode (its inline map stays inside).
+    const code = readFileSync(join(dir, 'bundle.js'), 'utf8');
+    writeFileSync(
+      join(dir, 'bundle-eval.js'),
+      `eval(${JSON.stringify(`${code}\n//# sourceURL=webpack-internal:///(app-pages-browser)/./src/bundle.js\n`)});\n`,
+    );
+    writeFileSync(join(dir, 'eval.html'), HTML.replace('/bundle.js', '/bundle-eval.js'));
   }
   return out;
 }
@@ -42,7 +50,14 @@ export async function serve(dir: string): Promise<{ url: string; close: () => Pr
       setTimeout(() => res.end('loaded'), 600);
       return;
     }
-    const file = req.url?.startsWith('/bundle.js') ? 'bundle.js' : 'index.html';
+    const url = req.url ?? '/';
+    const file = url.startsWith('/bundle-eval.js')
+      ? 'bundle-eval.js'
+      : url.startsWith('/bundle.js')
+        ? 'bundle.js'
+        : url.startsWith('/eval')
+          ? 'eval.html'
+          : 'index.html';
     res.setHeader('content-type', file.endsWith('.js') ? 'text/javascript' : 'text/html');
     res.end(readFileSync(join(dir, file)));
   });

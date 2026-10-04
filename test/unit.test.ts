@@ -258,3 +258,40 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(compareSnapshot(snap, make(13, 0)).regressions[0]?.flaky).toBe(true);
   });
 });
+
+describe('source maps', async () => {
+  const { SourceMapResolver } = await import('../src/profiler/sourcemaps.js');
+
+  it('resolves sectioned (index) source maps like Turbopack serves (R3-01)', async () => {
+    const files: Record<string, string> = {
+      'http://x.dev/chunk.js': 'console.log(1);\n//# sourceMappingURL=chunk.js.map',
+      'http://x.dev/chunk.js.map': JSON.stringify({
+        version: 3,
+        sections: [
+          {
+            offset: { line: 0, column: 0 },
+            map: { version: 3, sources: ['src/A.tsx'], names: [], mappings: 'AAKA' },
+          },
+        ],
+      }),
+    };
+    const resolver = new SourceMapResolver(async (u) => files[u] ?? null, '/nonexistent');
+    expect(await resolver.resolve('http://x.dev/chunk.js', 1, 1)).toEqual({
+      file: 'src/A.tsx',
+      line: 6,
+    });
+    expect(await resolver.rewriteLocation('http://x.dev/chunk.js:1:1 (App)')).toBe(
+      'src/A.tsx:6 (App)',
+    );
+  });
+
+  it('keeps absolute file paths readable (R3-10, R3-20)', async () => {
+    const resolver = new SourceMapResolver(async () => null, '/nonexistent');
+    expect(await resolver.rewriteLocation('/abs/src/main.jsx:8:1 (App)')).toBe(
+      '/abs/src/main.jsx:8 (App)',
+    );
+    expect(await resolver.rewriteLocation('http://localhost:5173/@fs/abs/ui/Fancy.tsx:3:5')).toBe(
+      '/abs/ui/Fancy.tsx:3',
+    );
+  });
+});

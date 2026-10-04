@@ -450,3 +450,20 @@ describe('framework internals (R2-24)', () => {
     }
   });
 });
+
+describe('webpack eval source maps (R3-02)', () => {
+  it('maps webpack-internal eval modules to original lines', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'evaled', path: '/eval' }],
+    });
+    const header = (await profile(config)).scenarios.evaled?.phases.load?.components.Header;
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('test/fixtures/app/App.tsx', 'utf8').split('\n');
+    const line = src.findIndex((l) => l.includes('<Header title=')) + 1;
+    expect(header?.locations).toEqual([`test/fixtures/app/App.tsx:${line} (App)`]);
+    expect(header?.definedIn).toBe('test/fixtures/app/App.tsx');
+  });
+});
