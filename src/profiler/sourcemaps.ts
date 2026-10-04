@@ -1,11 +1,28 @@
 import { existsSync } from 'node:fs';
-import { relative } from 'node:path';
-import { originalPositionFor, TraceMap } from '@jridgewell/trace-mapping';
+import { dirname, join, relative } from 'node:path';
+import { FlattenMap, originalPositionFor, type TraceMap } from '@jridgewell/trace-mapping';
 import { shortPath } from '../util/paths.js';
 
 export type FetchText = (url: string) => Promise<string | null>;
 
 const MAP_COMMENT = /\/\/[#@] sourceMappingURL=([^\s'"]+)\s*$/gm;
+
+/** Nearest directory containing `.git` (monorepos), else the start directory. */
+export function findProjectRoot(start = process.cwd()): string {
+  let dir = start;
+  while (true) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return start;
+    dir = parent;
+  }
+}
+
+/**
+ * Parses regular and sectioned (index) source maps — Turbopack serves the
+ * latter, which the plain TraceMap constructor rejects.
+ */
+const parseMap = (json: string, url: string): TraceMap => FlattenMap(json, url);
 
 /**
  * Maps runtime positions (what the browser executes: bundles, dev-server
@@ -16,7 +33,7 @@ export class SourceMapResolver {
 
   constructor(
     private readonly fetchText: FetchText,
-    private readonly root = process.cwd(),
+    private readonly root = findProjectRoot(),
   ) {}
 
   private load(scriptUrl: string): Promise<TraceMap | null> {
@@ -29,7 +46,8 @@ export class SourceMapResolver {
   }
 
   private async fetchMap(scriptUrl: string): Promise<TraceMap | null> {
-    if (!/^https?:\/\//.test(scriptUrl)) return null;
+    // fetchText also resolves non-HTTP scripts (e.g. webpack's eval'd
+    // `webpack-internal:///` modules) through the DevTools protocol.
     const code = await this.fetchText(scriptUrl);
     if (!code) return null;
     const refs = [...code.matchAll(MAP_COMMENT)];
@@ -41,18 +59,18 @@ export class SourceMapResolver {
       const json = ref.slice(0, comma).endsWith(';base64')
         ? Buffer.from(payload, 'base64').toString('utf8')
         : decodeURIComponent(payload);
-      return new TraceMap(json, scriptUrl);
+      return parseMap(json, scriptUrl);
     }
     const mapUrl = new URL(ref, scriptUrl).toString();
     const json = await this.fetchText(mapUrl);
-    return json ? new TraceMap(json, mapUrl) : null;
+    return json ? parseMap(json, mapUrl) : null;
   }
 
   /** Turns a resolved source URL into a short project-relative path. */
   private display(source: string): string {
     const path = shortPath(source).replace(/^(\.\/)+/, '');
     // Sources that resolve to absolute file-system paths: make them project-relative.
-    const abs = `/${path}`;
+    const abs = path.startsWith('/') ? path : `/${path}`;
     if (abs.startsWith(`${this.root}/`)) return relative(this.root, abs);
     // A real file outside the project (e.g. a monorepo sibling): keep it absolute.
     if (existsSync(abs)) return abs;

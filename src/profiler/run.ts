@@ -282,8 +282,19 @@ export async function runScenarioOnce(
 
     const sourceMaps = new SourceMapResolver(async (u) => {
       try {
-        const res = await context.request.get(u, { timeout: config.timeoutMs });
-        return res.ok() ? await res.text() : null;
+        if (/^https?:\/\//.test(u)) {
+          const res = await context.request.get(u, { timeout: config.timeoutMs });
+          return res.ok() ? await res.text() : null;
+        }
+        // Scripts without a fetchable URL (webpack eval modules, inline scripts):
+        // read their source from the page through the DevTools protocol.
+        for (const [scriptId, url] of scripts) {
+          if (url === u) {
+            const { scriptSource } = await cdp.send('Debugger.getScriptSource', { scriptId });
+            return scriptSource;
+          }
+        }
+        return null;
       } catch {
         return null;
       }
