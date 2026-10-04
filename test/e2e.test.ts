@@ -3,6 +3,7 @@ import { parseConfig } from '../src/config.js';
 import { profile } from '../src/profiler/run.js';
 import { serializeReport } from '../src/report/aggregate.js';
 import { compareReports } from '../src/report/compare.js';
+import { hintFor } from '../src/report/hints.js';
 import type { CrispyReport } from '../src/types.js';
 import { buildFixture, serve } from './helpers.js';
 
@@ -465,5 +466,26 @@ describe('webpack eval source maps (R3-02)', () => {
     const line = src.findIndex((l) => l.includes('<Header title=')) + 1;
     expect(header?.locations).toEqual([`test/fixtures/app/App.tsx:${line} (App)`]);
     expect(header?.definedIn).toBe('test/fixtures/app/App.tsx');
+  });
+});
+
+describe('root-cause hints (R3-04, R3-05)', () => {
+  it('points context consumers at the provider and memo components at the recreated prop', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        { name: 'c', path: '/?ctxvalue', steps: [{ action: 'click', selector: '#inc' }] },
+      ],
+    });
+    const phase = (await profile(config)).scenarios.c?.phases.interaction;
+    const c = phase?.components;
+    expect(c?.CartBadge?.recreatedContextFrom).toEqual({ CartProvider: 1 });
+    expect(hintFor(c?.CartBadge, phase, 'CartBadge')).toContain('`CartProvider`');
+    expect(c?.Swatch?.memo).toBe(true);
+    expect(hintFor(c?.Swatch, phase, 'Swatch')).toContain('already wrapped in React.memo');
+    // App's count update started the cascade.
+    expect(c?.CartShell?.triggeredBy).toEqual({ App: 1 });
   });
 });

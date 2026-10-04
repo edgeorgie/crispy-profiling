@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   createContext,
   memo,
@@ -131,6 +132,32 @@ function Derived({ n }: { n: number }) {
   return <i>{doubled}</i>;
 }
 
+// Context value probes (rendered with ?ctxvalue).
+const CartContext = createContext({ count: 0, add: () => {} });
+function CartBadge() {
+  const { count } = useContext(CartContext);
+  return <b>{count}</b>;
+}
+const MemoBox = memo(function Swatch(_: { style: { color: string } }) {
+  return null;
+});
+function CartProvider({ children }: { children: ReactNode }) {
+  const [count, setCount] = useState(0);
+  return (
+    <CartContext.Provider value={{ count, add: () => setCount((c) => c + 1) }}>
+      {children}
+    </CartContext.Provider>
+  );
+}
+function CartShell({ tick }: { tick: number }) {
+  return (
+    <CartProvider>
+      <CartBadge />
+      <MemoBox style={{ color: tick >= 0 ? 'red' : 'blue' }} />
+    </CartProvider>
+  );
+}
+
 function App() {
   const [data, setData] = useState('none');
   const [count, setCount] = useState(0);
@@ -172,6 +199,7 @@ function App() {
           <Derived n={count} />
         </>
       )}
+      {location.search.includes('ctxvalue') && <CartShell tick={count} />}
       {location.search.includes('iframe') && <iframe src="/?child" title="child" />}
       {location.search.includes('dupes') && (
         <>
