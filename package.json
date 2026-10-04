@@ -59,8 +59,9 @@
     "schema": "tsx scripts/generate-schema.ts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "prepublishOnly": "npm run check",
-    "version": "tsx scripts/sync-version.ts && git add .claude-plugin/plugin.json server.json",
-    "validate:manifests": "tsx scripts/validate-server-json.ts && claude plugin validate . && claude plugin validate .claude-plugin/plugin.json"
+    "version": "tsx scripts/sync-version.ts && biome format --write .claude-plugin server.json && git add .claude-plugin/plugin.json server.json action.yml",
+    "validate:manifests": "tsx scripts/validate-server-json.ts && claude plugin validate . && claude plugin validate .claude-plugin/plugin.json",
+    "prepare": "tsup"
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",

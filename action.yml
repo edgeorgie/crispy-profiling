@@ -24,8 +24,8 @@ inputs:
     description: Fail the job on regressions or budget violations
     default: 'true'
   version:
-    description: crispy-profiling version to use
-    default: latest
+    description: crispy-profiling version to use (pinned to this release by scripts/sync-version.ts)
+    default: 0.1.0
 outputs:
   summary:
     description: Path to the Markdown summary
