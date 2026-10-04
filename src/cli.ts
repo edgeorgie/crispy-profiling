@@ -30,6 +30,7 @@ Usage:
           --markdown <file>    Write the comparison as Markdown
           --json <file>        Write the comparison as JSON
           --no-fail            Exit 0 even if there are regressions
+  crispy mcp                                Start the MCP server on stdio
   crispy --version | --help
 
 Exit codes: 0 ok · 1 budget violation / regression · 2 usage or runtime error`;
@@ -136,6 +137,11 @@ async function main(argv: string[]): Promise<number> {
       if (values.json) await write(values.json, `${JSON.stringify(result, null, 2)}\n`);
       process.stdout.write(md);
       return result.passed || values['no-fail'] ? 0 : 1;
+    }
+    case 'mcp': {
+      const { startStdioServer } = await import('./mcp/server.js');
+      await startStdioServer();
+      return -1; // keep the process alive
     }
     default:
       log(`Unknown command "${command}".\n\n${HELP}`);
