@@ -1,0 +1,66 @@
+name: crispy-profiling
+description: Profile React re-renders in CI, enforce render budgets and compare against a baseline.
+author: Edwin Jorge
+branding:
+  icon: activity
+  color: orange
+inputs:
+  config:
+    description: Path to crispy.config.json
+    default: crispy.config.json
+  out:
+    description: Where to write the JSON report
+    default: .crispy/report.json
+  baseline:
+    description: Optional baseline report to compare against (e.g. downloaded from the base branch)
+    default: ''
+  threshold:
+    description: Allowed render increase in percent before a component counts as regressed
+    default: '10'
+  fail-on-regression:
+    description: Fail the job on budget violations or regressions
+    default: 'true'
+  version:
+    description: crispy-profiling version to use
+    default: latest
+outputs:
+  report:
+    description: Path to the JSON report
+    value: ${{ inputs.out }}
+  summary:
+    description: Path to the Markdown summary
+    value: ${{ steps.run.outputs.summary }}
+runs:
+  using: composite
+  steps:
+    - name: Install Chromium
+      shell: bash
+      run: npx -y "crispy-profiling@${{ inputs.version }}" install --with-deps
+    - id: run
+      name: Profile
+      shell: bash
+      env:
+        CRISPY_VERSION: ${{ inputs.version }}
+        CRISPY_CONFIG: ${{ inputs.config }}
+        CRISPY_OUT: ${{ inputs.out }}
+        CRISPY_BASELINE: ${{ inputs.baseline }}
+        CRISPY_THRESHOLD: ${{ inputs.threshold }}
+        CRISPY_FAIL: ${{ inputs.fail-on-regression }}
+      run: |
+        set +e
+        crispy() { npx -y "crispy-profiling@${CRISPY_VERSION}" "$@"; }
+        summary="$(dirname "$CRISPY_OUT")/summary.md"
+        flag=""; [ "$CRISPY_FAIL" = "true" ] || flag="--no-fail"
+        crispy run -c "$CRISPY_CONFIG" -o "$CRISPY_OUT" --markdown "$summary" $flag
+        status=$?
+        if [ "$status" -le 1 ] && [ -n "$CRISPY_BASELINE" ] && [ -f "$CRISPY_BASELINE" ]; then
+          crispy compare "$CRISPY_BASELINE" "$CRISPY_OUT" --threshold "$CRISPY_THRESHOLD" --markdown "$summary.compare" $flag
+          cmp_status=$?
+          cat "$summary.compare" >> "$summary"
+          [ "$cmp_status" -gt "$status" ] && status=$cmp_status
+        fi
+        if [ -f "$summary" ]; then
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+        fi
+        exit $status
