@@ -103,8 +103,10 @@ export function installCrispyHook(): void {
         mounts: 0,
         updates: 0,
         wastedRenders: 0,
+        avoidableRenders: 0,
         changedProps: {},
-        causes: { props: 0, state: 0, context: 0, parent: 0 },
+        unstableProps: {},
+        causes: { props: 0, state: 0, context: 0, unstable: 0, parent: 0 },
         selfDurationMs: 0,
       };
       comps[name] = e;
@@ -123,47 +125,102 @@ export function installCrispyHook(): void {
     return v !== null && typeof v === 'object' && 'create' in v && 'tag' in v && 'deps' in v;
   }
 
-  function stateChanged(prev: any, next: any): boolean {
-    if (next.tag === 1) return prev.memoizedState !== next.memoizedState;
+  /**
+   * True when two values differ only by identity: functions with the same source
+   * (a recreated inline callback), or arrays / plain objects / React elements with
+   * structurally equal contents. Bounded depth and size keep it cheap.
+   */
+  function sameShape(a: any, b: any, depth: number): boolean {
+    if (Object.is(a, b)) return true;
+    if (depth <= 0 || a === null || b === null) return false;
+    const ta = typeof a;
+    if (ta !== typeof b) return false;
+    if (ta === 'function') return a.toString() === b.toString();
+    if (ta !== 'object') return false;
+    if (a.$$typeof || b.$$typeof) {
+      return (
+        a.$$typeof === b.$$typeof &&
+        a.type === b.type &&
+        a.key === b.key &&
+        sameShape(a.props, b.props, depth - 1)
+      );
+    }
+    if (Array.isArray(a)) {
+      if (!Array.isArray(b) || a.length !== b.length || a.length > 50) return false;
+      for (let i = 0; i < a.length; i++) if (!sameShape(a[i], b[i], depth - 1)) return false;
+      return true;
+    }
+    const pa = Object.getPrototypeOf(a);
+    if ((pa !== Object.prototype && pa !== null) || Object.getPrototypeOf(b) !== pa) return false;
+    const ka = Object.keys(a);
+    if (ka.length !== Object.keys(b).length || ka.length > 50) return false;
+    for (const k of ka) if (!(k in b) || !sameShape(a[k], b[k], depth - 1)) return false;
+    return true;
+  }
+
+  const SHAPE_DEPTH = 3;
+  // 0 = unchanged, 1 = changed by identity only (avoidable), 2 = really changed
+  type Change = 0 | 1 | 2;
+  const classify = (a: any, b: any): Change =>
+    Object.is(a, b) ? 0 : sameShape(a, b, SHAPE_DEPTH) ? 1 : 2;
+
+  function stateChange(prev: any, next: any): Change {
+    if (next.tag === 1) return classify(prev.memoizedState, next.memoizedState);
     let a = prev.memoizedState;
     let b = next.memoizedState;
     // Function components: memoizedState is a linked list of hooks.
-    if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return a !== b;
-    if (!('next' in b)) return a !== b;
+    if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') {
+      return classify(a, b);
+    }
+    if (!('next' in b)) return classify(a, b);
+    let worst: Change = 0;
     while (a && b) {
       const av = a.memoizedState;
       const bv = b.memoizedState;
-      if (av !== bv && !(isEffect(av) && isEffect(bv))) return true;
+      if (!(isEffect(av) && isEffect(bv))) {
+        const c = classify(av, bv);
+        if (c > worst) worst = c;
+        if (worst === 2) return 2;
+      }
       a = a.next;
       b = b.next;
     }
-    return a !== b;
+    return a !== b ? 2 : worst;
   }
 
-  function contextChanged(prev: any, next: any): boolean {
+  function contextChange(prev: any, next: any): Change {
     let a = prev.dependencies?.firstContext;
     let b = next.dependencies?.firstContext;
+    let worst: Change = 0;
     while (a && b) {
-      if (!Object.is(a.memoizedValue, b.memoizedValue)) return true;
+      const c = classify(a.memoizedValue, b.memoizedValue);
+      if (c > worst) worst = c;
+      if (worst === 2) return 2;
       a = a.next;
       b = b.next;
     }
-    return false;
+    return worst;
   }
 
-  function changedPropKeys(prev: any, next: any): string[] {
+  /** Changed prop keys, split into real changes and identity-only changes. */
+  function propChanges(prev: any, next: any): { changed: string[]; unstable: string[] } {
     const pp = prev.memoizedProps;
     const np = next.memoizedProps;
-    if (pp === np) return [];
-    if (!pp || !np || typeof pp !== 'object' || typeof np !== 'object') return ['(props)'];
-    const keys: string[] = [];
+    const out = { changed: [] as string[], unstable: [] as string[] };
+    if (pp === np) return out;
+    if (!pp || !np || typeof pp !== 'object' || typeof np !== 'object') {
+      out.changed.push('(props)');
+      return out;
+    }
     const seen: Record<string, true> = {};
     for (const k in np) {
       seen[k] = true;
-      if (!Object.is(pp[k], np[k])) keys.push(k);
+      const c = classify(pp[k], np[k]);
+      if (c === 1) out.unstable.push(k);
+      else if (c === 2) out.changed.push(k);
     }
-    for (const k in pp) if (!seen[k]) keys.push(k);
-    return keys;
+    for (const k in pp) if (!seen[k]) out.changed.push(k);
+    return out;
   }
 
   function recordMount(fiber: any): void {
@@ -179,16 +236,26 @@ export function installCrispyHook(): void {
     e.renders++;
     e.updates++;
     addDuration(e, next);
-    const keys = changedPropKeys(prev, next);
-    const s = stateChanged(prev, next);
-    const c = contextChanged(prev, next);
-    if (keys.length) {
-      e.causes.props++;
-      for (const k of keys) e.changedProps[k] = (e.changedProps[k] || 0) + 1;
+    const p = propChanges(prev, next);
+    const s = stateChange(prev, next);
+    const c = contextChange(prev, next);
+    for (const k of p.changed) e.changedProps[k] = (e.changedProps[k] || 0) + 1;
+    for (const k of p.unstable) {
+      e.changedProps[k] = (e.changedProps[k] || 0) + 1;
+      e.unstableProps[k] = (e.unstableProps[k] || 0) + 1;
     }
-    if (s) e.causes.state++;
-    if (c) e.causes.context++;
-    if (!keys.length && !s && !c) {
+    if (p.changed.length) e.causes.props++;
+    if (s === 2) e.causes.state++;
+    if (c === 2) e.causes.context++;
+    const real = p.changed.length > 0 || s === 2 || c === 2;
+    const identityOnly = p.unstable.length > 0 || s === 1 || c === 1;
+    if (real) return;
+    // Nothing really changed: avoidable. Either inputs were recreated with equal
+    // contents (unstable references) or nothing changed at all (parent re-render).
+    e.avoidableRenders++;
+    if (identityOnly) {
+      e.causes.unstable++;
+    } else {
       e.causes.parent++;
       e.wastedRenders++;
     }
