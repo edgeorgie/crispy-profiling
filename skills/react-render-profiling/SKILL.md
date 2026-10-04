@@ -21,6 +21,7 @@ Prefer the MCP tools when they are available (server `crispy-profiling`):
 | --- | --- |
 | `profile_url` | Profile one URL (+ optional steps). Pass `outFile` to keep the JSON. |
 | `run_scenarios` | Run the scenarios of a `crispy.config.json` (with budgets). |
+| `test_render_snapshots` | Check counts against the committed `crispy.snap.json` (snapshot tests for re-renders). |
 | `compare_reports` | Diff a baseline report against a new one. |
 | `inspect_component` | Full causes + changed prop keys for one component. |
 
@@ -71,6 +72,14 @@ Rules:
   or large `avoidableRenders`; leave cheap leaf components alone.
 - A component missing from a phase did not render in it (0 renders).
 - Production builds minify names; profile the development build.
+
+## Render snapshots (prevent regressions)
+
+If the project has a `crispy.snap.json`, run `test_render_snapshots` (or `npx crispy test`) after any
+change to React components. A failure lists the regressed component, the unstable prop, where it is
+rendered and a suggested fix — apply it and run again. Only pass `update: true` (`crispy test -u`)
+when the user confirms the new counts are intended. If there is no snapshot yet, `crispy test`
+creates one: tell the user to commit it.
 
 ## Budgets (prevent regressions)
 
