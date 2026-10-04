@@ -8,6 +8,7 @@ import { profile } from '../profiler/run.js';
 import { serializeReport } from '../report/aggregate.js';
 import { compareReports } from '../report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../report/markdown.js';
+import { runSnapshotTest } from '../snapshot-test.js';
 import type { CrispyReport } from '../types.js';
 import { VERSION } from '../version.js';
 
@@ -87,6 +88,38 @@ export function createServer(): McpServer {
         const config = await loadConfig(configPath);
         const report = await profile(config, { only: scenarios });
         return text(reportToMarkdown(report, top) + (await saveReport(report, outFile)));
+      } catch (err) {
+        return fail(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'test_render_snapshots',
+    {
+      title: 'Check render counts against the committed snapshot',
+      description:
+        'Runs the crispy.config.json scenarios and compares render counts with the committed ' +
+        'snapshot (crispy.snap.json), like snapshot tests for re-renders. Regressions include the ' +
+        'unstable prop, where the component is rendered and a suggested fix. Use update=true only ' +
+        'when the user accepts the new counts.',
+      inputSchema: {
+        configPath: z.string().default('crispy.config.json'),
+        update: z.boolean().default(false),
+        scenarios: z.array(z.string()).optional(),
+      },
+    },
+    async ({ configPath, update, scenarios }) => {
+      try {
+        const config = await loadConfig(configPath);
+        const outcome = await runSnapshotTest(config, {
+          update,
+          only: scenarios,
+          baseDir: dirname(resolve(configPath)),
+        });
+        return text(
+          `${outcome.markdown}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
+        );
       } catch (err) {
         return fail(err);
       }

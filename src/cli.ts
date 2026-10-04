@@ -10,6 +10,7 @@ import { profile } from './profiler/run.js';
 import { serializeReport } from './report/aggregate.js';
 import { compareReports } from './report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from './report/markdown.js';
+import { runSnapshotTest } from './snapshot-test.js';
 import type { CrispyReport } from './types.js';
 import { VERSION } from './version.js';
 
@@ -24,6 +25,12 @@ Usage:
       -s, --scenario <name>    Only run this scenario (repeatable)
           --markdown <file>    Also write a Markdown summary
           --no-fail            Exit 0 even if budgets are exceeded
+  crispy test [options]                     Check render counts against the committed snapshot
+      -c, --config <file>      Config file (default: ${DEFAULT_CONFIG_FILE})
+      -u, --update             Accept current counts as the new snapshot
+          --ci                 Fail if the snapshot is missing (never write it)
+      -s, --scenario <name>    Only run this scenario (repeatable)
+          --markdown <file>    Also write the result as Markdown
   crispy compare <base.json> <head.json> [options]
           --threshold <pct>    Allowed render increase in % (default: 10)
           --min-delta <n>      Minimum absolute increase to count (default: 1)
@@ -104,6 +111,29 @@ async function main(argv: string[]): Promise<number> {
       if (values.markdown) await write(values.markdown, md);
       process.stdout.write(md);
       return report.violations.length > 0 && !values['no-fail'] ? 1 : 0;
+    }
+    case 'test': {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          config: { type: 'string', short: 'c', default: DEFAULT_CONFIG_FILE },
+          update: { type: 'boolean', short: 'u', default: false },
+          ci: { type: 'boolean', default: process.env.CI === 'true' },
+          scenario: { type: 'string', short: 's', multiple: true },
+          markdown: { type: 'string' },
+        },
+      });
+      const config = await loadConfig(values.config);
+      const outcome = await runSnapshotTest(config, {
+        update: values.update,
+        ci: values.ci,
+        only: values.scenario,
+        baseDir: dirname(resolve(values.config)),
+        log,
+      });
+      if (values.markdown) await write(values.markdown, outcome.markdown);
+      process.stdout.write(outcome.markdown);
+      return outcome.exitCode;
     }
     case 'compare': {
       const { values, positionals } = parseArgs({

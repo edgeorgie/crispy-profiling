@@ -14,5 +14,16 @@ export { launchBrowser, profile, type RunOptions, runScenarioOnce } from './prof
 export { buildReport, checkBudgets, serializeReport } from './report/aggregate.js';
 export { compareReports } from './report/compare.js';
 export { compareToMarkdown, reportToMarkdown } from './report/markdown.js';
+export {
+  compareSnapshot,
+  parseSnapshot,
+  type RenderSnapshot,
+  type SnapshotChange,
+  type SnapshotResult,
+  serializeSnapshot,
+  snapshotToMarkdown,
+  toSnapshot,
+} from './report/snapshot.js';
+export { runSnapshotTest, type SnapshotTestOptions } from './snapshot-test.js';
 export type * from './types.js';
 export { VERSION } from './version.js';

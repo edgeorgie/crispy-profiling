@@ -1,6 +1,6 @@
 # 🥓 crispy-profiling
 
-**Deterministic React render profiling for humans, CI and AI agents.**
+**Snapshot testing for React re-renders — deterministic, runtime-proven, with the fix.**
 
 [![CI](https://github.com/edgeorgie/crispy-profilling/actions/workflows/ci.yml/badge.svg)](https://github.com/edgeorgie/crispy-profilling/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/crispy-profiling.svg)](https://www.npmjs.com/package/crispy-profiling)
@@ -51,6 +51,44 @@ Every `Row` re-rendered because `onSelect` got a new identity → `useCallback` 
 `React.memo(Row)` fixes it: `onSelect` is an *unstable* prop (same code, new identity), so all 20
 renders are avoidable. `Header` re-rendered with identical props → wasted.
 
+## Render snapshots (`crispy test`)
+
+Like Jest snapshots, but for re-renders. Commit the expected render counts of your key flows; every
+PR — written by a person or an AI agent — is checked against them at runtime.
+
+```bash
+npx crispy test        # 1st run: writes crispy.snap.json → commit it
+npx crispy test        # later: fails if any component renders more (or more avoidably)
+npx crispy test -u     # accept intended changes / lock in improvements
+npx crispy test --ci   # in CI: a missing snapshot fails instead of being written (default when CI=true)
+```
+
+When something regresses you get the component, the cause, where it is rendered and the fix:
+
+```text
+| 🔴 regressed | list / interaction | Row | renders | — → 20 | `onSelect` recreated on every render with the
+  same content (rendered at src/App.tsx:42): stabilize with useCallback/useMemo or hoist it, and wrap the
+  child in React.memo (or enable React Compiler). |
+```
+
+`crispy.snap.json` has one line per component, so the PR diff shows exactly which counts changed:
+
+```json
+"interaction": {
+  "commits": 1,
+  "renders": 4,
+  "avoidable": 3,
+  "components": {
+    "App": { "renders": 1, "avoidable": 0 },
+    "Header": { "renders": 1, "avoidable": 1 }
+  }
+}
+```
+
+Rules: any increase in renders or avoidable renders fails (`snapshot.tolerance` allows slack);
+decreases pass and suggest `-u`; new components that only mount are recorded automatically; budgets
+still apply.
+
 ## Configuration
 
 `crispy.config.json` ([JSON Schema](schema/crispy.config.schema.json)):
@@ -89,6 +127,7 @@ renders are avoidable. `Header` re-rendered with identical props → wasted.
 | `topComponents` | `0` | Keep only the N most-rendered components per phase (`0` = all). |
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
+| `snapshot` | `crispy.snap.json`, `0` | `file` (relative to the config file) and `tolerance` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
 **Steps:** `click`, `hover`, `fill`, `type`, `press`, `scroll`, `waitFor`, `wait`, `goto`, `phase`.
@@ -125,6 +164,7 @@ Profile the **development** build: production builds minify component names.
 crispy init [--base-url <url>]          Create crispy.config.json
 crispy install [--with-deps]            Download the Chromium build crispy uses
 crispy run [-c file] [-o file] [-s scenario...] [--markdown file] [--no-fail]
+crispy test [-c file] [-u|--update] [--ci] [-s scenario...] [--markdown file]
 crispy compare <base.json> <head.json> [--threshold 10] [--min-delta 1] [--markdown file] [--json file] [--no-fail]
 crispy mcp                              Start the MCP server on stdio
 ```
@@ -135,7 +175,7 @@ Exit codes: `0` ok · `1` budget violation or regression · `2` usage/runtime er
 
 ### MCP server
 
-Tools: `profile_url`, `run_scenarios`, `compare_reports`, `inspect_component`.
+Tools: `profile_url`, `run_scenarios`, `test_render_snapshots`, `compare_reports`, `inspect_component`.
 
 ```json
 {

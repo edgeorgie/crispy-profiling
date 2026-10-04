@@ -96,6 +96,15 @@ export const ConfigSchema = z.object({
       headless: z.boolean().default(true),
     })
     .default({ headless: true }),
+  /** Render snapshots used by `crispy test`. */
+  snapshot: z
+    .object({
+      /** File with the expected render counts, committed to the repository. */
+      file: z.string().default('crispy.snap.json'),
+      /** Allowed increase (absolute) before a component counts as regressed. */
+      tolerance: z.number().int().min(0).default(0),
+    })
+    .default({ file: 'crispy.snap.json', tolerance: 0 }),
   scenarios: z.array(ScenarioSchema).min(1),
 });
 export type CrispyConfig = z.infer<typeof ConfigSchema>;
