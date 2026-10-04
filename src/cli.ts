@@ -28,7 +28,7 @@ Usage:
   crispy test [options]                     Check render counts against the committed snapshot
       -c, --config <file>      Config file (default: ${DEFAULT_CONFIG_FILE})
       -u, --update             Accept current counts as the new snapshot
-          --ci                 Fail if the snapshot is missing (never write it)
+          --ci / --no-ci       Fail if the snapshot is missing (default: on in CI)
       -s, --scenario <name>    Only run this scenario (repeatable)
           --markdown <file>    Also write the result as Markdown
   crispy compare <base.json> <head.json> [options]
@@ -43,6 +43,22 @@ Usage:
 Exit codes: 0 ok · 1 budget violation / regression · 2 usage or runtime error`;
 
 const log = (msg: string) => process.stderr.write(`${msg}\n`);
+
+/** Detects CI providers: generic `CI` (true/1) plus common provider variables. */
+function isCI(env = process.env): boolean {
+  const ci = env.CI?.toLowerCase();
+  if (ci === 'true' || ci === '1') return true;
+  return [
+    'GITHUB_ACTIONS',
+    'GITLAB_CI',
+    'BUILDKITE',
+    'CIRCLECI',
+    'TF_BUILD',
+    'JENKINS_URL',
+    'TEAMCITY_VERSION',
+    'BITBUCKET_BUILD_NUMBER',
+  ].some((k) => Boolean(env[k]));
+}
 
 async function write(path: string, content: string): Promise<void> {
   const abs = resolve(path);
@@ -118,7 +134,8 @@ async function main(argv: string[]): Promise<number> {
         options: {
           config: { type: 'string', short: 'c', default: DEFAULT_CONFIG_FILE },
           update: { type: 'boolean', short: 'u', default: false },
-          ci: { type: 'boolean', default: process.env.CI === 'true' },
+          ci: { type: 'boolean' },
+          'no-ci': { type: 'boolean' },
           scenario: { type: 'string', short: 's', multiple: true },
           markdown: { type: 'string' },
         },
@@ -126,7 +143,7 @@ async function main(argv: string[]): Promise<number> {
       const config = await loadConfig(values.config);
       const outcome = await runSnapshotTest(config, {
         update: values.update,
-        ci: values.ci,
+        ci: values['no-ci'] ? false : (values.ci ?? isCI()),
         only: values.scenario,
         baseDir: dirname(resolve(values.config)),
         log,
