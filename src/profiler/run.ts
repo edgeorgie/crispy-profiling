@@ -90,7 +90,9 @@ const readActivity = (page: Page) =>
 
 function warnNotSettled(ctx: SettleContext, label: string, names: string[]): void {
   const busy = names.length ? ` Last commit rendered: ${names.slice(0, 5).join(', ')}.` : '';
-  const hint = '';
+  const hint = ctx.config.clock
+    ? ''
+    : ' If the app polls or animates, set "clock": true to control timers.';
   ctx.warnings.push(
     `${label}: page did not settle within ${ctx.config.maxSettleMs} ms (React kept committing or requests stayed in flight); counts may vary.${busy}${hint}`,
   );
@@ -118,7 +120,33 @@ async function settleRealTime(ctx: SettleContext, label: string): Promise<void> 
   warnNotSettled(ctx, label, last.names);
 }
 
-const settle = settleRealTime;
+/**
+ * Fake-clock settle: advance virtual time in `settleMs` slices; done when a
+ * slice produces no commits and no requests are in flight. Timer-driven work
+ * (polling, animations) becomes deterministic because time only moves here.
+ */
+async function settleWithClock(ctx: SettleContext, label: string): Promise<void> {
+  const { page, network, config } = ctx;
+  const maxSlices = Math.ceil(config.maxSettleMs / config.settleMs);
+  const realDeadline = Date.now() + config.timeoutMs;
+  let last = await readActivity(page);
+  for (let i = 0; i < maxSlices; i++) {
+    await page.clock.runFor(config.settleMs);
+    // React's scheduler and network responses run in real time: let them drain.
+    while (network.pending(config.maxSettleMs) > 0 && Date.now() < realDeadline) {
+      await page.waitForTimeout(POLL_MS);
+    }
+    await page.waitForTimeout(POLL_MS);
+    const now = await readActivity(page);
+    const changed = now.commits !== last.commits;
+    last = now;
+    if (!changed && network.pending(config.maxSettleMs) === 0) return;
+  }
+  warnNotSettled(ctx, label, last.names);
+}
+
+const settle = (ctx: SettleContext, label: string) =>
+  ctx.config.clock ? settleWithClock(ctx, label) : settleRealTime(ctx, label);
 
 async function setPhase(page: Page, name: string): Promise<void> {
   await page.evaluate((n) => {
@@ -176,15 +204,18 @@ export async function runScenarioOnce(
     const page = await context.newPage();
     const warnings: string[] = [];
     const ctx: SettleContext = { page, network: new NetworkTracker(page), config, warnings };
+    // A fixed start time keeps Date-dependent output identical between runs.
+    if (config.clock) await page.clock.install({ time: '2026-01-01T00:00:00Z' });
     await page.addInitScript({ content: crispyHookSource() });
     const url = new URL(scenario.path, config.baseUrl).toString();
     await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
-    // Polled from Node so detection works regardless of the page's timers.
+    // Polled from Node: in-page rAF/timer polling would stall under a fake clock.
     const detectDeadline = Date.now() + config.timeoutMs;
     while (!(await page.evaluate(() => (window as any).__CRISPY__?.reactDetected === true))) {
       if (Date.now() > detectDeadline) {
         throw new Error(`React was not detected on ${url}. Is it a React (>=16) app?`);
       }
+      if (config.clock) await page.clock.runFor(POLL_MS);
       await page.waitForTimeout(POLL_MS);
     }
     await settle(ctx, 'load');
