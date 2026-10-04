@@ -5,6 +5,21 @@ import { shortPath } from '../util/paths.js';
 
 export type FetchText = (url: string) => Promise<string | null>;
 
+/** Scripts that are library code: node_modules, Vite's prebundled deps, Next's dist chunks. */
+export const isLibraryScript = (url: string) =>
+  /node_modules[/_]|\.vite\/deps\/|_next_dist_|(^|\/)next\/dist\//.test(url);
+
+const nodeModulesPath = (p: string) => {
+  const i = p.lastIndexOf('node_modules/');
+  return i >= 0 ? p.slice(i) : null;
+};
+
+/** Short path of a generated script, anchored at node_modules when it lives there. */
+const shortPathOf = (url: string) => {
+  const short = shortPath(url).replace(/^(\.\/)+/, '');
+  return nodeModulesPath(short) ?? short;
+};
+
 const MAP_COMMENT = /\/\/[#@] sourceMappingURL=([^\s'"]+)\s*$/gm;
 
 /** Nearest directory containing `.git` (monorepos), else the start directory. */
@@ -66,14 +81,41 @@ export class SourceMapResolver {
     return json ? parseMap(json, mapUrl) : null;
   }
 
-  /** Turns a resolved source URL into a short project-relative path. */
-  private display(source: string): string {
+  /**
+   * Turns a resolved source URL into a short, portable path: project-relative
+   * for app files, `node_modules/...` for library code. Never a path that only
+   * exists on this machine, so snapshots are identical everywhere.
+   * `generated` is the script the code ran from: when it is library code
+   * (node_modules, Next's `_next_dist_` chunks) and the mapped source is not a
+   * project file, the source belongs to that library — e.g. Next's own maps
+   * point at `webpack://next/src/...` or at its build machine's directories.
+   */
+  private display(source: string, generated?: string): string {
+    return this.place(source, generated).file;
+  }
+
+  /** `generatedFile`: the source was unusable and the generated script is reported instead. */
+  private place(source: string, generated?: string): { file: string; generatedFile?: true } {
+    const file = this.placeFile(source, generated);
+    return file === null
+      ? { file: shortPathOf(generated as string), generatedFile: true }
+      : { file };
+  }
+
+  private placeFile(source: string, generated?: string): string | null {
     const path = shortPath(source).replace(/^(\.\/)+/, '');
+    const lib = nodeModulesPath(path);
+    if (lib) return lib;
     // Sources that resolve to absolute file-system paths: make them project-relative.
     const abs = path.startsWith('/') ? path : `/${path}`;
     if (abs.startsWith(`${this.root}/`)) return relative(this.root, abs);
-    // A real file outside the project (e.g. a monorepo sibling): keep it absolute.
-    if (existsSync(abs)) return abs;
+    if (generated && isLibraryScript(generated)) {
+      const pkg = source.match(/^webpack:\/\/([^/_.][^/]*)\/(?:\.\/)?(.*)$/);
+      if (pkg) return `node_modules/${pkg[1]}/${pkg[2]}`;
+      return null;
+    }
+    // A real file outside the project (e.g. a sibling package): relative to the root.
+    if (existsSync(abs)) return relative(this.root, abs);
     return path;
   }
 
@@ -87,7 +129,8 @@ export class SourceMapResolver {
     if (!map) return null;
     const pos = originalPositionFor(map, { line, column: Math.max(0, column - 1) });
     if (!pos.source || pos.line == null) return null;
-    return { file: this.display(pos.source), line: pos.line };
+    const placed = this.place(pos.source, url);
+    return { file: placed.file, line: placed.generatedFile ? line : pos.line };
   }
 
   /**
