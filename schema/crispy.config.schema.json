@@ -307,6 +307,11 @@
                   "minimum": 0,
                   "maximum": 9007199254740991
                 },
+                "maxAvoidableRenders": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
                 "components": {
                   "type": "object",
                   "propertyNames": {
@@ -321,6 +326,11 @@
                         "maximum": 9007199254740991
                       },
                       "maxWastedRenders": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxAvoidableRenders": {
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 9007199254740991
