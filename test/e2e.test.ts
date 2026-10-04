@@ -236,3 +236,19 @@ describe('component identity', () => {
     ]);
   });
 });
+
+describe('resilience', () => {
+  it('turns hook failures into a warning instead of failing the run (C-19)', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'boom', path: '/?boom', steps: [{ action: 'click', selector: '#inc' }] }],
+    });
+    const report = await profile(config);
+    expect(report.scenarios.boom?.warnings.join(' ')).toMatch(
+      /could not analyze \d+ component render/,
+    );
+    expect(report.scenarios.boom?.phases.interaction?.components.App?.renders.median).toBe(1);
+  });
+});
