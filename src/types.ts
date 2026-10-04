@@ -28,6 +28,8 @@ export interface RawComponentStats {
   unstableProps: Record<string, number>;
   /** Number of updates attributed to each cause. A render can have several causes. */
   causes: Causes;
+  /** Up to 3 places (file:line) where the component is rendered, when known. */
+  locations: string[];
   /** Sum of selfBaseDuration in ms (only available in development/profiling builds). */
   selfDurationMs: number;
 }
@@ -66,6 +68,8 @@ export interface ComponentReport {
   changedProps: Record<string, number>;
   /** Prop keys that changed identity only (fix with useCallback/useMemo/hoisting). */
   unstableProps: Record<string, number>;
+  /** Where the component is rendered (owner JSX call sites, file:line), when known. */
+  locations: string[];
   stable: boolean;
 }
 

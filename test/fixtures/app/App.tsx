@@ -47,6 +47,17 @@ function Ticker() {
   return <span id="ticker">{n}</span>;
 }
 
+// Two different components that share the display name "Item".
+const ItemA = function Item() {
+  return <span>a</span>;
+};
+const ItemB = function Item() {
+  return <span>b</span>;
+};
+// Bundlers rename duplicate function names (Item2); displayName restores the clash.
+ItemA.displayName = 'Item';
+ItemB.displayName = 'Item';
+
 function App() {
   const [data, setData] = useState('none');
   const [count, setCount] = useState(0);
@@ -78,6 +89,12 @@ function App() {
         fetch
       </button>
       {location.search.includes('ticker') && <Ticker />}
+      {location.search.includes('dupes') && (
+        <>
+          <ItemA />
+          <ItemB />
+        </>
+      )}
       <button id="load" type="button" onClick={() => setTimeout(() => setStatus('loaded'), 120)}>
         load
       </button>
