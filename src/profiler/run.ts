@@ -6,6 +6,7 @@ import { buildReport } from '../report/aggregate.js';
 import type { CrispyReport, RawRun } from '../types.js';
 import { resolveDefinitions, trackScripts } from './definitions.js';
 import { crispyHookSource } from './hook.js';
+import { SourceMapResolver } from './sourcemaps.js';
 
 export interface RunOptions {
   /** Only run the scenarios with these names. */
@@ -227,6 +228,20 @@ async function runStep(
   }
 }
 
+/** Maps every raw "url:line:col (Owner)" location to original "file:line (Owner)". */
+async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Promise<void> {
+  for (const phase of Object.values(raw.phases)) {
+    for (const c of Object.values(phase.components)) {
+      const next: Record<string, number> = {};
+      for (const [loc, n] of Object.entries(c.locations ?? {})) {
+        const mapped = await sourceMaps.rewriteLocation(loc);
+        next[mapped] = (next[mapped] ?? 0) + n;
+      }
+      c.locations = next;
+    }
+  }
+}
+
 export async function runScenarioOnce(
   browser: Browser,
   config: CrispyConfig,
@@ -265,7 +280,15 @@ export async function runScenarioOnce(
       if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
     }
 
-    const definitions = await resolveDefinitions(page, cdp, scripts);
+    const sourceMaps = new SourceMapResolver(async (u) => {
+      try {
+        const res = await context.request.get(u, { timeout: config.timeoutMs });
+        return res.ok() ? await res.text() : null;
+      } catch {
+        return null;
+      }
+    });
+    const definitions = await resolveDefinitions(page, cdp, scripts, sourceMaps);
     const raw = await page.evaluate(() => {
       const s = (window as any).__CRISPY__;
       return JSON.parse(
@@ -285,6 +308,7 @@ export async function runScenarioOnce(
     }
     delete raw.hookErrors;
     raw.definitions = definitions;
+    await rewriteLocations(raw as RawRun, sourceMaps);
     return { ...raw, warnings } as RawRun;
   } finally {
     await context.close();

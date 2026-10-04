@@ -1,5 +1,6 @@
 import type { CDPSession, Page } from 'playwright-core';
 import { shortPath } from '../util/paths.js';
+import type { SourceMapResolver } from './sourcemaps.js';
 
 /**
  * Tracks script URLs by CDP script id, so a function's [[FunctionLocation]] can
@@ -23,6 +24,7 @@ export async function resolveDefinitions(
   page: Page,
   cdp: CDPSession,
   scripts: Map<string, string>,
+  sourceMaps?: SourceMapResolver,
 ): Promise<Record<string, string>> {
   const keys = await page.evaluate(() => Object.keys((window as any).__CRISPY__?.typeRefs ?? {}));
   const out: Record<string, string> = {};
@@ -39,9 +41,18 @@ export async function resolveDefinitions(
         ownProperties: true,
       });
       const location = props.internalProperties?.find((p) => p.name === '[[FunctionLocation]]')
-        ?.value?.value as { scriptId: string } | undefined;
+        ?.value?.value as
+        | { scriptId: string; lineNumber: number; columnNumber: number }
+        | undefined;
       const url = location ? scripts.get(location.scriptId) : undefined;
-      if (url) out[key] = shortPath(url);
+      if (!url || !location) continue;
+      // Original source file when a source map is available (bundles, transforms).
+      const mapped = await sourceMaps?.resolve(
+        url,
+        location.lineNumber + 1,
+        location.columnNumber + 1,
+      );
+      out[key] = mapped?.file ?? shortPath(url);
     }
   } finally {
     await cdp.send('Runtime.releaseObjectGroup', { objectGroup }).catch(() => {});
