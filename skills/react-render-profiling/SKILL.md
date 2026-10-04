@@ -51,13 +51,15 @@ Chromium is required once: `npx playwright install chromium`.
 
 ## Reading the numbers
 
-Each component has `renders`, `avoidableRenders`, `wastedRenders`, `causes`
-(`props`/`state`/`context`/`unstable`/`parent`), `unstableProps` (keys recreated with equal contents)
+Each component has `renders`, `avoidableRenders`, `callbackRenders`, `wastedRenders`, `causes`
+(`props`/`state`/`context`/`unstable`/`callback`/`parent`), `unstableProps` (keys recreated with equal data),
+`callbackProps` (recreated functions)
 and `changedProps` (prop keys whose identity changed, with counts).
 
 | Signal | Likely cause | Fix |
 | --- | --- | --- |
-| cause `unstable`, `unstableProps` lists a key | Prop recreated each render with the same content (inline callback/object) | `useCallback`/`useMemo` in the owner, hoist constants, or enable React Compiler |
+| cause `unstable`, `unstableProps` lists a key | Object/array/element recreated each render with equal data | `useMemo` in the owner or hoist the constant; `React.memo` the child |
+| cause `callback`, `callbackProps` lists a key | Inline function recreated each render (same code) | If the values it uses did not change: `useCallback` **with those values as deps** + `React.memo` the child. If they did change, the render is necessary — never use empty deps to silence it |
 | `wastedRenders` > 0, cause `parent` | Parent re-rendered, props identical | Wrap in `React.memo`, or move state down so the parent does not re-render |
 | `changedProps` lists a function (`onClick`, `onSelect`...) | Inline callback recreated every render | `useCallback` in the parent (and `React.memo` on the child) |
 | `changedProps` lists an object/array (`style`, `options`, `items`) | Literal recreated every render | `useMemo` or hoist the constant outside the component |

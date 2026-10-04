@@ -122,30 +122,69 @@ export function installCrispyHook(): void {
 
   const JSX_FRAME = /\b(jsxs?|jsxDEV|createElement)\b/;
 
-  /** Strips origin and query so locations are portable across hosts and reloads. */
+  /** Strips origin, bundler prefixes and query so locations are portable. */
   function shortPath(url: string): string {
-    return url.replace(/^[a-z]+:\/\/[^/]+\//i, '').replace(/[?#][^:]*$/, '');
+    return url
+      .replace(/^webpack-internal:\/\/\/(\([^)]*\)\/)?(\.\/)?/, '')
+      .replace(/^[a-z]+:\/\/[^/]*\//i, '')
+      .replace(/[?#][^:]*$/, '');
   }
 
+  /** Parses "at Name (url:line:col)" or "at url:line:col"; urls may contain parentheses. */
+  function parseFrame(line: string): { fn: string | null; file: string; line: string } | null {
+    const t = line.trim();
+    if (t.indexOf('at ') !== 0) return null;
+    let rest = t.slice(3);
+    let fn: string | null = null;
+    const open = rest.indexOf(' (');
+    if (rest.endsWith(')') && open > 0) {
+      fn = rest.slice(0, open);
+      rest = rest.slice(open + 2, -1);
+    }
+    const m = rest.match(/^(.*):(\d+):(\d+)$/);
+    return m ? { fn, file: m[1] as string, line: m[2] as string } : null;
+  }
+
+  function ownerName(fiber: any): string | null {
+    const o = fiber._debugOwner;
+    if (!o) return null;
+    if (o.type !== undefined) return nameOf(o);
+    return typeof o.name === 'string' ? o.name : null;
+  }
+
+  // Formatting a stack is the expensive part: cache per stack object.
+  const locationCache = new WeakMap<object, string | null>();
+
   /**
-   * Where this element was created: the owner's JSX call site as
-   * "file:line (Owner)". Uses `_debugSource` (React <= 18 with the JSX dev
-   * transform) or the frame right after the JSX call in `_debugStack` (React 19
-   * owner stacks). Lines refer to the code the browser runs, which may differ
-   * slightly from the original source.
+   * Where this element was created: "file:line (Owner)". Uses `_debugSource`
+   * (React <= 18 with the JSX dev transform) or the frame right after the JSX
+   * call in `_debugStack` (React 19 owner stacks); the owner comes from
+   * `_debugOwner`. Lines refer to the code the browser runs.
    */
   function locationOf(fiber: any): string | null {
+    const owner = ownerName(fiber);
+    const suffix = owner ? ` (${owner})` : '';
     const src = fiber._debugSource;
-    if (src?.fileName) return `${shortPath(String(src.fileName))}:${src.lineNumber}`;
-    const stack = fiber._debugStack?.stack;
-    if (typeof stack !== 'string') return null;
-    const lines = stack.split('\n');
-    for (let i = 1; i < lines.length - 1; i++) {
-      if (!JSX_FRAME.test(lines[i] as string)) continue;
-      const m = (lines[i + 1] as string).match(/at (?:([^\s(]+) \()?([^\s()]+):(\d+):\d+\)?\s*$/);
-      if (m) return `${shortPath(m[2] as string)}:${m[3]}${m[1] ? ` (${m[1]})` : ''}`;
+    if (src?.fileName) return `${shortPath(String(src.fileName))}:${src.lineNumber}${suffix}`;
+    const dbg = fiber._debugStack;
+    if (!dbg || typeof dbg !== 'object') return null;
+    if (locationCache.has(dbg)) return locationCache.get(dbg) as string | null;
+    let found: string | null = null;
+    const stack = dbg.stack;
+    if (typeof stack === 'string') {
+      const lines = stack.split('\n');
+      for (let i = 1; i < lines.length - 1; i++) {
+        if (!JSX_FRAME.test(lines[i] as string)) continue;
+        const f = parseFrame(lines[i + 1] as string);
+        if (f) {
+          const who = owner ?? f.fn;
+          found = `${shortPath(f.file)}:${f.line}${who ? ` (${who})` : ''}`;
+        }
+        break;
+      }
     }
-    return null;
+    locationCache.set(dbg, found);
+    return found;
   }
 
   function entry(fiber: any): any {
@@ -162,15 +201,17 @@ export function installCrispyHook(): void {
         avoidableRenders: 0,
         changedProps: {},
         unstableProps: {},
-        locations: [],
-        causes: { props: 0, state: 0, context: 0, unstable: 0, parent: 0 },
+        callbackProps: {},
+        callbackRenders: 0,
+        locations: {},
+        causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
         selfDurationMs: 0,
       };
       comps[name] = e;
     }
-    if (e.locations.length < 3) {
-      const loc = locationOf(fiber);
-      if (loc && e.locations.indexOf(loc) === -1) e.locations.push(loc);
+    const loc = locationOf(fiber);
+    if (loc && (e.locations[loc] || Object.keys(e.locations).length < 10)) {
+      e.locations[loc] = (e.locations[loc] || 0) + 1;
     }
     return e;
   }
@@ -186,44 +227,73 @@ export function installCrispyHook(): void {
     return v !== null && typeof v === 'object' && 'create' in v && 'tag' in v && 'deps' in v;
   }
 
-  /**
-   * True when two values differ only by identity: functions with the same source
-   * (a recreated inline callback), or arrays / plain objects / React elements with
-   * structurally equal contents. Bounded depth and size keep it cheap.
-   */
-  function sameShape(a: any, b: any, depth: number): boolean {
-    if (Object.is(a, b)) return true;
-    if (depth <= 0 || a === null || b === null) return false;
+  // How two values differ, from least to most significant:
+  // 0 = same, 1 = new identity but equal data (certainly avoidable),
+  // 2 = new function with the same code (avoidable only if the values it captures
+  //     did not change, which cannot be observed), 3 = really changed.
+  type Change = 0 | 1 | 2 | 3;
+  const SHAPE_DEPTH = 3;
+  const MAX_ITEMS = 1000;
+
+  function shape(a: any, b: any, depth: number): Change {
+    if (Object.is(a, b)) return 0;
+    if (a === null || b === null) return 3;
     const ta = typeof a;
-    if (ta !== typeof b) return false;
-    if (ta === 'function') return a.toString() === b.toString();
-    if (ta !== 'object') return false;
-    if (a.$$typeof || b.$$typeof) {
-      return (
-        a.$$typeof === b.$$typeof &&
-        a.type === b.type &&
-        a.key === b.key &&
-        sameShape(a.props, b.props, depth - 1)
-      );
+    if (ta !== typeof b) return 3;
+    if (ta === 'function') {
+      const sa = a.toString();
+      // Bound and native functions all stringify the same way: treat as real changes.
+      if (sa.indexOf('[native code]') !== -1) return 3;
+      return sa === b.toString() ? 2 : 3;
     }
-    if (Array.isArray(a)) {
-      if (!Array.isArray(b) || a.length !== b.length || a.length > 50) return false;
-      for (let i = 0; i < a.length; i++) if (!sameShape(a[i], b[i], depth - 1)) return false;
-      return true;
+    if (ta !== 'object' || depth <= 0) return 3;
+    let worst: Change = 1;
+    const merge = (c: Change) => {
+      if (c > worst) worst = c;
+      return worst === 3;
+    };
+    if (a.$$typeof || b.$$typeof) {
+      if (a.$$typeof !== b.$$typeof || a.type !== b.type || a.key !== b.key) return 3;
+      merge(shape(a.props, b.props, depth - 1));
+      return worst;
     }
     const pa = Object.getPrototypeOf(a);
-    if ((pa !== Object.prototype && pa !== null) || Object.getPrototypeOf(b) !== pa) return false;
+    if (pa !== Object.getPrototypeOf(b)) return 3;
+    if (a instanceof Date) return a.getTime() === b.getTime() ? 1 : 3;
+    if (Array.isArray(a)) {
+      if (a.length !== b.length || a.length > MAX_ITEMS) return 3;
+      for (let i = 0; i < a.length; i++) if (merge(shape(a[i], b[i], depth - 1))) return 3;
+      return worst;
+    }
+    if (a instanceof Map || a instanceof Set) {
+      if (a.size !== b.size || a.size > MAX_ITEMS) return 3;
+      const ea = Array.from(a.entries());
+      const eb = Array.from(b.entries());
+      for (let i = 0; i < ea.length; i++) if (merge(shape(ea[i], eb[i], depth))) return 3;
+      return worst;
+    }
+    // Plain objects and class instances with the same prototype: compare own keys.
     const ka = Object.keys(a);
-    if (ka.length !== Object.keys(b).length || ka.length > 50) return false;
-    for (const k of ka) if (!(k in b) || !sameShape(a[k], b[k], depth - 1)) return false;
-    return true;
+    if (ka.length !== Object.keys(b).length || ka.length > MAX_ITEMS) return 3;
+    for (const k of ka) {
+      if (!(k in b)) return 3;
+      if (merge(shape(a[k], b[k], depth - 1))) return 3;
+    }
+    return worst;
   }
 
-  const SHAPE_DEPTH = 3;
-  // 0 = unchanged, 1 = changed by identity only (avoidable), 2 = really changed
-  type Change = 0 | 1 | 2;
-  const classify = (a: any, b: any): Change =>
-    Object.is(a, b) ? 0 : sameShape(a, b, SHAPE_DEPTH) ? 1 : 2;
+  const classify = (a: any, b: any): Change => shape(a, b, SHAPE_DEPTH);
+
+  /** useMemo/useCallback store [value, deps] with no update queue: derived, not state. */
+  function isMemoHook(hook: any): boolean {
+    const ms = hook.memoizedState;
+    return (
+      hook.queue == null &&
+      Array.isArray(ms) &&
+      ms.length === 2 &&
+      (ms[1] === null || Array.isArray(ms[1]))
+    );
+  }
 
   function stateChange(prev: any, next: any): Change {
     if (next.tag === 1) return classify(prev.memoizedState, next.memoizedState);
@@ -238,15 +308,15 @@ export function installCrispyHook(): void {
     while (a && b) {
       const av = a.memoizedState;
       const bv = b.memoizedState;
-      if (!(isEffect(av) && isEffect(bv))) {
+      if (!(isEffect(av) && isEffect(bv)) && !isMemoHook(b)) {
         const c = classify(av, bv);
         if (c > worst) worst = c;
-        if (worst === 2) return 2;
+        if (worst === 3) return 3;
       }
       a = a.next;
       b = b.next;
     }
-    return a !== b ? 2 : worst;
+    return a !== b ? 3 : worst;
   }
 
   function contextChange(prev: any, next: any): Change {
@@ -256,18 +326,21 @@ export function installCrispyHook(): void {
     while (a && b) {
       const c = classify(a.memoizedValue, b.memoizedValue);
       if (c > worst) worst = c;
-      if (worst === 2) return 2;
+      if (worst === 3) return 3;
       a = a.next;
       b = b.next;
     }
     return worst;
   }
 
-  /** Changed prop keys, split into real changes and identity-only changes. */
-  function propChanges(prev: any, next: any): { changed: string[]; unstable: string[] } {
+  /** Changed prop keys, split by how they changed. */
+  function propChanges(
+    prev: any,
+    next: any,
+  ): { changed: string[]; unstable: string[]; callbacks: string[] } {
     const pp = prev.memoizedProps;
     const np = next.memoizedProps;
-    const out = { changed: [] as string[], unstable: [] as string[] };
+    const out = { changed: [] as string[], unstable: [] as string[], callbacks: [] as string[] };
     if (pp === np) return out;
     if (!pp || !np || typeof pp !== 'object' || typeof np !== 'object') {
       out.changed.push('(props)');
@@ -278,7 +351,8 @@ export function installCrispyHook(): void {
       seen[k] = true;
       const c = classify(pp[k], np[k]);
       if (c === 1) out.unstable.push(k);
-      else if (c === 2) out.changed.push(k);
+      else if (c === 2) out.callbacks.push(k);
+      else if (c === 3) out.changed.push(k);
     }
     for (const k in pp) if (!seen[k]) out.changed.push(k);
     return out;
@@ -300,25 +374,30 @@ export function installCrispyHook(): void {
     const p = propChanges(prev, next);
     const s = stateChange(prev, next);
     const c = contextChange(prev, next);
-    for (const k of p.changed) e.changedProps[k] = (e.changedProps[k] || 0) + 1;
-    for (const k of p.unstable) {
-      e.changedProps[k] = (e.changedProps[k] || 0) + 1;
-      e.unstableProps[k] = (e.unstableProps[k] || 0) + 1;
-    }
+    const bump = (map: any, keys: string[]) => {
+      for (const k of keys) map[k] = (map[k] || 0) + 1;
+    };
+    bump(e.changedProps, p.changed);
+    bump(e.changedProps, p.unstable);
+    bump(e.changedProps, p.callbacks);
+    bump(e.unstableProps, p.unstable);
+    bump(e.callbackProps, p.callbacks);
     if (p.changed.length) e.causes.props++;
-    if (s === 2) e.causes.state++;
-    if (c === 2) e.causes.context++;
-    const real = p.changed.length > 0 || s === 2 || c === 2;
-    const identityOnly = p.unstable.length > 0 || s === 1 || c === 1;
-    if (real) return;
-    // Nothing really changed: avoidable. Either inputs were recreated with equal
-    // contents (unstable references) or nothing changed at all (parent re-render).
-    e.avoidableRenders++;
-    if (identityOnly) {
+    if (s === 3) e.causes.state++;
+    if (c === 3) e.causes.context++;
+    if (p.changed.length > 0 || s === 3 || c === 3) return;
+    // Nothing really changed. Recreated callbacks are reported separately: they
+    // are avoidable only if the values they capture did not change.
+    if (p.callbacks.length > 0 || s === 2 || c === 2) {
+      e.causes.callback++;
+      e.callbackRenders++;
+    } else if (p.unstable.length > 0 || s === 1 || c === 1) {
       e.causes.unstable++;
+      e.avoidableRenders++;
     } else {
       e.causes.parent++;
       e.wastedRenders++;
+      e.avoidableRenders++;
     }
   }
 

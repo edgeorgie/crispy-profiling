@@ -18,15 +18,15 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
     lines.push(`### Scenario \`${s.name}\` (\`${s.path}\`, ${s.runs} runs)`, '');
     for (const [phase, p] of Object.entries(s.phases)) {
       lines.push(
-        `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted)`,
+        `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted), ${p.totalCallbackRenders.median} from recreated callbacks`,
         '',
-        '| Component | Renders | Avoidable | Causes (props/state/context/unstable/parent) | Unstable props | Changed props | Rendered at |',
-        '| --- | ---: | ---: | --- | --- | --- | --- |',
+        '| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Unstable props | Callback props | Rendered at |',
+        '| --- | ---: | ---: | ---: | --- | --- | --- | --- |',
       );
       for (const [name, c] of Object.entries(p.components).slice(0, top)) {
         const flaky = c.stable ? '' : ' ⚠️';
         lines.push(
-          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.parent} | ${topKeys(c.unstableProps)} | ${topKeys(c.changedProps)} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} |`,
+          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.callbackRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.callback}/${c.causes.parent} | ${topKeys(c.unstableProps)} | ${topKeys(c.callbackProps)} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} |`,
         );
       }
       lines.push('');

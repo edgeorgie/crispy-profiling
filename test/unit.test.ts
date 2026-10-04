@@ -14,9 +14,11 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     updates: s(updates),
     wastedRenders: s(wasted),
     avoidableRenders: s(wasted),
-    causes: { props: 0, state: 0, context: 0, unstable: 0, parent: wasted },
+    causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: wasted },
     changedProps: {},
     unstableProps: {},
+    callbackProps: {},
+    callbackRenders: s(0),
     locations: [],
     stable: true,
   };
@@ -30,6 +32,7 @@ function phase(components: Record<string, ComponentReport>): PhaseReport {
     totalRenders: s(total),
     totalWastedRenders: s(wasted),
     totalAvoidableRenders: s(wasted),
+    totalCallbackRenders: s(0),
     components,
   };
 }
@@ -187,8 +190,10 @@ describe('budget validation (C-17)', () => {
       avoidableRenders: 0,
       changedProps: {},
       unstableProps: {},
-      locations: [],
-      causes: { props: 0, state: renders, context: 0, unstable: 0, parent: 0 },
+      callbackProps: {},
+      callbackRenders: 0,
+      locations: {},
+      causes: { props: 0, state: renders, context: 0, unstable: 0, callback: 0, parent: 0 },
       selfDurationMs: 0,
     });
     const run: RawRun = {

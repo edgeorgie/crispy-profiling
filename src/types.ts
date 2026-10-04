@@ -1,12 +1,15 @@
 /**
  * Why updates happened. `props`/`state`/`context` = that input really changed;
- * `unstable` = only identities changed (equal contents); `parent` = nothing changed.
+ * `unstable` = only data identities changed (equal contents); `callback` = only
+ * functions were recreated with the same code (avoidable unless the values they
+ * capture changed); `parent` = nothing changed.
  */
 export interface Causes {
   props: number;
   state: number;
   context: number;
   unstable: number;
+  callback: number;
   parent: number;
 }
 
@@ -24,12 +27,16 @@ export interface RawComponentStats {
   avoidableRenders: number;
   /** Prop keys whose identity changed between renders, with how often. */
   changedProps: Record<string, number>;
-  /** Prop keys that changed identity but not content (e.g. inline callbacks), with how often. */
+  /** Prop keys recreated with equal data (objects, arrays, elements, dates…), with how often. */
   unstableProps: Record<string, number>;
+  /** Prop keys that were new functions with the same code, with how often. */
+  callbackProps: Record<string, number>;
+  /** Updates caused only by recreated callbacks (avoidable if their captured values didn't change). */
+  callbackRenders: number;
   /** Number of updates attributed to each cause. A render can have several causes. */
   causes: Causes;
-  /** Up to 3 places (file:line) where the component is rendered, when known. */
-  locations: string[];
+  /** Where the component is rendered ("file:line (Owner)") with how often. */
+  locations: Record<string, number>;
   /** Sum of selfBaseDuration in ms (only available in development/profiling builds). */
   selfDurationMs: number;
 }
@@ -66,9 +73,13 @@ export interface ComponentReport {
   causes: Causes;
   /** Top changed prop keys (median across runs), sorted by count desc then name. */
   changedProps: Record<string, number>;
-  /** Prop keys that changed identity only (fix with useCallback/useMemo/hoisting). */
+  /** Prop keys recreated with equal data (fix with useMemo / hoisting). */
   unstableProps: Record<string, number>;
-  /** Where the component is rendered (owner JSX call sites, file:line), when known. */
+  /** Prop keys that were recreated callbacks (fix with useCallback and correct deps). */
+  callbackProps: Record<string, number>;
+  /** Updates caused only by recreated callbacks. */
+  callbackRenders: Stat;
+  /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */
   locations: string[];
   stable: boolean;
 }
@@ -78,6 +89,7 @@ export interface PhaseReport {
   totalRenders: Stat;
   totalWastedRenders: Stat;
   totalAvoidableRenders: Stat;
+  totalCallbackRenders: Stat;
   components: Record<string, ComponentReport>;
 }
 

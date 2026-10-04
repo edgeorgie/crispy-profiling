@@ -36,20 +36,25 @@ npx crispy run                                       # writes .crispy/report.jso
 ```text
 ### Scenario `list` (`/`, 3 runs)
 
-**Phase `interaction`** — 1 commits, 24 renders, 23 avoidable (3 wasted)
+**Phase `interaction`** — 1 commits, 24 renders, 3 avoidable (2 wasted), 20 from recreated callbacks
 
-| Component   | Renders | Avoidable | Causes (props/state/context/unstable/parent) | Unstable props |
-| ----------- | ------: | --------: | -------------------------------------------- | -------------- |
-| Row         |      20 |        20 | 0/0/0/20/0                                   | `onSelect`×20  |
-| Header      |       1 |         1 | 0/0/0/0/1                                    | —              |
-| Status      |       1 |         1 | 0/0/0/0/1                                    | —              |
-| ThemedLabel |       1 |         1 | 0/0/0/0/1                                    | —              |
-| App         |       1 |         0 | 0/1/0/0/0                                    | —              |
+| Component   | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Unstable props | Callback props | Rendered at         |
+| ----------- | ------: | --------: | -------: | ----------------------------------------------------- | -------------- | -------------- | ------------------- |
+| Row         |      20 |         0 |       20 | 0/0/0/0/20/0                                          | —              | `onSelect`×20  | `src/App.tsx:42 (App)` |
+| Header      |       1 |         1 |        0 | 0/0/0/0/0/1                                           | —              | —              | `src/App.tsx:30 (App)` |
+| Status      |       1 |         1 |        0 | 0/0/0/1/0/0                                           | `style`×1      | —              | `src/App.tsx:36 (App)` |
+| ThemedLabel |       1 |         1 |        0 | 0/0/0/0/0/1                                           | —              | —              | `src/App.tsx:31 (App)` |
+| App         |       1 |         0 |        0 | 0/1/0/0/0/0                                           | —              | —              | —                   |
 ```
 
-Every `Row` re-rendered because `onSelect` got a new identity → `useCallback` in the parent plus
-`React.memo(Row)` fixes it: `onSelect` is an *unstable* prop (same code, new identity), so all 20
-renders are avoidable. `Header` re-rendered with identical props → wasted.
+_"Rendered at" lines refer to the code the browser runs (dev-server transformed); mapping back
+through source maps is planned._
+
+Every `Row` re-rendered because `onSelect` is a new function with the same code on each `App`
+render. If the values it uses did not change, `useCallback` (with those values as dependencies) plus
+`React.memo(Row)` removes all 20 renders — crispy reports these as *callback* renders because it
+cannot see what a closure captures. `Status` got an inline `style` object with equal data
+(certainly avoidable) and `Header` re-rendered with identical props (wasted).
 
 ## Render snapshots (`crispy test`)
 
@@ -149,12 +154,15 @@ even when `topComponents` trims the report.
 | Field | Meaning |
 | --- | --- |
 | `renders` | Times the component function/class rendered (mounts + updates). |
-| `avoidableRenders` | Updates where nothing really changed: wasted renders plus renders caused only by recreated-but-equal inputs. The number to drive down. |
+| `avoidableRenders` | Updates where nothing really changed: wasted renders plus renders caused only by recreated-but-equal data (objects, arrays, elements, dates, maps…). Certainly avoidable. |
+| `callbackRenders` | Updates caused only by functions recreated with the same code (inline callbacks). Avoidable if the values they capture did not change — crispy cannot see captures, so they are reported apart. |
 | `wastedRenders` | Updates where props (shallow), state and consumed context were all unchanged. |
 | `causes.props / state / context` | Updates where that input changed (one update can have several causes). |
-| `causes.unstable` | Only identities changed: inline callbacks, object/array literals, context values or hook results recreated with equal contents. |
+| `causes.unstable` | Only data identities changed: object/array literals, dates, maps, context values or hook results recreated with equal contents. |
+| `causes.callback` | Only functions were recreated with the same code (bound/native functions count as real changes). |
 | `causes.parent` | Updates with no changed input: the parent re-rendered (same as wasted). |
-| `unstableProps` | Prop keys that changed identity but not content — usually fixed with `useCallback`/`useMemo`, hoisting, or React Compiler. |
+| `unstableProps` | Prop keys recreated with equal data — fix with `useMemo` or by hoisting constants. |
+| `callbackProps` | Prop keys that were recreated callbacks — fix with `useCallback` and the right dependencies, or React Compiler. |
 | `changedProps` | Prop keys whose identity changed, with counts — the "why" behind `causes.props`. |
 | `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site). Lines refer to the code the browser runs. |
 | `Item#2` keys | Distinct components that share a display name get numbered keys in first-seen order. |

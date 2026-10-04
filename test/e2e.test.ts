@@ -73,21 +73,27 @@ describe('profiling a real React app in Chromium', () => {
     expect(p?.components.Row?.changedProps).toEqual({ onSelect: 20 });
   });
 
-  it('counts identity-only prop changes as avoidable renders (C-05)', () => {
+  it('separates recreated data (avoidable) from recreated callbacks (C-05, R2-03)', () => {
     const p = slow.scenarios.list?.phases.interaction;
-    // Inline `onSelect` is recreated with the same source on every App render.
-    expect(p?.components.Row?.avoidableRenders.median).toBe(20);
-    expect(p?.components.Row?.unstableProps).toEqual({ onSelect: 20 });
+    // Inline `onSelect` is a new function with the same code on every App render:
+    // avoidable only if what it captures did not change, so it is reported apart.
+    expect(p?.components.Row?.callbackRenders.median).toBe(20);
+    expect(p?.components.Row?.avoidableRenders.median).toBe(0);
+    expect(p?.components.Row?.callbackProps).toEqual({ onSelect: 20 });
     expect(p?.components.Row?.causes).toEqual({
       props: 0,
       state: 0,
       context: 0,
-      unstable: 20,
+      unstable: 0,
+      callback: 20,
       parent: 0,
     });
-    // 20 Rows + Header + ThemedLabel + Status; the optimized variant keeps the last three.
-    expect(p?.totalAvoidableRenders.median).toBe(23);
-    expect(fast.scenarios.list?.phases.interaction?.totalAvoidableRenders.median).toBe(3);
+    // Inline `style={{...}}` with equal data is certainly avoidable.
+    expect(p?.components.Status?.unstableProps).toEqual({ style: 1 });
+    expect(p?.components.Status?.causes.unstable).toBe(1);
+    // Header + ThemedLabel (parent) + Status (unstable data).
+    expect(p?.totalAvoidableRenders.median).toBe(3);
+    expect(fast.scenarios.list?.phases.interaction?.totalCallbackRenders.median).toBe(0);
   });
 
   it('detects context-driven renders', () => {
@@ -99,7 +105,7 @@ describe('profiling a real React app in Chromium', () => {
   it('waits for async renders after a step', () => {
     const p = slow.scenarios.list?.phases.async;
     expect(p?.commits.median).toBe(1);
-    expect(p?.components.Status?.changedProps).toEqual({ text: 1 });
+    expect(p?.components.Status?.changedProps).toEqual({ style: 1, text: 1 });
   });
 
   it('shows the optimized app skipping Row renders', () => {
@@ -229,8 +235,10 @@ describe('component identity', () => {
     const load = (await profile(config)).scenarios.dupes?.phases.load;
     expect(load?.components.Item?.renders.median).toBe(1);
     expect(load?.components['Item#2']?.renders.median).toBe(1);
-    // Rows are created inside an anonymous map callback; Header directly in App.
-    expect(load?.components.Row?.locations).toEqual([expect.stringMatching(/^bundle\.js:\d+$/)]);
+    // The owner comes from _debugOwner, so Rows created in a .map callback still name App.
+    expect(load?.components.Row?.locations).toEqual([
+      expect.stringMatching(/^bundle\.js:\d+ \(App\)$/),
+    ]);
     expect(load?.components.Header?.locations).toEqual([
       expect.stringMatching(/^bundle\.js:\d+ \(App\)$/),
     ]);
@@ -282,7 +290,7 @@ describe('render snapshots (crispy test)', () => {
         phase: 'interaction',
         component: 'Row',
         actual: 20,
-        hint: expect.stringMatching(/`onSelect` recreated.*useCallback/),
+        hint: expect.stringMatching(/`onSelect` is a new function.*useCallback.*necessary/),
       }),
     ]);
 
@@ -343,5 +351,26 @@ describe('iframes', () => {
     const phases = (await profile(config)).scenarios.frame?.phases;
     expect(Object.keys(phases ?? {})).toEqual(['load', 'after-nav', 'interaction']);
     expect(phases?.interaction?.components.App?.renders.median).toBe(1);
+  });
+});
+
+describe('change classification', () => {
+  it('classifies dates, large arrays, bound functions and memo hooks correctly (R2-04/15/16)', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        { name: 'c', path: '/?classify', steps: [{ action: 'click', selector: '#inc' }] },
+      ],
+    });
+    const c = (await profile(config)).scenarios.c?.phases.interaction?.components;
+    // Equal Date and 60-item array recreated each render: identity-only, avoidable.
+    expect(c?.DateProbe?.causes.unstable).toBe(1);
+    expect(c?.ListProbe?.causes.unstable).toBe(1);
+    // Bound functions all stringify the same way: a real change, never "callback".
+    expect(c?.BoundProbe?.causes).toMatchObject({ props: 1, callback: 0 });
+    // useMemo recomputation is derived from props, not a state change.
+    expect(c?.Derived?.causes).toMatchObject({ props: 1, state: 0 });
   });
 });

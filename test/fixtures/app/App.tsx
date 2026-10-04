@@ -5,6 +5,7 @@ import {
   useContext,
   useDeferredValue,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -42,9 +43,14 @@ function RowImpl({
 const Row = __FAST__ ? memo(RowImpl) : RowImpl;
 (RowImpl as { displayName?: string }).displayName = 'Row';
 
-function Status({ text }: { text: string }) {
-  return <p id="status">{text}</p>;
+function Status({ text, style }: { text: string; style: { color: string } }) {
+  return (
+    <p id="status" style={style}>
+      {text}
+    </p>
+  );
 }
+const STATUS_STYLE = { color: 'gray' };
 
 function Ticker() {
   const [n, setN] = useState(0);
@@ -107,6 +113,24 @@ function Deferred() {
   );
 }
 
+// Classification probes (rendered with ?classify).
+function DateProbe(_: { when: Date }) {
+  return null;
+}
+function ListProbe(_: { list: number[] }) {
+  return null;
+}
+function BoundProbe(_: { onPick: () => number }) {
+  return null;
+}
+function pick(n: number) {
+  return n;
+}
+function Derived({ n }: { n: number }) {
+  const doubled = useMemo(() => n * 2, [n]);
+  return <i>{doubled}</i>;
+}
+
 function App() {
   const [data, setData] = useState('none');
   const [count, setCount] = useState(0);
@@ -124,7 +148,7 @@ function App() {
       <button id="inc" type="button" onClick={() => setCount((c) => c + 1)}>
         count {count}
       </button>
-      <Status text={status} />
+      <Status text={status} style={__FAST__ ? STATUS_STYLE : { color: 'gray' }} />
       <p id="data">{data}</p>
       <button
         id="fetch"
@@ -140,6 +164,14 @@ function App() {
       {location.search.includes('ticker') && <Ticker />}
       {location.search.includes('boom') && <Boom fn={unreadableFn()} />}
       {location.search.includes('deferred') && <Deferred />}
+      {location.search.includes('classify') && (
+        <>
+          <DateProbe when={new Date(0)} />
+          <ListProbe list={Array.from({ length: 60 }, (_, i) => i)} />
+          <BoundProbe onPick={pick.bind(null, count)} />
+          <Derived n={count} />
+        </>
+      )}
       {location.search.includes('iframe') && <iframe src="/?child" title="child" />}
       {location.search.includes('dupes') && (
         <>
