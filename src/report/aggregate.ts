@@ -9,7 +9,7 @@ import type {
   ScenarioReport,
   Stat,
 } from '../types.js';
-import { cmp } from '../util/cmp.js';
+import { cmp, cmpNatural } from '../util/cmp.js';
 import { VERSION } from '../version.js';
 
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -48,7 +48,7 @@ function medianCounts(
   const entries = [...keys]
     .map((k) => [k, medianOf(samples.map((s) => (s && get(s)?.[k]) ?? 0))] as const)
     .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]));
+    .sort((a, b) => b[1] - a[1] || cmpNatural(a[0], b[0]));
   return Object.fromEntries(entries);
 }
 

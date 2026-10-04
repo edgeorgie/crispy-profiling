@@ -4,6 +4,7 @@ import { buildReport, checkBudgets, stat } from '../src/report/aggregate.js';
 import { compareReports } from '../src/report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../src/report/markdown.js';
 import type { ComponentReport, CrispyReport, PhaseReport, RawRun } from '../src/types.js';
+import { cmpNatural } from '../src/util/cmp.js';
 
 const s = (n: number) => ({ median: n, min: n, max: n });
 
@@ -299,5 +300,23 @@ describe('source maps', async () => {
     expect(await resolver.rewriteLocation('http://localhost:5173/@fs/abs/ui/Fancy.tsx:3:5')).toBe(
       '/abs/ui/Fancy.tsx:3',
     );
+  });
+});
+
+describe('cmpNatural (R3-21)', () => {
+  it('sorts line numbers numerically and deterministically', () => {
+    const sites = [
+      'src/App.tsx:10 (App)',
+      'src/App.tsx:9 (App)',
+      'src/App.tsx:100 (App)',
+      'src/A.tsx:2',
+    ];
+    expect([...sites].sort(cmpNatural)).toEqual([
+      'src/A.tsx:2',
+      'src/App.tsx:9 (App)',
+      'src/App.tsx:10 (App)',
+      'src/App.tsx:100 (App)',
+    ]);
+    expect(cmpNatural('a01', 'a1')).not.toBe(0);
   });
 });
