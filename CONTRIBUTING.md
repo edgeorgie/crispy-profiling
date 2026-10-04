@@ -46,7 +46,7 @@ We use [GitFlow](https://nvie.com/posts/a-successful-git-branching-model/):
 2. Make **atomic commits** using [Conventional Commits](https://www.conventionalcommits.org/)
    (`feat(cli): add --json flag`, `fix(report): sort phases deterministically`, …).
 3. Run `npm run check`, push and open a PR against `develop`. Fill in the template.
-4. PRs are merged with a merge commit to keep history readable.
+4. Keep one concern per PR (a milestone can group related commits); PRs are squash-merged.
 
 ## Releasing (maintainers)
 

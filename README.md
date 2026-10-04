@@ -221,14 +221,16 @@ to a fix (`React.memo`, `useCallback`, `useMemo`, context splitting, state coloc
 ## CI (GitHub Action)
 
 ```yaml
-- uses: edgeorgie/crispy-profiling@v0
+- run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
+- uses: edgeorgie/crispy-profiling@v0   # runs `crispy test --ci` against crispy.snap.json
   with:
     config: crispy.config.json
-    baseline: .crispy/base.json   # optional: report from the base branch
 ```
 
-The job summary gets the Markdown report; the step fails on budget violations or regressions. A full
-base-vs-PR workflow is in [`examples/github-workflow.yml`](examples/github-workflow.yml).
+The step fails when any component renders more than the committed snapshot allows (or a budget is
+exceeded), and the job summary lists each regression with its cause, where it is rendered and the
+suggested fix. `command: run` (with an optional `baseline` report) is available for budget-only or
+baseline-comparison setups. Full workflow: [`examples/github-workflow.yml`](examples/github-workflow.yml).
 
 ## Programmatic API
 
