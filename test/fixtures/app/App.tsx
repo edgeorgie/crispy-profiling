@@ -140,6 +140,7 @@ function App() {
       {location.search.includes('ticker') && <Ticker />}
       {location.search.includes('boom') && <Boom fn={unreadableFn()} />}
       {location.search.includes('deferred') && <Deferred />}
+      {location.search.includes('iframe') && <iframe src="/?child" title="child" />}
       {location.search.includes('dupes') && (
         <>
           <ItemA />

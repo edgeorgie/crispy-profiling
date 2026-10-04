@@ -39,8 +39,16 @@ export function installCrispyHook(): void {
   // so earlier phases are not lost. Each profiling run uses a new browser context,
   // so nothing leaks between runs.
   const STORAGE_KEY = '__crispy_state__';
+  // Only the top frame owns the profiling state: same-origin iframes share
+  // sessionStorage and would otherwise overwrite it with their own data.
+  let isTop = true;
   try {
-    const saved = sessionStorage.getItem(STORAGE_KEY);
+    isTop = w.top === w;
+  } catch {
+    isTop = false;
+  }
+  try {
+    const saved = isTop ? sessionStorage.getItem(STORAGE_KEY) : null;
     if (saved) {
       const prev = JSON.parse(saved);
       state.phases = prev.phases;
@@ -52,6 +60,7 @@ export function installCrispyHook(): void {
     }
   } catch {}
   w.addEventListener('pagehide', () => {
+    if (!isTop) return;
     try {
       sessionStorage.setItem(
         STORAGE_KEY,
