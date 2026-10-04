@@ -122,30 +122,69 @@ export function installCrispyHook(): void {
 
   const JSX_FRAME = /\b(jsxs?|jsxDEV|createElement)\b/;
 
-  /** Strips origin and query so locations are portable across hosts and reloads. */
+  /** Strips origin, bundler prefixes and query so locations are portable. */
   function shortPath(url: string): string {
-    return url.replace(/^[a-z]+:\/\/[^/]+\//i, '').replace(/[?#][^:]*$/, '');
+    return url
+      .replace(/^webpack-internal:\/\/\/(\([^)]*\)\/)?(\.\/)?/, '')
+      .replace(/^[a-z]+:\/\/[^/]*\//i, '')
+      .replace(/[?#][^:]*$/, '');
   }
 
+  /** Parses "at Name (url:line:col)" or "at url:line:col"; urls may contain parentheses. */
+  function parseFrame(line: string): { fn: string | null; file: string; line: string } | null {
+    const t = line.trim();
+    if (t.indexOf('at ') !== 0) return null;
+    let rest = t.slice(3);
+    let fn: string | null = null;
+    const open = rest.indexOf(' (');
+    if (rest.endsWith(')') && open > 0) {
+      fn = rest.slice(0, open);
+      rest = rest.slice(open + 2, -1);
+    }
+    const m = rest.match(/^(.*):(\d+):(\d+)$/);
+    return m ? { fn, file: m[1] as string, line: m[2] as string } : null;
+  }
+
+  function ownerName(fiber: any): string | null {
+    const o = fiber._debugOwner;
+    if (!o) return null;
+    if (o.type !== undefined) return nameOf(o);
+    return typeof o.name === 'string' ? o.name : null;
+  }
+
+  // Formatting a stack is the expensive part: cache per stack object.
+  const locationCache = new WeakMap<object, string | null>();
+
   /**
-   * Where this element was created: the owner's JSX call site as
-   * "file:line (Owner)". Uses `_debugSource` (React <= 18 with the JSX dev
-   * transform) or the frame right after the JSX call in `_debugStack` (React 19
-   * owner stacks). Lines refer to the code the browser runs, which may differ
-   * slightly from the original source.
+   * Where this element was created: "file:line (Owner)". Uses `_debugSource`
+   * (React <= 18 with the JSX dev transform) or the frame right after the JSX
+   * call in `_debugStack` (React 19 owner stacks); the owner comes from
+   * `_debugOwner`. Lines refer to the code the browser runs.
    */
   function locationOf(fiber: any): string | null {
+    const owner = ownerName(fiber);
+    const suffix = owner ? ` (${owner})` : '';
     const src = fiber._debugSource;
-    if (src?.fileName) return `${shortPath(String(src.fileName))}:${src.lineNumber}`;
-    const stack = fiber._debugStack?.stack;
-    if (typeof stack !== 'string') return null;
-    const lines = stack.split('\n');
-    for (let i = 1; i < lines.length - 1; i++) {
-      if (!JSX_FRAME.test(lines[i] as string)) continue;
-      const m = (lines[i + 1] as string).match(/at (?:([^\s(]+) \()?([^\s()]+):(\d+):\d+\)?\s*$/);
-      if (m) return `${shortPath(m[2] as string)}:${m[3]}${m[1] ? ` (${m[1]})` : ''}`;
+    if (src?.fileName) return `${shortPath(String(src.fileName))}:${src.lineNumber}${suffix}`;
+    const dbg = fiber._debugStack;
+    if (!dbg || typeof dbg !== 'object') return null;
+    if (locationCache.has(dbg)) return locationCache.get(dbg) as string | null;
+    let found: string | null = null;
+    const stack = dbg.stack;
+    if (typeof stack === 'string') {
+      const lines = stack.split('\n');
+      for (let i = 1; i < lines.length - 1; i++) {
+        if (!JSX_FRAME.test(lines[i] as string)) continue;
+        const f = parseFrame(lines[i + 1] as string);
+        if (f) {
+          const who = owner ?? f.fn;
+          found = `${shortPath(f.file)}:${f.line}${who ? ` (${who})` : ''}`;
+        }
+        break;
+      }
     }
-    return null;
+    locationCache.set(dbg, found);
+    return found;
   }
 
   function entry(fiber: any): any {
@@ -164,15 +203,15 @@ export function installCrispyHook(): void {
         unstableProps: {},
         callbackProps: {},
         callbackRenders: 0,
-        locations: [],
+        locations: {},
         causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
         selfDurationMs: 0,
       };
       comps[name] = e;
     }
-    if (e.locations.length < 3) {
-      const loc = locationOf(fiber);
-      if (loc && e.locations.indexOf(loc) === -1) e.locations.push(loc);
+    const loc = locationOf(fiber);
+    if (loc && (e.locations[loc] || Object.keys(e.locations).length < 10)) {
+      e.locations[loc] = (e.locations[loc] || 0) + 1;
     }
     return e;
   }
