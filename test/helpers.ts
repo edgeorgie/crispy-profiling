@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
+import { build, transform } from 'esbuild';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = join(here, 'fixtures', 'app');
@@ -44,6 +44,75 @@ export async function serve(dir: string): Promise<{ url: string; close: () => Pr
     const file = req.url?.startsWith('/bundle.js') ? 'bundle.js' : 'index.html';
     res.setHeader('content-type', file.endsWith('.js') ? 'text/javascript' : 'text/html');
     res.end(readFileSync(join(dir, file)));
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () => new Promise((r) => server.close(() => r())),
+  };
+}
+
+/**
+ * Serves the `modules` fixture as separate ES modules (like a Vite dev server):
+ * one URL per source file, React from a single vendored module via an import map.
+ */
+export async function buildModuleFixture(): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'crispy-modules-'));
+  const src = join(here, 'fixtures', 'modules');
+  await build({
+    stdin: {
+      contents:
+        // CommonJS React has no static ESM exports: re-export what the fixture uses.
+        "import * as React from 'react'; import { createRoot } from 'react-dom/client'; import { jsxDEV, Fragment } from 'react/jsx-dev-runtime'; export const useState = React.useState; export { createRoot, jsxDEV, Fragment };",
+      resolveDir: here,
+      loader: 'js',
+    },
+    bundle: true,
+    format: 'esm',
+    outfile: join(dir, 'vendor.js'),
+    define: { 'process.env.NODE_ENV': '"development"' },
+    logLevel: 'silent',
+  });
+  writeFileSync(join(dir, 'react.js'), "export * from './vendor.js';\n");
+  for (const file of ['main', 'ListItem', 'BannerItem']) {
+    const code = readFileSync(join(src, `${file}.tsx`), 'utf8');
+    const out = await transform(code, {
+      loader: 'tsx',
+      jsx: 'automatic',
+      jsxDev: true,
+      sourcefile: `src/${file}.tsx`,
+    });
+    writeFileSync(join(dir, `${file}.js`), out.code);
+  }
+  const importMap = {
+    imports: {
+      react: '/react.js',
+      'react-dom/client': '/react.js',
+      'react/jsx-dev-runtime': '/react.js',
+    },
+  };
+  writeFileSync(
+    join(dir, 'index.html'),
+    `<!doctype html><html><head><meta charset="utf-8"><script type="importmap">${JSON.stringify(importMap)}</script></head><body><div id="root"></div><script type="module" src="/main.js"></script></body></html>`,
+  );
+  return dir;
+}
+
+/** Static server for the modules fixture: serves /<name>.js and index.html. */
+export async function serveModules(
+  dir: string,
+): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((req, res) => {
+    const name = (req.url ?? '/').split('?')[0]?.replace(/^\//, '') ?? '';
+    const file = name.endsWith('.js') ? name : 'index.html';
+    res.setHeader('content-type', file.endsWith('.js') ? 'text/javascript' : 'text/html');
+    try {
+      res.end(readFileSync(join(dir, file)));
+    } catch {
+      res.statusCode = 404;
+      res.end();
+    }
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const { port } = server.address() as AddressInfo;
