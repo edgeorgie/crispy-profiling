@@ -47,7 +47,7 @@ export function installCrispyHook(): void {
       state.phase = prev.phase;
       state.profilingBuild = prev.profilingBuild;
       state.vitals = prev.vitals;
-      if (prev.error) state.error = prev.error;
+      if (prev.hookErrors) state.hookErrors = prev.hookErrors;
       sessionStorage.removeItem(STORAGE_KEY);
     }
   } catch {}
@@ -60,7 +60,7 @@ export function installCrispyHook(): void {
           phase: state.phase,
           profilingBuild: state.profilingBuild,
           vitals: state.vitals,
-          error: state.error,
+          hookErrors: state.hookErrors,
         }),
       );
     } catch {}
@@ -313,8 +313,19 @@ export function installCrispyHook(): void {
     }
   }
 
+  // Unusual fiber shapes must not lose the whole run: count the failure, keep the
+  // first message, skip that one component and keep walking.
+  function noteError(err: unknown): void {
+    state.hookErrors = state.hookErrors || { count: 0, first: String(err) };
+    state.hookErrors.count++;
+  }
+
   function mountSubtree(fiber: any): void {
-    recordMount(fiber);
+    try {
+      recordMount(fiber);
+    } catch (err) {
+      noteError(err);
+    }
     let child = fiber.child;
     while (child) {
       mountSubtree(child);
@@ -328,7 +339,13 @@ export function installCrispyHook(): void {
   }
 
   function updateSubtree(next: any, prev: any): void {
-    if (COMPONENT_TAGS[next.tag] && didRender(next)) recordUpdate(prev, next);
+    if (COMPONENT_TAGS[next.tag] && didRender(next)) {
+      try {
+        recordUpdate(prev, next);
+      } catch (err) {
+        noteError(err);
+      }
+    }
     if (next.child === prev.child) return; // whole subtree bailed out
     let child = next.child;
     while (child) {
@@ -360,7 +377,7 @@ export function installCrispyHook(): void {
       }
       state.lastCommitNames = Object.keys(currentCommitNames).sort();
     } catch (err) {
-      state.error = String(err);
+      noteError(err);
     }
   }
 
