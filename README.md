@@ -25,6 +25,9 @@ No code changes in your app: it uses the same hook React DevTools uses. Tested o
 
 ## Quick start
 
+> Not on npm yet — until the first release, install from GitHub:
+> `npm i -D github:edgeorgie/crispy-profiling#develop` (it builds on install).
+
 ```bash
 npm i -D crispy-profiling
 npx crispy install                                   # downloads the matching Chromium (once)
