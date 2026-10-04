@@ -410,3 +410,36 @@ describe('stable component identity across modules (R2-05)', () => {
     }
   });
 });
+
+describe('framework internals (R2-24)', () => {
+  it('hides components only library code renders, keeps library components the app renders', async () => {
+    const { buildModuleFixture, serveModules } = await import('./helpers.js');
+    const app = await serveModules(await buildModuleFixture());
+    const run = (includeInternals: boolean) =>
+      profile(
+        parseConfig({
+          baseUrl: app.url,
+          runs: 1,
+          settleMs: 150,
+          includeInternals,
+          scenarios: [
+            { name: 'lib', path: '/?lib', steps: [{ action: 'click', selector: '#lib' }] },
+          ],
+        }),
+      );
+    try {
+      const hidden = await run(false);
+      const comps = hidden.scenarios.lib?.phases.interaction?.components ?? {};
+      expect(Object.keys(comps)).toContain('LibButton');
+      expect(Object.keys(comps)).not.toContain('LibInner');
+      expect(hidden.scenarios.lib?.hiddenInternals).toBe(1);
+
+      const shown = await run(true);
+      expect(Object.keys(shown.scenarios.lib?.phases.interaction?.components ?? {})).toContain(
+        'LibInner',
+      );
+    } finally {
+      await app.close();
+    }
+  });
+});

@@ -85,8 +85,23 @@ export async function buildModuleFixture(): Promise<string> {
     });
     writeFileSync(join(dir, `${file}.js`), out.code);
   }
+  // A fake library served from node_modules: LibButton is rendered by the app,
+  // LibInner only by the library (an "internal").
+  mkdirSync(join(dir, 'node_modules', 'fake-lib'), { recursive: true });
+  writeFileSync(
+    join(dir, 'node_modules', 'fake-lib', 'index.js'),
+    [
+      "import { jsxDEV } from 'react/jsx-dev-runtime';",
+      "function LibInner() { return jsxDEV('span', { children: 'lib' }); }",
+      'export function LibButton({ onClick }) {',
+      "  return jsxDEV('button', { id: 'lib', onClick, children: jsxDEV(LibInner, {}) });",
+      '}',
+      '',
+    ].join('\n'),
+  );
   const importMap = {
     imports: {
+      'fake-lib': '/node_modules/fake-lib/index.js',
       react: '/react.js',
       'react-dom/client': '/react.js',
       'react/jsx-dev-runtime': '/react.js',
