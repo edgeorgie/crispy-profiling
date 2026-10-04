@@ -26,6 +26,10 @@ export function installCrispyHook(): void {
     phase: 'load',
     phases: {},
     lastCommitAt: 0,
+    /** Total commits since the page loaded; polled by the runner to detect activity. */
+    commitCount: 0,
+    /** Component names rendered in the most recent commit (for "never settled" warnings). */
+    lastCommitNames: [],
     vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
   };
   w.__CRISPY__ = state;
@@ -54,9 +58,12 @@ export function installCrispyHook(): void {
     return String(t);
   }
 
+  let currentCommitNames: Record<string, true> = {};
+
   function entry(fiber: any): any {
     const comps = phaseData().components;
     const name = nameOf(fiber);
+    currentCommitNames[name] = true;
     let e = comps[name];
     if (!e) {
       e = {
@@ -185,7 +192,9 @@ export function installCrispyHook(): void {
       const current = root.current;
       const prev = current.alternate;
       phaseData().commits++;
+      state.commitCount++;
       state.lastCommitAt = performance.now();
+      currentCommitNames = {};
       const wasMounted = prev && prev.memoizedState && prev.memoizedState.element != null;
       const isMounted = current.memoizedState && current.memoizedState.element != null;
       if (!isMounted) return;
@@ -198,6 +207,7 @@ export function installCrispyHook(): void {
       } else {
         updateSubtree(current, prev);
       }
+      state.lastCommitNames = Object.keys(currentCommitNames).sort();
     } catch (err) {
       state.error = String(err);
     }

@@ -171,6 +171,7 @@ export function buildReport(
       runs: runs.length,
       phases,
       violations: checkBudgets(scenario.name, phases, scenario.budgets),
+      warnings: [...new Set(runs.flatMap((r) => r.warnings ?? []))].sort(cmp),
     };
     if (config.timings) {
       const lcp = runs.map((r) => r.vitals.lcpMs).filter((v): v is number => v !== null);

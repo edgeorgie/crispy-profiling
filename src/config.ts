@@ -68,6 +68,16 @@ export const ConfigSchema = z.object({
   /** Hard limit for a single navigation / step / settle wait. */
   timeoutMs: z.number().int().min(1_000).max(300_000).default(30_000),
   /**
+   * Max time to wait for a page to settle after a step. Apps that never stop
+   * committing (polling, clocks, animations) produce a warning instead of hanging.
+   */
+  maxSettleMs: z.number().int().min(100).max(120_000).default(10_000),
+  /**
+   * Control timers with a fake clock (setTimeout, setInterval, requestAnimationFrame,
+   * Date, performance). Makes apps with polling/animations deterministic.
+   */
+  clock: z.boolean().default(false),
+  /**
    * Include wall-clock timings (component self time, LCP, CLS, long tasks).
    * Off by default because timings make reports non-reproducible.
    */

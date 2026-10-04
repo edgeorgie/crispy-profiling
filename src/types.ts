@@ -23,6 +23,8 @@ export interface RawRun {
   profilingBuild: boolean;
   phases: Record<string, RawPhase>;
   vitals: { lcpMs: number | null; cls: number; longTasks: number; totalBlockingMs: number };
+  /** Problems that make the numbers less trustworthy (e.g. the page never settled). */
+  warnings: string[];
 }
 
 /** Aggregated (multi-run) statistic. Counts are deterministic, so min === max in a stable app. */
@@ -70,6 +72,8 @@ export interface ScenarioReport {
   /** Only present when `timings: true` (timings are not deterministic). */
   vitals?: { lcpMs: Stat | null; cls: Stat; longTasks: Stat; totalBlockingMs: Stat };
   violations: BudgetViolation[];
+  /** Deduplicated warnings from all runs (e.g. "never settled"). */
+  warnings: string[];
 }
 
 export interface CrispyReport {

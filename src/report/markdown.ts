@@ -32,6 +32,10 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
       lines.push('');
     }
   }
+  const warnings = Object.values(report.scenarios).flatMap((s) =>
+    s.warnings.map((w) => `- \`${s.name}\` ${w}`),
+  );
+  if (warnings.length) lines.push('### ⚠️ Warnings', '', ...warnings, '');
   if (report.violations.length) {
     lines.push('### ❌ Budget violations', '');
     for (const v of report.violations) {

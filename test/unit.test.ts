@@ -31,7 +31,7 @@ function report(phases: Record<string, PhaseReport>): CrispyReport {
     tool: { name: 'crispy-profiling', version: '0.0.0' },
     reactVersion: '19.0.0',
     profilingBuild: true,
-    scenarios: { home: { name: 'home', path: '/', runs: 1, phases, violations: [] } },
+    scenarios: { home: { name: 'home', path: '/', runs: 1, phases, violations: [], warnings: [] } },
     violations: [],
   };
 }
