@@ -183,7 +183,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) (GitFlow: branch from
 `develop`). AI coding agents: start with [AGENTS.md](AGENTS.md); docs index for LLMs:
-[llms.txt](llms.txt). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
+[llms.txt](llms.txt).
 
 ## License
 

@@ -22,4 +22,3 @@ Render counts are deterministic, so two reports of the same scenario only differ
 
 - [AGENTS.md](https://github.com/edgeorgie/crispy-profilling/blob/develop/AGENTS.md): setup, code map, rules, GitFlow and commit conventions
 - [CONTRIBUTING.md](https://github.com/edgeorgie/crispy-profilling/blob/develop/CONTRIBUTING.md)
-- [Roadmap](https://github.com/edgeorgie/crispy-profilling/blob/develop/docs/ROADMAP.md)
