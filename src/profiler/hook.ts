@@ -92,9 +92,56 @@ export function installCrispyHook(): void {
 
   let currentCommitNames: Record<string, true> = {};
 
+  // Distinct component types that share a display name get distinct keys
+  // ("Item", "Item#2", ...) in first-seen order, which is deterministic.
+  const typeKeys = new WeakMap<object, string>();
+  const nameCounts: Record<string, number> = {};
+
+  function keyOf(fiber: any): string {
+    const t = fiber.type;
+    const name = nameOf(fiber);
+    if (!t || (typeof t !== 'object' && typeof t !== 'function')) return name;
+    let key = typeKeys.get(t);
+    if (!key) {
+      const n = (nameCounts[name] || 0) + 1;
+      nameCounts[name] = n;
+      key = n === 1 ? name : `${name}#${n}`;
+      typeKeys.set(t, key);
+    }
+    return key;
+  }
+
+  const JSX_FRAME = /\b(jsxs?|jsxDEV|createElement)\b/;
+
+  /** Strips origin and query so locations are portable across hosts and reloads. */
+  function shortPath(url: string): string {
+    return url.replace(/^[a-z]+:\/\/[^/]+\//i, '').replace(/[?#][^:]*$/, '');
+  }
+
+  /**
+   * Where this element was created: the owner's JSX call site as
+   * "file:line (Owner)". Uses `_debugSource` (React <= 18 with the JSX dev
+   * transform) or the frame right after the JSX call in `_debugStack` (React 19
+   * owner stacks). Lines refer to the code the browser runs, which may differ
+   * slightly from the original source.
+   */
+  function locationOf(fiber: any): string | null {
+    const src = fiber._debugSource;
+    if (src?.fileName) return `${shortPath(String(src.fileName))}:${src.lineNumber}`;
+    const stack = fiber._debugStack?.stack;
+    if (typeof stack !== 'string') return null;
+    const lines = stack.split('\n');
+    for (let i = 1; i < lines.length - 1; i++) {
+      if (!JSX_FRAME.test(lines[i] as string)) continue;
+      const m = (lines[i + 1] as string).match(/at (?:([^\s(]+) \()?([^\s()]+):(\d+):\d+\)?\s*$/);
+      if (m) return `${shortPath(m[2] as string)}:${m[3]}${m[1] ? ` (${m[1]})` : ''}`;
+    }
+    return null;
+  }
+
   function entry(fiber: any): any {
     const comps = phaseData().components;
-    const name = nameOf(fiber);
+    const name = keyOf(fiber);
     currentCommitNames[name] = true;
     let e = comps[name];
     if (!e) {
@@ -106,10 +153,15 @@ export function installCrispyHook(): void {
         avoidableRenders: 0,
         changedProps: {},
         unstableProps: {},
+        locations: [],
         causes: { props: 0, state: 0, context: 0, unstable: 0, parent: 0 },
         selfDurationMs: 0,
       };
       comps[name] = e;
+    }
+    if (e.locations.length < 3) {
+      const loc = locationOf(fiber);
+      if (loc && e.locations.indexOf(loc) === -1) e.locations.push(loc);
     }
     return e;
   }
