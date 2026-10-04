@@ -62,6 +62,15 @@ describe('MCP server', () => {
     expect(textOf(cmp)).toContain('no render regressions');
   });
 
+  it('refuses to update the snapshot without explicit confirmation (R2-23)', async () => {
+    const res = await client.callTool({
+      name: 'test_render_snapshots',
+      arguments: { configPath: join(tmp, 'missing.json'), update: true },
+    });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('confirm="accept-render-changes"');
+  });
+
   it('returns tool errors instead of throwing', async () => {
     const bad = join(tmp, 'bad.json');
     writeFileSync(bad, '{"hello":1}');

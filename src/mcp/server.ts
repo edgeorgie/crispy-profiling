@@ -101,19 +101,32 @@ export function createServer(): McpServer {
       description:
         'Runs the crispy.config.json scenarios and compares render counts with the committed ' +
         'snapshot (crispy.snap.json), like snapshot tests for re-renders. Regressions include the ' +
-        'unstable prop, where the component is rendered and a suggested fix. Use update=true only ' +
-        'when the user accepts the new counts.',
+        'unstable prop, where the component is rendered and a suggested fix. Read-only by default: ' +
+        'it never creates or edits the snapshot. To accept new counts, the USER must approve; then ' +
+        'pass update=true together with confirm="accept-render-changes".',
       inputSchema: {
         configPath: z.string().default('crispy.config.json'),
         update: z.boolean().default(false),
+        confirm: z
+          .string()
+          .optional()
+          .describe(
+            'Must be "accept-render-changes" (after explicit user approval) when update=true',
+          ),
         scenarios: z.array(z.string()).optional(),
       },
     },
-    async ({ configPath, update, scenarios }) => {
+    async ({ configPath, update, confirm, scenarios }) => {
       try {
+        if (update && confirm !== 'accept-render-changes') {
+          throw new Error(
+            'update=true changes the committed snapshot. Ask the user to approve the new counts, then pass confirm="accept-render-changes".',
+          );
+        }
         const config = await loadConfig(configPath);
         const outcome = await runSnapshotTest(config, {
           update,
+          readOnly: true,
           only: scenarios,
           baseDir: dirname(resolve(configPath)),
         });
