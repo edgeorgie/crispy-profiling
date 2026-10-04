@@ -110,6 +110,8 @@ and per component `maxRenders` / `maxAvoidableRenders` / `maxWastedRenders`.
 | `causes.parent` | Updates with no changed input: the parent re-rendered (same as wasted). |
 | `unstableProps` | Prop keys that changed identity but not content — usually fixed with `useCallback`/`useMemo`, hoisting, or React Compiler. |
 | `changedProps` | Prop keys whose identity changed, with counts — the "why" behind `causes.props`. |
+| `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site). Lines refer to the code the browser runs. |
+| `Item#2` keys | Distinct components that share a display name get numbered keys in first-seen order. |
 | `stable` | `false` when counts differ between runs (timers, network, randomness). |
 
 Profile the **development** build: production builds minify component names.
