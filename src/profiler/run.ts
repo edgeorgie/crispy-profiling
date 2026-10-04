@@ -41,24 +41,84 @@ export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
   }
 }
 
+/** Requests that never "finish" by design; they must not block settling. */
+const LONG_LIVED_TYPES = new Set(['websocket', 'eventsource']);
+const POLL_MS = 25;
+
 /**
- * Waits until React has not committed for `settleMs`, counting from whichever
- * is later: the last commit or the moment we started waiting. That guarantees
- * at least `settleMs` after every step, so async renders (fetch, timers) land
- * in the right phase.
+ * Tracks in-flight network requests so a step is only considered settled when
+ * the data it triggered has arrived (and React has rendered it).
  */
-async function settle(page: Page, settleMs: number, timeoutMs: number): Promise<void> {
-  const startedAt = await page.evaluate(() => performance.now());
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const idleFor = await page.evaluate((since) => {
-      const s = (window as any).__CRISPY__;
-      return performance.now() - Math.max(s.lastCommitAt, since);
-    }, startedAt);
-    if (idleFor >= settleMs) return;
-    await page.waitForTimeout(Math.min(settleMs - idleFor + 5, 100));
+class NetworkTracker {
+  private inflight = new Map<object, number>();
+  lastActivity = Date.now();
+
+  constructor(page: Page) {
+    page.on('request', (req) => {
+      if (LONG_LIVED_TYPES.has(req.resourceType())) return;
+      this.inflight.set(req, Date.now());
+      this.lastActivity = Date.now();
+    });
+    const done = (req: object) => {
+      if (this.inflight.delete(req)) this.lastActivity = Date.now();
+    };
+    page.on('requestfinished', done);
+    page.on('requestfailed', done);
+  }
+
+  /** Requests younger than `maxAgeMs` (older ones are treated as long-polling). */
+  pending(maxAgeMs: number): number {
+    const now = Date.now();
+    let n = 0;
+    for (const started of this.inflight.values()) if (now - started < maxAgeMs) n++;
+    return n;
   }
 }
+
+interface SettleContext {
+  page: Page;
+  network: NetworkTracker;
+  config: CrispyConfig;
+  warnings: string[];
+}
+
+const readActivity = (page: Page) =>
+  page.evaluate(() => {
+    const s = (window as any).__CRISPY__;
+    return { commits: s.commitCount as number, names: s.lastCommitNames as string[] };
+  });
+
+function warnNotSettled(ctx: SettleContext, label: string, names: string[]): void {
+  const busy = names.length ? ` Last commit rendered: ${names.slice(0, 5).join(', ')}.` : '';
+  const hint = '';
+  ctx.warnings.push(
+    `${label}: page did not settle within ${ctx.config.maxSettleMs} ms (React kept committing or requests stayed in flight); counts may vary.${busy}${hint}`,
+  );
+}
+
+/**
+ * Real-time settle: done when there were no React commits, no network activity
+ * and no in-flight requests for `settleMs`.
+ */
+async function settleRealTime(ctx: SettleContext, label: string): Promise<void> {
+  const { page, network, config } = ctx;
+  const deadline = Date.now() + config.maxSettleMs;
+  let last = await readActivity(page);
+  let lastChange = Date.now();
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(POLL_MS);
+    const now = await readActivity(page);
+    if (now.commits !== last.commits) lastChange = Date.now();
+    last = now;
+    const quietSince = Math.max(lastChange, network.lastActivity);
+    if (network.pending(config.maxSettleMs) === 0 && Date.now() - quietSince >= config.settleMs) {
+      return;
+    }
+  }
+  warnNotSettled(ctx, label, last.names);
+}
+
+const settle = settleRealTime;
 
 async function setPhase(page: Page, name: string): Promise<void> {
   await page.evaluate((n) => {
@@ -114,25 +174,28 @@ export async function runScenarioOnce(
   const context = await browser.newContext({ viewport: config.viewport });
   try {
     const page = await context.newPage();
+    const warnings: string[] = [];
+    const ctx: SettleContext = { page, network: new NetworkTracker(page), config, warnings };
     await page.addInitScript({ content: crispyHookSource() });
     const url = new URL(scenario.path, config.baseUrl).toString();
     await page.goto(url, { waitUntil: 'load', timeout: config.timeoutMs });
-    try {
-      await page.waitForFunction(() => (window as any).__CRISPY__?.reactDetected === true, null, {
-        timeout: config.timeoutMs,
-      });
-    } catch {
-      throw new Error(`React was not detected on ${url}. Is it a React (>=16) app?`);
+    // Polled from Node so detection works regardless of the page's timers.
+    const detectDeadline = Date.now() + config.timeoutMs;
+    while (!(await page.evaluate(() => (window as any).__CRISPY__?.reactDetected === true))) {
+      if (Date.now() > detectDeadline) {
+        throw new Error(`React was not detected on ${url}. Is it a React (>=16) app?`);
+      }
+      await page.waitForTimeout(POLL_MS);
     }
-    await settle(page, config.settleMs, config.timeoutMs);
+    await settle(ctx, 'load');
 
     const hasExplicitPhase = scenario.steps[0]?.action === 'phase';
     if (scenario.steps.length > 0 && !hasExplicitPhase) {
       await setPhase(page, DEFAULT_PHASE_AFTER_LOAD);
     }
-    for (const step of scenario.steps) {
+    for (const [i, step] of scenario.steps.entries()) {
       await runStep(page, step, config.baseUrl, config.timeoutMs);
-      if (step.action !== 'phase') await settle(page, config.settleMs, config.timeoutMs);
+      if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
     }
 
     const raw = await page.evaluate(() => {
@@ -148,7 +211,7 @@ export async function runScenarioOnce(
       );
     });
     if (raw.error) throw new Error(`crispy hook failed in the page: ${raw.error}`);
-    return raw as RawRun;
+    return { ...raw, warnings } as RawRun;
   } finally {
     await context.close();
   }
