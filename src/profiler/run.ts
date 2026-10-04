@@ -86,7 +86,12 @@ interface SettleContext {
 const readActivity = (page: Page) =>
   page.evaluate(() => {
     const s = (window as any).__CRISPY__;
-    return { commits: s.commitCount as number, names: s.lastCommitNames as string[] };
+    return {
+      commits: s.commitCount as number,
+      names: s.lastCommitNames as string[],
+      // Interrupted concurrent renders (transitions, deferred values) commit later.
+      busy: Boolean(s.hasPendingWork?.()),
+    };
   });
 
 function warnNotSettled(ctx: SettleContext, label: string, names: string[]): void {
@@ -110,7 +115,7 @@ async function settleRealTime(ctx: SettleContext, label: string): Promise<void> 
   while (Date.now() < deadline) {
     await page.waitForTimeout(POLL_MS);
     const now = await readActivity(page);
-    if (now.commits !== last.commits) lastChange = Date.now();
+    if (now.commits !== last.commits || now.busy) lastChange = Date.now();
     last = now;
     const quietSince = Math.max(lastChange, network.lastActivity);
     if (network.pending(config.maxSettleMs) === 0 && Date.now() - quietSince >= config.settleMs) {
@@ -140,7 +145,7 @@ async function settleWithClock(ctx: SettleContext, label: string): Promise<void>
     const now = await readActivity(page);
     const changed = now.commits !== last.commits;
     last = now;
-    if (!changed && network.pending(config.maxSettleMs) === 0) return;
+    if (!changed && !now.busy && network.pending(config.maxSettleMs) === 0) return;
   }
   warnNotSettled(ctx, label, last.names);
 }
@@ -172,6 +177,7 @@ async function runStep(
   baseUrl: string,
   timeoutMs: number,
   clock: boolean,
+  settleKey?: () => Promise<void>,
 ): Promise<void> {
   const opts = { timeout: timeoutMs };
   switch (step.action) {
@@ -181,11 +187,18 @@ async function runStep(
       return page.hover(step.selector, opts);
     case 'fill':
       return page.fill(step.selector, step.value, opts);
-    case 'type':
-      return page.locator(step.selector).pressSequentially(step.value, {
-        delay: step.delayMs ?? 0,
-        timeout: timeoutMs,
-      });
+    case 'type': {
+      // One key at a time, settling after each: concurrent features
+      // (useDeferredValue, transitions) would otherwise skip a CPU-dependent
+      // number of intermediate renders.
+      const input = page.locator(step.selector);
+      for (const ch of step.value) {
+        await input.pressSequentially(ch, { timeout: timeoutMs });
+        if (step.delayMs) await page.waitForTimeout(step.delayMs);
+        if (settleKey) await settleKey();
+      }
+      return;
+    }
     case 'press':
       if (step.selector) return page.press(step.selector, step.key, opts);
       return page.keyboard.press(step.key);
@@ -240,7 +253,9 @@ export async function runScenarioOnce(
       await setPhase(page, DEFAULT_PHASE_AFTER_LOAD);
     }
     for (const [i, step] of scenario.steps.entries()) {
-      await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock);
+      await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
+        settle(ctx, `step ${i + 1} (${step.action})`),
+      );
       if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
     }
 
