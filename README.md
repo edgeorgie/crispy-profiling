@@ -79,7 +79,9 @@ Every `Row` re-rendered because `onSelect` got a new identity → `useCallback` 
 | --- | --- | --- |
 | `baseUrl` | — | Origin of the running app. |
 | `runs` | `3` | Runs per scenario; the report keeps median/min/max and flags unstable counts. |
-| `settleMs` | `300` | A page is "settled" after this long without React commits. |
+| `settleMs` | `300` | A step is "settled" after this long without React commits **and** without in-flight network requests. |
+| `maxSettleMs` | `10000` | Max wait per step. Pages that never settle (polling, animations) produce a warning in the report instead of hanging. |
+| `clock` | `false` | Control timers with a fake clock (`setTimeout`, `setInterval`, `requestAnimationFrame`, `Date`, `performance`) so polling/animated apps give deterministic counts. |
 | `timeoutMs` | `30000` | Max time for navigation, a step or settling. |
 | `timings` | `false` | Add component self time + LCP/CLS/long tasks. Off by default: timings are not reproducible. |
 | `topComponents` | `0` | Keep only the N most-rendered components per phase (`0` = all). |
