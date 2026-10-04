@@ -47,8 +47,9 @@ npx crispy run                                       # writes .crispy/report.jso
 | App         |       1 |         0 |        0 | 0/1/0/0/0/0                                           | —              | —              | —                   |
 ```
 
-_"Rendered at" lines refer to the code the browser runs (dev-server transformed); mapping back
-through source maps is planned._
+_"Rendered at" and `definedIn` are mapped back to your original source files and lines through the
+source maps your dev server or bundler serves (inline or linked); without source maps they refer to
+the code the browser runs._
 
 Every `Row` re-rendered because `onSelect` is a new function with the same code on each `App`
 render. If the values it uses did not change, `useCallback` (with those values as dependencies) plus
@@ -165,7 +166,7 @@ even when `topComponents` trims the report.
 | `unstableProps` | Prop keys recreated with equal data — fix with `useMemo` or by hoisting constants. |
 | `callbackProps` | Prop keys that were recreated callbacks — fix with `useCallback` and the right dependencies, or React Compiler. |
 | `changedProps` | Prop keys whose identity changed, with counts — the "why" behind `causes.props`. |
-| `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site). Lines refer to the code the browser runs. |
+| `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site, most frequent first), resolved through source maps when available. |
 | `Item (src/List.tsx)` keys | Components are identified by name **and the file that defines them** (resolved through the DevTools protocol). Distinct components that share a name are keyed as `Name (file)`, so adding an unrelated `Item` never renames existing ones; snapshots store the file and keep matching. When files cannot tell them apart (single bundle), numbered keys (`Item#2`) are used. |
 | `definedIn` | File where the component function is defined. |
 | `stable` | `false` when counts differ between runs (timers, network, randomness). |
