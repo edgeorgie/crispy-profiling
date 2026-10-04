@@ -252,3 +252,41 @@ describe('resilience', () => {
     expect(report.scenarios.boom?.phases.interaction?.components.App?.renders.median).toBe(1);
   });
 });
+
+describe('render snapshots (crispy test)', () => {
+  it('writes, passes, then catches a regression with a fix hint', async () => {
+    const { mkdtempSync, readFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { runSnapshotTest } = await import('../src/snapshot-test.js');
+    const dir = mkdtempSync(join(tmpdir(), 'crispy-snap-'));
+    const config = (baseUrl: string) =>
+      parseConfig({
+        baseUrl,
+        runs: 1,
+        settleMs: 150,
+        scenarios: [{ name: 'list', steps: [{ action: 'click', selector: '#inc' }] }],
+      });
+
+    const first = await runSnapshotTest(config(fastUrl), { baseDir: dir });
+    expect(first.written).toBe(true);
+    expect(readFileSync(join(dir, 'crispy.snap.json'), 'utf8')).toContain(
+      '"Row": { "renders": 20, "avoidable": 0 }',
+    );
+    expect((await runSnapshotTest(config(fastUrl), { baseDir: dir })).exitCode).toBe(0);
+
+    const regressed = await runSnapshotTest(config(slowUrl), { baseDir: dir, ci: true });
+    expect(regressed.exitCode).toBe(1);
+    expect(regressed.result?.regressions).toEqual([
+      expect.objectContaining({
+        phase: 'interaction',
+        component: 'Row',
+        actual: 20,
+        hint: expect.stringMatching(/`onSelect` recreated.*useCallback/),
+      }),
+    ]);
+
+    await runSnapshotTest(config(slowUrl), { baseDir: dir, update: true });
+    expect((await runSnapshotTest(config(slowUrl), { baseDir: dir, ci: true })).exitCode).toBe(0);
+  });
+});
