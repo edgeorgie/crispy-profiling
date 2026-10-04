@@ -101,6 +101,20 @@ export const ConfigSchema = z.object({
 export type CrispyConfig = z.infer<typeof ConfigSchema>;
 export type CrispyConfigInput = z.input<typeof ConfigSchema>;
 
+/**
+ * Phases a scenario can produce: "load", then "interaction" when steps start
+ * without an explicit phase, then every `phase` step name.
+ */
+export function phasesOf(scenario: Scenario): string[] {
+  const phases = ['load'];
+  if (scenario.steps.length > 0 && scenario.steps[0]?.action !== 'phase')
+    phases.push('interaction');
+  for (const step of scenario.steps) {
+    if (step.action === 'phase' && !phases.includes(step.name)) phases.push(step.name);
+  }
+  return phases;
+}
+
 export function parseConfig(input: unknown): CrispyConfig {
   const result = ConfigSchema.safeParse(input);
   if (!result.success) {
@@ -110,6 +124,15 @@ export function parseConfig(input: unknown): CrispyConfig {
   for (const s of result.data.scenarios) {
     if (names.has(s.name)) throw new Error(`Invalid crispy config: duplicate scenario "${s.name}"`);
     names.add(s.name);
+    const phases = phasesOf(s);
+    for (const phase of Object.keys(s.budgets ?? {})) {
+      if (!phases.includes(phase)) {
+        throw new Error(
+          `Invalid crispy config: scenario "${s.name}" has a budget for unknown phase "${phase}". ` +
+            `Known phases: ${phases.join(', ')}.`,
+        );
+      }
+    }
   }
   return result.data;
 }

@@ -87,7 +87,7 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
   for (const r of runs)
     for (const n of Object.keys(r.phases[phase]?.components ?? {})) names.add(n);
 
-  let entries = [...names]
+  const entries = [...names]
     .map(
       (n) =>
         [
@@ -113,7 +113,6 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
     totalAvoidableRenders: totals((s) => s.avoidableRenders ?? 0),
     components: {},
   };
-  if (config.topComponents > 0) entries = entries.slice(0, config.topComponents);
   report.components = Object.fromEntries(entries);
   return report;
 }
@@ -162,6 +161,22 @@ export function checkBudgets(
   return violations;
 }
 
+/** Component budgets that never matched a rendered component are probably typos. */
+function budgetWarnings(scenario: Scenario, phases: Record<string, PhaseReport>): string[] {
+  const seen = new Set(Object.values(phases).flatMap((p) => Object.keys(p.components)));
+  const out: string[] = [];
+  for (const [phase, b] of Object.entries(scenario.budgets ?? {})) {
+    for (const name of Object.keys(b.components ?? {})) {
+      if (!seen.has(name)) {
+        out.push(
+          `budget for component "${name}" (phase "${phase}") never matched a rendered component; check the name.`,
+        );
+      }
+    }
+  }
+  return out;
+}
+
 export function buildReport(
   results: { scenario: Scenario; runs: RawRun[] }[],
   config: CrispyConfig,
@@ -188,9 +203,19 @@ export function buildReport(
       path: scenario.path,
       runs: runs.length,
       phases,
+      // Budgets are checked on the full component list, before `topComponents` trims it.
       violations: checkBudgets(scenario.name, phases, scenario.budgets),
-      warnings: [...new Set(runs.flatMap((r) => r.warnings ?? []))].sort(cmp),
+      warnings: [
+        ...new Set([...runs.flatMap((r) => r.warnings ?? []), ...budgetWarnings(scenario, phases)]),
+      ].sort(cmp),
     };
+    if (config.topComponents > 0) {
+      for (const p of Object.values(phases)) {
+        p.components = Object.fromEntries(
+          Object.entries(p.components).slice(0, config.topComponents),
+        );
+      }
+    }
     if (config.timings) {
       const lcp = runs.map((r) => r.vitals.lcpMs).filter((v): v is number => v !== null);
       report.vitals = {

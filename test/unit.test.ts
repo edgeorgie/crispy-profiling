@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from '../src/config.js';
-import { checkBudgets, stat } from '../src/report/aggregate.js';
+import { buildReport, checkBudgets, stat } from '../src/report/aggregate.js';
 import { compareReports } from '../src/report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../src/report/markdown.js';
-import type { ComponentReport, CrispyReport, PhaseReport } from '../src/types.js';
+import type { ComponentReport, CrispyReport, PhaseReport, RawRun } from '../src/types.js';
 
 const s = (n: number) => ({ median: n, min: n, max: n });
 
@@ -163,5 +163,56 @@ describe('markdown', () => {
     expect(md).toContain('No budget violations');
     const cmd = compareToMarkdown(compareReports(r, r));
     expect(cmd).toContain('no render regressions');
+  });
+});
+
+describe('budget validation (C-17)', () => {
+  it('rejects budgets for phases the scenario never produces', () => {
+    expect(() =>
+      parseConfig({
+        baseUrl: 'http://x.dev',
+        scenarios: [
+          { name: 'a', steps: [{ action: 'click', selector: 'b' }], budgets: { interactoin: {} } },
+        ],
+      }),
+    ).toThrow(/unknown phase "interactoin". Known phases: load, interaction/);
+  });
+
+  it('checks budgets before topComponents trims the list and flags unknown components', () => {
+    const raw = (renders: number) => ({
+      renders,
+      mounts: 0,
+      updates: renders,
+      wastedRenders: 0,
+      avoidableRenders: 0,
+      changedProps: {},
+      unstableProps: {},
+      locations: [],
+      causes: { props: 0, state: renders, context: 0, unstable: 0, parent: 0 },
+      selfDurationMs: 0,
+    });
+    const run: RawRun = {
+      reactVersion: '19',
+      profilingBuild: true,
+      phases: { load: { commits: 1, components: { Big: raw(9), Small: raw(2) } } },
+      vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
+      warnings: [],
+    };
+    const config = parseConfig({
+      baseUrl: 'http://x.dev',
+      topComponents: 1,
+      scenarios: [
+        {
+          name: 'a',
+          budgets: { load: { components: { Small: { maxRenders: 1 }, Smal: { maxRenders: 1 } } } },
+        },
+      ],
+    });
+    const report = buildReport([{ scenario: config.scenarios[0] as never, runs: [run] }], config);
+    expect(report.violations.map((v) => v.component)).toEqual(['Small']);
+    expect(Object.keys(report.scenarios.a?.phases.load?.components ?? {})).toEqual(['Big']);
+    expect(report.scenarios.a?.warnings).toEqual([
+      'budget for component "Smal" (phase "load") never matched a rendered component; check the name.',
+    ]);
   });
 });

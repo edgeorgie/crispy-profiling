@@ -97,6 +97,9 @@ Renders before the first step are recorded in phase `load`; renders during steps
 
 **Budgets** (per phase): `maxCommits`, `maxTotalRenders`, `maxAvoidableRenders`, `maxWastedRenders`,
 and per component `maxRenders` / `maxAvoidableRenders` / `maxWastedRenders`.
+A budget for a phase the scenario never produces is a config error; a component budget that never
+matches a rendered component produces a warning (likely a typo). Budgets always see every component,
+even when `topComponents` trims the report.
 
 ## What the numbers mean
 
