@@ -170,3 +170,33 @@ describe('settling on real-world async behavior', () => {
     expect(ticker?.renders.median).toBeGreaterThan(0);
   });
 });
+
+describe('navigation', () => {
+  it('keeps earlier phases across full page navigations (C-04)', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'nav',
+          steps: [
+            { action: 'click', selector: '#inc' },
+            { action: 'phase', name: 'after-nav' },
+            { action: 'goto', path: '/' },
+            { action: 'click', selector: '#inc' },
+          ],
+          budgets: { interaction: { components: { App: { maxRenders: 0 } } } },
+        },
+      ],
+    });
+    const report = await profile(config);
+    const phases = report.scenarios.nav?.phases;
+    expect(Object.keys(phases ?? {})).toEqual(['load', 'after-nav', 'interaction']);
+    expect(phases?.interaction?.components.App?.renders.median).toBe(1);
+    // App mounts again after the navigation, then updates on the click.
+    expect(phases?.['after-nav']?.components.App?.mounts.median).toBe(1);
+    expect(phases?.['after-nav']?.components.App?.updates.median).toBe(1);
+    expect(report.violations.map((v) => v.phase)).toEqual(['interaction']);
+  });
+});
