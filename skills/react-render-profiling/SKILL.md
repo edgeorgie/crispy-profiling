@@ -77,8 +77,8 @@ Rules:
 
 If the project has a `crispy.snap.json`, run `test_render_snapshots` (or `npx crispy test`) after any
 change to React components. A failure lists the regressed component, the unstable prop, where it is
-rendered and a suggested fix — apply it and run again. Only pass `update: true` (`crispy test -u`)
-when the user confirms the new counts are intended. If there is no snapshot yet, `crispy test`
+rendered and a suggested fix — apply it and run again. The MCP tool is read-only: only after the user confirms the new counts
+are intended, pass `update: true` with `confirm: "accept-render-changes"` (CLI: `crispy test -u`). If there is no snapshot yet, `crispy test`
 creates one: tell the user to commit it.
 
 ## Budgets (prevent regressions)

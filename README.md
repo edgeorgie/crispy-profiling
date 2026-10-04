@@ -60,7 +60,7 @@ PR — written by a person or an AI agent — is checked against them at runtime
 npx crispy test        # 1st run: writes crispy.snap.json → commit it
 npx crispy test        # later: fails if any component renders more (or more avoidably)
 npx crispy test -u     # accept intended changes / lock in improvements
-npx crispy test --ci   # in CI: a missing snapshot fails instead of being written (default when CI=true)
+npx crispy test --ci   # in CI: a missing snapshot fails instead of being written (auto-detected; --no-ci to opt out)
 ```
 
 When something regresses you get the component, the cause, where it is rendered and the fix:
@@ -86,7 +86,8 @@ When something regresses you get the component, the cause, where it is rendered 
 Rules: any increase in commits, renders or avoidable renders fails (`snapshot.tolerance` allows
 slack), and every metric is checked independently, so an improvement never hides a regression.
 Counts that varied between runs are stored as `[min, max]` ranges and only fail outside them.
-Decreases pass and suggest `-u`; new components that only mount are recorded automatically; the
+Decreases pass and suggest `-u`; new components that only mount pass and are reported (record them
+with `-u`) — `crispy test` never edits the committed file on its own; the
 snapshot always covers every component (even with `topComponents`); budgets still apply.
 
 ## Configuration
