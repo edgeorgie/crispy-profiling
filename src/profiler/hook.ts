@@ -355,7 +355,20 @@ export function installCrispyHook(): void {
     }
   }
 
+  // Roots seen so far, to know whether React still has work it has not committed
+  // (interrupted concurrent renders, transitions, deferred values).
+  const roots = new Set<any>();
+  // Idle, offscreen and deferred lanes may stay pending by design; ignore them.
+  const ACTIVE_LANES = (1 << 27) - 1;
+  state.hasPendingWork = (): boolean => {
+    for (const r of roots) {
+      if ((r.pendingLanes & ACTIVE_LANES) !== 0) return true;
+    }
+    return false;
+  };
+
   function onCommit(root: any): void {
+    roots.add(root);
     try {
       const current = root.current;
       const prev = current.alternate;
@@ -384,6 +397,11 @@ export function installCrispyHook(): void {
   const existing = w.__REACT_DEVTOOLS_GLOBAL_HOOK__;
   if (existing && typeof existing.onCommitFiberRoot === 'function') {
     const original = existing.onCommitFiberRoot;
+    const originalSchedule = existing.onScheduleFiberRoot;
+    existing.onScheduleFiberRoot = function (id: any, root: any, ...rest: any[]) {
+      if (root) roots.add(root);
+      return originalSchedule?.call(this, id, root, ...rest);
+    };
     existing.onCommitFiberRoot = function (id: any, root: any, ...rest: any[]) {
       onCommit(root);
       return original.call(this, id, root, ...rest);
@@ -412,7 +430,9 @@ export function installCrispyHook(): void {
       },
       onCommitFiberUnmount() {},
       onPostCommitFiberRoot() {},
-      onScheduleFiberRoot() {},
+      onScheduleFiberRoot(_id: any, root: any) {
+        if (root) roots.add(root);
+      },
       setStrictMode() {},
       checkDCE() {},
     };
