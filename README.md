@@ -174,6 +174,10 @@ even when `topComponents` trims the report.
 | `triggeredBy` | Components whose own state update started the cascade that re-rendered this one, with counts. Fix the trigger, not every child. |
 | `recreatedContextFrom` | Components that own a context provider whose `value` was recreated with equal content (e.g. `value={{ user, logout }}`) — memoize the value there. |
 | `memo` | `true` when the component is wrapped in `React.memo`, so hints never suggest wrapping it again. |
+| `creators` | `prop|Component`: who created each recreated prop (components that only forwarded it are skipped) — where the fix goes. |
+| `staleMemo` | `prop|Component|#2 (an object)`: the prop already comes from `useCallback`/`useMemo`, but those dependencies change on every render. |
+| `providerAt` | Where the provider of a recreated context value is rendered. |
+| `compiled` | `true` when React Compiler compiled the component. |
 | `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site, most frequent first), resolved through source maps when available. |
 | `Item (src/List.tsx)` keys | Components are identified by name **and the file that defines them** (resolved through the DevTools protocol). Distinct components that share a name are keyed as `Name (file)`, so adding an unrelated `Item` never renames existing ones; snapshots store the file and keep matching. When files cannot tell them apart (styled-components, HOC factories, several components in one file), they are keyed by where they render (`Item @ src/Card.tsx:12`); numbered keys (`Item#2`) are the last resort. Keys stay the same across `goto` navigations. |
 | `definedIn` | File where the component function is defined. |

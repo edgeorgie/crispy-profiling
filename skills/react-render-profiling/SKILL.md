@@ -67,7 +67,9 @@ there, and fix the trigger before touching the children it re-renders.
 | `wastedRenders` > 0, cause `parent` | Parent re-rendered, props identical | Wrap in `React.memo`, or move state down so the parent does not re-render |
 | `changedProps` lists a function (`onClick`, `onSelect`...) | Inline callback recreated every render | `useCallback` in the parent (and `React.memo` on the child) |
 | `changedProps` lists an object/array (`style`, `options`, `items`) | Literal recreated every render | `useMemo` or hoist the constant outside the component |
-| `changedProps` lists `children` | JSX children are new elements each time | Accept it, or pass stable elements / restructure composition |
+| `changedProps` lists `children` | JSX children are new elements each time (normal) | `React.memo` will not help: stop the parent from re-rendering, or pass the children from a component that does not re-render |
+| `staleMemo` lists a prop | It already uses `useCallback`/`useMemo`, but a dependency changes every render | Make that dependency stable (memoize it, or read it inside the callback) |
+| component defined in `node_modules` | Library component (styled-components, `Link`…) | Never wrap it: fix the props where your code passes them (`creators` names the component) |
 | `triggeredBy` names one component for many others | Its state update re-renders a large subtree | Move that state closer to where it is used, or make the props passed down stable so `React.memo` can skip them |
 | `recreatedContextFrom` names a component | Its provider `value` is a new object/function each render | `useMemo` the value (and `useCallback` functions inside it) in that component |
 | cause `context` on many components | A broad context value changes | Split the context, memoize the provider `value`, or select narrower state |
