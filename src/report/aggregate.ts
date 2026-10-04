@@ -31,12 +31,11 @@ export function stat(values: number[]): Stat {
 
 const medianOf = (values: number[]) => stat(values).median;
 
-/** Most avoidable renders first (what to fix), then most renders, then name. */
+/** Most likely-avoidable renders first (what to fix), then most renders, then name. */
 function byPriority(a: [string, ComponentReport], b: [string, ComponentReport]): number {
+  const fixable = (c: ComponentReport) => c.avoidableRenders.median + c.callbackRenders.median;
   return (
-    b[1].avoidableRenders.median - a[1].avoidableRenders.median ||
-    b[1].renders.median - a[1].renders.median ||
-    cmp(a[0], b[0])
+    fixable(b[1]) - fixable(a[1]) || b[1].renders.median - a[1].renders.median || cmp(a[0], b[0])
   );
 }
 
@@ -71,11 +70,14 @@ function aggregateComponent(
       state: medianOf(pick((s) => s.causes.state)),
       context: medianOf(pick((s) => s.causes.context)),
       unstable: medianOf(pick((s) => s.causes.unstable ?? 0)),
+      callback: medianOf(pick((s) => s.causes.callback ?? 0)),
       parent: medianOf(pick((s) => s.causes.parent)),
     },
     changedProps: medianCounts(samples, (s) => s.changedProps),
     unstableProps: medianCounts(samples, (s) => s.unstableProps),
-    locations: [...new Set(samples.flatMap((s) => s?.locations ?? []))].sort(cmp).slice(0, 3),
+    callbackProps: medianCounts(samples, (s) => s.callbackProps),
+    callbackRenders: stat(pick((s) => s.callbackRenders ?? 0)),
+    locations: Object.keys(medianCounts(samples, (s) => s.locations)).slice(0, 3),
     stable: renders.min === renders.max,
   };
   if (timings) report.selfDurationMs = stat(pick((s) => s.selfDurationMs));
@@ -111,6 +113,7 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
     totalRenders: totals((s) => s.renders),
     totalWastedRenders: totals((s) => s.wastedRenders),
     totalAvoidableRenders: totals((s) => s.avoidableRenders ?? 0),
+    totalCallbackRenders: totals((s) => s.callbackRenders ?? 0),
     components: {},
   };
   report.components = Object.fromEntries(entries);

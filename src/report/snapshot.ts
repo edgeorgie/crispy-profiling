@@ -123,13 +123,16 @@ export function parseSnapshot(text: string): RenderSnapshot {
 function hintFor(c: ComponentReport | undefined): string | undefined {
   if (!c) return undefined;
   const where = c.locations[0] ? ` (rendered at ${c.locations[0]})` : '';
-  const unstable = Object.keys(c.unstableProps);
-  if (unstable.length) {
-    const keys = unstable
+  const keys = (m: Record<string, number>) =>
+    Object.keys(m)
       .slice(0, 3)
       .map((k) => `\`${k}\``)
       .join(', ');
-    return `${keys} recreated on every render with the same content${where}: stabilize with useCallback/useMemo or hoist it, and wrap the child in React.memo (or enable React Compiler).`;
+  if (Object.keys(c.unstableProps).length) {
+    return `${keys(c.unstableProps)} recreated on every render with equal data${where}: memoize it with useMemo or hoist it out of the component, and wrap the child in React.memo.`;
+  }
+  if (Object.keys(c.callbackProps).length) {
+    return `${keys(c.callbackProps)} is a new function with the same code on every render${where}. If the values it uses did not change, wrap it in useCallback with those values as dependencies (and React.memo the child); if they did change, this render is necessary.`;
   }
   if (c.causes.parent > 0) {
     return `re-renders with identical props because its parent re-renders${where}: wrap in React.memo, or move the parent's state closer to where it is used.`;
