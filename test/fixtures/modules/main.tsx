@@ -1,3 +1,4 @@
+import { LibButton } from 'fake-lib';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Item as BannerItem } from './BannerItem.js';
@@ -9,6 +10,7 @@ function App() {
   return (
     <>
       {location.search.includes('banner') && <BannerItem />}
+      {location.search.includes('lib') && <LibButton onClick={() => setN((x) => x + 1)} />}
       <button id="inc" type="button" onClick={() => setN((x) => x + 1)}>
         {n}
       </button>

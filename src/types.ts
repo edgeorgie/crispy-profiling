@@ -117,6 +117,8 @@ export interface ScenarioReport {
   violations: BudgetViolation[];
   /** Deduplicated warnings from all runs (e.g. "never settled"). */
   warnings: string[];
+  /** Framework/library internals hidden from the report (see `includeInternals`). */
+  hiddenInternals?: number;
 }
 
 export interface CrispyReport {

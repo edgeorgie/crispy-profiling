@@ -1,6 +1,10 @@
 # Copy to .github/workflows/react-renders.yml in your app.
-# On every PR: profile the base branch and the PR, fail on render regressions and
-# post the comparison in the job summary.
+# On every PR: start the app, check render counts against the committed
+# crispy.snap.json and fail if any component renders more. The job summary lists
+# each regression with the cause, where it is rendered and the suggested fix.
+#
+# First time: run `npx crispy test` locally and commit crispy.snap.json.
+# Intended changes: run `npx crispy test -u` and commit the updated file.
 name: React renders
 
 on:
@@ -11,26 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
+      - name: Start the app (development build)
+        run: |
+          npm run dev -- --port 5173 &
+          npx -y wait-on http://localhost:5173
       - uses: edgeorgie/crispy-profiling@v0
         with:
-          out: .crispy/base.json
-          fail-on-regression: 'false'
-      - run: kill $(lsof -t -i:5173) || true
-
-      - uses: actions/checkout@v7
-        with:
-          clean: false # keep .crispy/base.json
-      - run: npm ci
-      - run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
-      - uses: edgeorgie/crispy-profiling@v0
-        with:
-          out: .crispy/head.json
-          baseline: .crispy/base.json
+          config: crispy.config.json

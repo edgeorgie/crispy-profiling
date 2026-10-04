@@ -47,8 +47,9 @@ npx crispy run                                       # writes .crispy/report.jso
 | App         |       1 |         0 |        0 | 0/1/0/0/0/0                                           | —              | —              | —                   |
 ```
 
-_"Rendered at" lines refer to the code the browser runs (dev-server transformed); mapping back
-through source maps is planned._
+_"Rendered at" and `definedIn` are mapped back to your original source files and lines through the
+source maps your dev server or bundler serves (inline or linked); without source maps they refer to
+the code the browser runs._
 
 Every `Row` re-rendered because `onSelect` is a new function with the same code on each `App`
 render. If the values it uses did not change, `useCallback` (with those values as dependencies) plus
@@ -134,6 +135,7 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `topComponents` | `0` | Keep only the N most-rendered components per phase (`0` = all). |
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
+| `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
 | `snapshot` | `crispy.snap.json`, `0` | `file` (relative to the config file) and `tolerance` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
@@ -164,7 +166,7 @@ even when `topComponents` trims the report.
 | `unstableProps` | Prop keys recreated with equal data — fix with `useMemo` or by hoisting constants. |
 | `callbackProps` | Prop keys that were recreated callbacks — fix with `useCallback` and the right dependencies, or React Compiler. |
 | `changedProps` | Prop keys whose identity changed, with counts — the "why" behind `causes.props`. |
-| `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site). Lines refer to the code the browser runs. |
+| `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site, most frequent first), resolved through source maps when available. |
 | `Item (src/List.tsx)` keys | Components are identified by name **and the file that defines them** (resolved through the DevTools protocol). Distinct components that share a name are keyed as `Name (file)`, so adding an unrelated `Item` never renames existing ones; snapshots store the file and keep matching. When files cannot tell them apart (single bundle), numbered keys (`Item#2`) are used. |
 | `definedIn` | File where the component function is defined. |
 | `stable` | `false` when counts differ between runs (timers, network, randomness). |
@@ -219,14 +221,16 @@ to a fix (`React.memo`, `useCallback`, `useMemo`, context splitting, state coloc
 ## CI (GitHub Action)
 
 ```yaml
-- uses: edgeorgie/crispy-profiling@v0
+- run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
+- uses: edgeorgie/crispy-profiling@v0   # runs `crispy test --ci` against crispy.snap.json
   with:
     config: crispy.config.json
-    baseline: .crispy/base.json   # optional: report from the base branch
 ```
 
-The job summary gets the Markdown report; the step fails on budget violations or regressions. A full
-base-vs-PR workflow is in [`examples/github-workflow.yml`](examples/github-workflow.yml).
+The step fails when any component renders more than the committed snapshot allows (or a budget is
+exceeded), and the job summary lists each regression with its cause, where it is rendered and the
+suggested fix. `command: run` (with an optional `baseline` report) is available for budget-only or
+baseline-comparison setups. Full workflow: [`examples/github-workflow.yml`](examples/github-workflow.yml).
 
 ## Programmatic API
 

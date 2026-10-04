@@ -186,6 +186,60 @@ function budgetWarnings(scenario: Scenario, phases: Record<string, PhaseReport>)
  * keyed as `Name (file)` instead of the render-order based `Name`, `Name#2`.
  * Unique names keep their plain key. Also returns key -> definition file.
  */
+const LIBRARY_PATH = /(^|\/)node_modules(\/|_)|\.vite\/deps\/|(^|\/)next\/dist\//;
+const locationFile = (loc: string) => loc.replace(/ \(.*\)$/, '').replace(/:\d+$/, '');
+
+/**
+ * Removes framework/library internals: components defined in library code that
+ * are only ever rendered by library code. Library components that the app
+ * renders directly stay (their props may be what needs fixing).
+ */
+export function hideInternals(runs: RawRun[]): { runs: RawRun[]; hidden: number } {
+  const files: Record<string, string> = {};
+  for (const r of runs) {
+    for (const [k, f] of Object.entries(r.definitions ?? {})) files[k] ??= f;
+  }
+  const internal = new Set<string>();
+  const seen = new Set<string>();
+  for (const r of runs) {
+    for (const p of Object.values(r.phases)) {
+      for (const [k, c] of Object.entries(p.components)) {
+        seen.add(k);
+        const file = files[k];
+        if (!file || !LIBRARY_PATH.test(file)) continue;
+        const sites = Object.keys(c.locations ?? {});
+        if (sites.every((loc) => LIBRARY_PATH.test(locationFile(loc)))) internal.add(k);
+      }
+    }
+  }
+  // A component rendered by app code in any phase/run is not internal.
+  for (const r of runs) {
+    for (const p of Object.values(r.phases)) {
+      for (const [k, c] of Object.entries(p.components)) {
+        if (!internal.has(k)) continue;
+        const sites = Object.keys(c.locations ?? {});
+        if (sites.some((loc) => !LIBRARY_PATH.test(locationFile(loc)))) internal.delete(k);
+      }
+    }
+  }
+  if (internal.size === 0) return { runs, hidden: 0 };
+  const filtered = runs.map((r) => ({
+    ...r,
+    phases: Object.fromEntries(
+      Object.entries(r.phases).map(([phase, p]) => [
+        phase,
+        {
+          ...p,
+          components: Object.fromEntries(
+            Object.entries(p.components).filter(([k]) => !internal.has(k)),
+          ),
+        },
+      ]),
+    ),
+  }));
+  return { runs: filtered, hidden: internal.size };
+}
+
 export function stabilizeKeys(runs: RawRun[]): {
   runs: RawRun[];
   definedIn: Record<string, string>;
@@ -243,7 +297,8 @@ export function buildReport(
   let profilingBuild = false;
 
   for (const { scenario, runs: rawRuns } of results) {
-    const { runs, definedIn } = stabilizeKeys(rawRuns);
+    const visible = config.includeInternals ? { runs: rawRuns, hidden: 0 } : hideInternals(rawRuns);
+    const { runs, definedIn } = stabilizeKeys(visible.runs);
     reactVersion ??= runs[0]?.reactVersion ?? null;
     profilingBuild ||= runs.some((r) => r.profilingBuild);
 
@@ -268,6 +323,7 @@ export function buildReport(
       phases,
       // Budgets are checked on the full component list, before `topComponents` trims it.
       violations: checkBudgets(scenario.name, phases, scenario.budgets),
+      ...(visible.hidden > 0 && { hiddenInternals: visible.hidden }),
       warnings: [
         ...new Set([...runs.flatMap((r) => r.warnings ?? []), ...budgetWarnings(scenario, phases)]),
       ].sort(cmp),

@@ -6,7 +6,8 @@
       "!**/dist",
       "!**/node_modules",
       "!test/fixtures/app/dist",
-      "!**/*.report.json"
+      "!**/*.report.json",
+      "!schema"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
