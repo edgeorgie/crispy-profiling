@@ -165,7 +165,8 @@ even when `topComponents` trims the report.
 | `callbackProps` | Prop keys that were recreated callbacks — fix with `useCallback` and the right dependencies, or React Compiler. |
 | `changedProps` | Prop keys whose identity changed, with counts — the "why" behind `causes.props`. |
 | `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site). Lines refer to the code the browser runs. |
-| `Item#2` keys | Distinct components that share a display name get numbered keys in first-seen order. |
+| `Item (src/List.tsx)` keys | Components are identified by name **and the file that defines them** (resolved through the DevTools protocol). Distinct components that share a name are keyed as `Name (file)`, so adding an unrelated `Item` never renames existing ones; snapshots store the file and keep matching. When files cannot tell them apart (single bundle), numbered keys (`Item#2`) are used. |
+| `definedIn` | File where the component function is defined. |
 | `stable` | `false` when counts differ between runs (timers, network, randomness). |
 
 Profile the **development** build: production builds minify component names.

@@ -19,7 +19,8 @@ export type Count = number | [number, number];
 
 export interface PhaseSnapshot {
   commits: Count;
-  components: Record<string, { renders: Count; avoidable: Count }>;
+  /** `file` = where the component is defined; used to match it if its key changes. */
+  components: Record<string, { renders: Count; avoidable: Count; file?: string }>;
 }
 
 const lo = (c: Count) => (Array.isArray(c) ? c[0] : c);
@@ -68,7 +69,11 @@ export function toSnapshot(report: CrispyReport): RenderSnapshot {
       const components: PhaseSnapshot['components'] = {};
       for (const c of Object.keys(p.components).sort(cmp)) {
         const r = p.components[c] as ComponentReport;
-        components[c] = { renders: toCount(r.renders), avoidable: toCount(r.avoidableRenders) };
+        components[c] = {
+          renders: toCount(r.renders),
+          avoidable: toCount(r.avoidableRenders),
+          ...(r.definedIn && { file: r.definedIn }),
+        };
       }
       phases[phase] = { commits: toCount(p.commits), components };
     }
@@ -97,8 +102,9 @@ export function serializeSnapshot(snapshot: RenderSnapshot): string {
         out.push('        "components": {');
         comps.forEach(([c, v], ci) => {
           const comma = ci < comps.length - 1 ? ',' : '';
+          const file = v.file ? `, "file": ${q(v.file)}` : '';
           out.push(
-            `          ${q(c)}: { "renders": ${q(v.renders)}, "avoidable": ${q(v.avoidable)} }${comma}`,
+            `          ${q(c)}: { "renders": ${q(v.renders)}, "avoidable": ${q(v.avoidable)}${file} }${comma}`,
           );
         });
         out.push('        }');
@@ -153,6 +159,28 @@ function hintFor(c: ComponentReport | undefined): string | undefined {
  * renders or avoidable renders is a regression; decreases are improvements that
  * can be locked in with `--update`. New components that only mount are additions.
  */
+/** Display name without the disambiguation suffix ("Item (src/a.tsx)", "Item#2" -> "Item"). */
+const baseName = (k: string) => k.replace(/ \(.*\)$/, '').replace(/#\d+$/, '');
+
+/**
+ * Matches snapshot components to current ones by (name, definition file) when
+ * their keys differ — e.g. "Item" became "Item (src/List.tsx)" because another
+ * `Item` was added elsewhere. Returns the snapshot phase with keys remapped.
+ */
+function alignKeys(exp: PhaseSnapshot, current: Record<string, ComponentReport>): PhaseSnapshot {
+  const byIdentity = new Map<string, string>();
+  for (const [k, c] of Object.entries(current)) {
+    if (c.definedIn) byIdentity.set(`${baseName(k)}|${c.definedIn}`, k);
+  }
+  const components: PhaseSnapshot['components'] = {};
+  for (const [k, v] of Object.entries(exp.components)) {
+    const match = !current[k] && v.file ? byIdentity.get(`${baseName(k)}|${v.file}`) : undefined;
+    const key = match && !exp.components[match] ? match : k;
+    components[key] = v;
+  }
+  return { ...exp, components };
+}
+
 export function compareSnapshot(
   snapshot: RenderSnapshot,
   report: CrispyReport,
@@ -193,8 +221,9 @@ export function compareSnapshot(
       ...new Set([...Object.keys(expectedPhases ?? {}), ...Object.keys(actualPhases)]),
     ].sort(phaseOrder);
     for (const phase of phaseNames) {
-      const exp = expectedPhases?.[phase];
       const reportPhase = report.scenarios[scenario]?.phases[phase];
+      const rawExp = expectedPhases?.[phase];
+      const exp = rawExp ? alignKeys(rawExp, reportPhase?.components ?? {}) : undefined;
       if (!exp) {
         changes.push({
           scenario,

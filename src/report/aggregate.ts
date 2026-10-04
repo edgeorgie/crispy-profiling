@@ -180,6 +180,60 @@ function budgetWarnings(scenario: Scenario, phases: Record<string, PhaseReport>)
   return out;
 }
 
+/**
+ * Gives same-named components stable, source-based keys: when several distinct
+ * components share a display name and their definition files differ, they are
+ * keyed as `Name (file)` instead of the render-order based `Name`, `Name#2`.
+ * Unique names keep their plain key. Also returns key -> definition file.
+ */
+export function stabilizeKeys(runs: RawRun[]): {
+  runs: RawRun[];
+  definedIn: Record<string, string>;
+} {
+  const files: Record<string, string> = {};
+  for (const r of runs) {
+    for (const [k, f] of Object.entries(r.definitions ?? {})) files[k] ??= f;
+  }
+  const base = (k: string) => k.replace(/#\d+$/, '');
+  const groups: Record<string, string[]> = {};
+  for (const r of runs) {
+    for (const p of Object.values(r.phases)) {
+      for (const k of Object.keys(p.components)) {
+        const name = base(k);
+        if (!groups[name]) groups[name] = [];
+        if (!groups[name].includes(k)) groups[name].push(k);
+      }
+    }
+  }
+  const rename: Record<string, string> = {};
+  for (const [name, keys] of Object.entries(groups)) {
+    if (keys.length < 2) continue;
+    const fs = keys.map((k) => files[k]);
+    if (fs.some((f) => !f) || new Set(fs).size !== fs.length) continue;
+    keys.forEach((k, i) => {
+      rename[k] = `${name} (${fs[i]})`;
+    });
+  }
+  const definedIn: Record<string, string> = {};
+  for (const [k, f] of Object.entries(files)) definedIn[rename[k] ?? k] = f;
+  if (Object.keys(rename).length === 0) return { runs, definedIn };
+  const renamed = runs.map((r) => ({
+    ...r,
+    phases: Object.fromEntries(
+      Object.entries(r.phases).map(([phase, p]) => [
+        phase,
+        {
+          ...p,
+          components: Object.fromEntries(
+            Object.entries(p.components).map(([k, v]) => [rename[k] ?? k, v]),
+          ),
+        },
+      ]),
+    ),
+  }));
+  return { runs: renamed, definedIn };
+}
+
 export function buildReport(
   results: { scenario: Scenario; runs: RawRun[] }[],
   config: CrispyConfig,
@@ -188,7 +242,8 @@ export function buildReport(
   let reactVersion: string | null = null;
   let profilingBuild = false;
 
-  for (const { scenario, runs } of results) {
+  for (const { scenario, runs: rawRuns } of results) {
+    const { runs, definedIn } = stabilizeKeys(rawRuns);
     reactVersion ??= runs[0]?.reactVersion ?? null;
     profilingBuild ||= runs.some((r) => r.profilingBuild);
 
@@ -199,7 +254,12 @@ export function buildReport(
       a === 'load' ? -1 : b === 'load' ? 1 : cmp(a, b),
     );
     const phases: Record<string, PhaseReport> = {};
-    for (const p of order) phases[p] = aggregatePhase(runs, p, config);
+    for (const p of order) {
+      phases[p] = aggregatePhase(runs, p, config);
+      for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
+        if (definedIn[k]) c.definedIn = definedIn[k];
+      }
+    }
 
     const report: ScenarioReport = {
       name: scenario.name,

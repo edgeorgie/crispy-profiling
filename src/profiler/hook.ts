@@ -30,6 +30,8 @@ export function installCrispyHook(): void {
     commitCount: 0,
     /** Component names rendered in the most recent commit (for "never settled" warnings). */
     lastCommitNames: [],
+    /** Component key -> component function (not serialized; read by the runner via CDP). */
+    typeRefs: {},
     vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
   };
   w.__CRISPY__ = state;
@@ -116,6 +118,9 @@ export function installCrispyHook(): void {
       nameCounts[name] = n;
       key = n === 1 ? name : `${name}#${n}`;
       typeKeys.set(t, key);
+      // The runner resolves where each component function is defined (via CDP)
+      // to give same-named components stable, source-based identities.
+      state.typeRefs[key] = typeof t === 'function' ? t : t.render || t.type || t;
     }
     return key;
   }

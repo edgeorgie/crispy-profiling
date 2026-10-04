@@ -4,6 +4,7 @@ import { chromium } from 'playwright-core';
 import type { CrispyConfig, Scenario, Step } from '../config.js';
 import { buildReport } from '../report/aggregate.js';
 import type { CrispyReport, RawRun } from '../types.js';
+import { resolveDefinitions, trackScripts } from './definitions.js';
 import { crispyHookSource } from './hook.js';
 
 export interface RunOptions {
@@ -242,8 +243,9 @@ export async function runScenarioOnce(
       await page.clock.install({ time: CLOCK_START });
       await page.clock.pauseAt(CLOCK_START + 1);
     }
+    const cdp = await context.newCDPSession(page);
+    const scripts = await trackScripts(cdp);
     if (config.cpuThrottle > 1) {
-      const cdp = await context.newCDPSession(page);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: config.cpuThrottle });
     }
     await page.addInitScript({ content: crispyHookSource() });
@@ -263,6 +265,7 @@ export async function runScenarioOnce(
       if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
     }
 
+    const definitions = await resolveDefinitions(page, cdp, scripts);
     const raw = await page.evaluate(() => {
       const s = (window as any).__CRISPY__;
       return JSON.parse(
@@ -281,6 +284,7 @@ export async function runScenarioOnce(
       );
     }
     delete raw.hookErrors;
+    raw.definitions = definitions;
     return { ...raw, warnings } as RawRun;
   } finally {
     await context.close();

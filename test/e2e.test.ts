@@ -279,7 +279,7 @@ describe('render snapshots (crispy test)', () => {
     const first = await runSnapshotTest(config(fastUrl), { baseDir: dir });
     expect(first.written).toBe(true);
     expect(readFileSync(join(dir, 'crispy.snap.json'), 'utf8')).toContain(
-      '"Row": { "renders": 20, "avoidable": 0 }',
+      '"Row": { "renders": 20, "avoidable": 0, "file": "bundle.js" }',
     );
     expect((await runSnapshotTest(config(fastUrl), { baseDir: dir })).exitCode).toBe(0);
 
@@ -372,5 +372,41 @@ describe('change classification', () => {
     expect(c?.BoundProbe?.causes).toMatchObject({ props: 1, callback: 0 });
     // useMemo recomputation is derived from props, not a state change.
     expect(c?.Derived?.causes).toMatchObject({ props: 1, state: 0 });
+  });
+});
+
+describe('stable component identity across modules (R2-05)', () => {
+  it('does not flag existing components when an unrelated same-named one is added', async () => {
+    const { buildModuleFixture, serveModules } = await import('./helpers.js');
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { runSnapshotTest } = await import('../src/snapshot-test.js');
+    const app = await serveModules(await buildModuleFixture());
+    const dir = mkdtempSync(join(tmpdir(), 'crispy-identity-'));
+    const config = (path: string) =>
+      parseConfig({
+        baseUrl: app.url,
+        runs: 1,
+        settleMs: 150,
+        scenarios: [{ name: 'list', path, steps: [{ action: 'click', selector: '#inc' }] }],
+      });
+    try {
+      const base = await runSnapshotTest(config('/'), { baseDir: dir });
+      const item = base.report.scenarios.list?.phases.interaction?.components.Item;
+      expect(item?.definedIn).toBe('ListItem.js');
+
+      const withBanner = await runSnapshotTest(config('/?banner'), { baseDir: dir, ci: true });
+      const keys = Object.keys(
+        withBanner.report.scenarios.list?.phases.interaction?.components ?? {},
+      );
+      expect(keys).toEqual(expect.arrayContaining(['Item (ListItem.js)', 'Item (BannerItem.js)']));
+      // Only the genuinely new component is reported; the list items still match.
+      expect(withBanner.result?.regressions.map((r) => r.component)).toEqual([
+        'Item (BannerItem.js)',
+      ]);
+    } finally {
+      await app.close();
+    }
   });
 });
