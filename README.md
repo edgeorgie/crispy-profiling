@@ -2,10 +2,10 @@
 
 **Snapshot testing for React re-renders — deterministic, runtime-proven, with the fix.**
 
-[![CI](https://github.com/edgeorgie/crispy-profilling/actions/workflows/ci.yml/badge.svg)](https://github.com/edgeorgie/crispy-profilling/actions/workflows/ci.yml)
+[![CI](https://github.com/edgeorgie/crispy-profiling/actions/workflows/ci.yml/badge.svg)](https://github.com/edgeorgie/crispy-profiling/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/crispy-profiling.svg)](https://www.npmjs.com/package/crispy-profiling)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/edgeorgie/crispy-profilling/badge)](https://scorecard.dev/viewer/?uri=github.com/edgeorgie/crispy-profilling)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/edgeorgie/crispy-profiling/badge)](https://scorecard.dev/viewer/?uri=github.com/edgeorgie/crispy-profiling)
 
 > **Status: proof of concept.** It works end to end on the test app; we are now validating it on
 > real-world React apps. Feedback and case studies are the most valuable contribution right now.
@@ -202,14 +202,14 @@ Claude Code: `claude mcp add crispy-profiling -- npx -y crispy-profiling@latest 
 ### Claude Code plugin (MCP server + skill)
 
 ```text
-/plugin marketplace add edgeorgie/crispy-profilling
+/plugin marketplace add edgeorgie/crispy-profiling
 /plugin install crispy-profiling@crispy-profiling
 ```
 
 ### Agent Skill (Claude Code, Cursor, Codex, Copilot, Gemini CLI, …)
 
 ```bash
-npx skills add edgeorgie/crispy-profilling
+npx skills add edgeorgie/crispy-profiling
 ```
 
 The skill teaches the agent the measure → fix → re-measure → compare loop and how to map each signal
@@ -218,7 +218,7 @@ to a fix (`React.memo`, `useCallback`, `useMemo`, context splitting, state coloc
 ## CI (GitHub Action)
 
 ```yaml
-- uses: edgeorgie/crispy-profilling@v0
+- uses: edgeorgie/crispy-profiling@v0
   with:
     config: crispy.config.json
     baseline: .crispy/base.json   # optional: report from the base branch

@@ -16,13 +16,13 @@
   ],
   "author": "Edwin Jorge <ed.jorge1122@gmail.com> (https://github.com/edgeorgie)",
   "license": "MIT",
-  "homepage": "https://github.com/edgeorgie/crispy-profilling#readme",
+  "homepage": "https://github.com/edgeorgie/crispy-profiling#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/edgeorgie/crispy-profilling.git"
+    "url": "git+https://github.com/edgeorgie/crispy-profiling.git"
   },
   "bugs": {
-    "url": "https://github.com/edgeorgie/crispy-profilling/issues"
+    "url": "https://github.com/edgeorgie/crispy-profiling/issues"
   },
   "mcpName": "io.github.edgeorgie/crispy-profiling",
   "type": "module",

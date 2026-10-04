@@ -19,7 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
-      - uses: edgeorgie/crispy-profilling@v0
+      - uses: edgeorgie/crispy-profiling@v0
         with:
           out: .crispy/base.json
           fail-on-regression: 'false'
@@ -30,7 +30,7 @@ jobs:
           clean: false # keep .crispy/base.json
       - run: npm ci
       - run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
-      - uses: edgeorgie/crispy-profilling@v0
+      - uses: edgeorgie/crispy-profiling@v0
         with:
           out: .crispy/head.json
           baseline: .crispy/base.json

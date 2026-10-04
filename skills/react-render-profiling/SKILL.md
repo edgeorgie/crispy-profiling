@@ -4,7 +4,7 @@ description: Measure and fix unnecessary React re-renders with deterministic num
 license: MIT
 metadata:
   author: edgeorgie
-  homepage: https://github.com/edgeorgie/crispy-profilling
+  homepage: https://github.com/edgeorgie/crispy-profiling
 ---
 
 # React render profiling with crispy-profiling

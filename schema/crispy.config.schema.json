@@ -372,6 +372,6 @@
     }
   },
   "required": ["baseUrl", "scenarios"],
-  "$id": "https://raw.githubusercontent.com/edgeorgie/crispy-profilling/main/schema/crispy.config.schema.json",
+  "$id": "https://raw.githubusercontent.com/edgeorgie/crispy-profiling/main/schema/crispy.config.schema.json",
   "title": "crispy-profiling config"
 }
