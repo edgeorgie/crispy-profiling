@@ -169,10 +169,17 @@ even when `topComponents` trims the report.
 | `unstableProps` | Prop keys recreated with equal data — fix with `useMemo` or by hoisting constants. |
 | `callbackProps` | Prop keys that were recreated callbacks — fix with `useCallback` and the right dependencies, or React Compiler. |
 | `changedProps` | Prop keys whose identity changed, with counts — the "why" behind `causes.props`. |
+| `triggeredBy` | Components whose own state update started the cascade that re-rendered this one, with counts. Fix the trigger, not every child. |
+| `recreatedContextFrom` | Components that own a context provider whose `value` was recreated with equal content (e.g. `value={{ user, logout }}`) — memoize the value there. |
+| `memo` | `true` when the component is wrapped in `React.memo`, so hints never suggest wrapping it again. |
 | `locations` | Up to 3 places where the component is rendered, as `file:line (Owner)` (owner JSX call site, most frequent first), resolved through source maps when available. |
 | `Item (src/List.tsx)` keys | Components are identified by name **and the file that defines them** (resolved through the DevTools protocol). Distinct components that share a name are keyed as `Name (file)`, so adding an unrelated `Item` never renames existing ones; snapshots store the file and keep matching. When files cannot tell them apart (single bundle), numbered keys (`Item#2`) are used. |
 | `definedIn` | File where the component function is defined. |
 | `stable` | `false` when counts differ between runs (timers, network, randomness). |
+
+Every Markdown report (`crispy run`, `crispy test`, MCP tools) adds a **Why / how to fix** column
+built from these fields. Hints point at the root cause: the component whose state starts a cascade,
+the owner that recreates a prop (with its `file:line`), or the provider that recreates a context value.
 
 Profile the **development** build: production builds minify component names.
 

@@ -53,8 +53,11 @@ Chromium is required once: `npx playwright install chromium`.
 
 Each component has `renders`, `avoidableRenders`, `callbackRenders`, `wastedRenders`, `causes`
 (`props`/`state`/`context`/`unstable`/`callback`/`parent`), `unstableProps` (keys recreated with equal data),
-`callbackProps` (recreated functions)
-and `changedProps` (prop keys whose identity changed, with counts).
+`callbackProps` (recreated functions), `changedProps` (prop keys whose identity changed, with counts),
+`triggeredBy` (components whose state update started the cascade), `recreatedContextFrom`
+(components whose provider recreates a context value) and `memo` (already wrapped in `React.memo`).
+The Markdown report has a **Why / how to fix** column with a ready-made hint per component: start
+there, and fix the trigger before touching the children it re-renders.
 
 | Signal | Likely cause | Fix |
 | --- | --- | --- |
@@ -64,6 +67,8 @@ and `changedProps` (prop keys whose identity changed, with counts).
 | `changedProps` lists a function (`onClick`, `onSelect`...) | Inline callback recreated every render | `useCallback` in the parent (and `React.memo` on the child) |
 | `changedProps` lists an object/array (`style`, `options`, `items`) | Literal recreated every render | `useMemo` or hoist the constant outside the component |
 | `changedProps` lists `children` | JSX children are new elements each time | Accept it, or pass stable elements / restructure composition |
+| `triggeredBy` names one component for many others | Its state update re-renders a large subtree | Move that state closer to where it is used, or make the props passed down stable so `React.memo` can skip them |
+| `recreatedContextFrom` names a component | Its provider `value` is a new object/function each render | `useMemo` the value (and `useCallback` functions inside it) in that component |
 | cause `context` on many components | A broad context value changes | Split the context, memoize the provider `value`, or select narrower state |
 | cause `state` with high `renders` | Frequent state updates (typing, scroll) | Debounce, `useDeferredValue`, keep the state local to the leaf |
 | `stable: false` (⚠️) | Counts differ between runs (timers, network, randomness) | Add `waitFor` steps or mock the nondeterminism before trusting deltas |
