@@ -36,6 +36,11 @@ export async function buildFixture(): Promise<Record<'slow' | 'fast', string>> {
 /** Minimal static server; returns its base URL and a close function. */
 export async function serve(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server: Server = createServer((req, res) => {
+    // Slow API to reproduce data arriving well after the interaction.
+    if (req.url?.startsWith('/api/slow')) {
+      setTimeout(() => res.end('loaded'), 600);
+      return;
+    }
     const file = req.url?.startsWith('/bundle.js') ? 'bundle.js' : 'index.html';
     res.setHeader('content-type', file.endsWith('.js') ? 'text/javascript' : 'text/html');
     res.end(readFileSync(join(dir, file)));

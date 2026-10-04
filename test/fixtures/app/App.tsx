@@ -1,4 +1,4 @@
-import { createContext, memo, useCallback, useContext, useState } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // Replaced at build time: false = naive implementation, true = optimized one.
@@ -38,7 +38,17 @@ function Status({ text }: { text: string }) {
   return <p id="status">{text}</p>;
 }
 
+function Ticker() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setN((x) => x + 1), 100);
+    return () => clearInterval(id);
+  }, []);
+  return <span id="ticker">{n}</span>;
+}
+
 function App() {
+  const [data, setData] = useState('none');
   const [count, setCount] = useState(0);
   const [status, setStatus] = useState('idle');
   const [theme, setTheme] = useState('light');
@@ -55,6 +65,19 @@ function App() {
         count {count}
       </button>
       <Status text={status} />
+      <p id="data">{data}</p>
+      <button
+        id="fetch"
+        type="button"
+        onClick={() =>
+          fetch('/api/slow')
+            .then((r) => r.text())
+            .then(setData)
+        }
+      >
+        fetch
+      </button>
+      {location.search.includes('ticker') && <Ticker />}
       <button id="load" type="button" onClick={() => setTimeout(() => setStatus('loaded'), 120)}>
         load
       </button>

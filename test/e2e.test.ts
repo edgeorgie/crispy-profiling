@@ -122,3 +122,51 @@ describe('profiling a real React app in Chromium', () => {
     );
   });
 });
+
+describe('settling on real-world async behavior', () => {
+  it('waits for slow network responses before closing a step (C-02)', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'fetch', steps: [{ action: 'click', selector: '#fetch' }] }],
+    });
+    const report = await profile(config);
+    const p = report.scenarios.fetch?.phases.interaction;
+    expect(p?.components.App?.causes.state).toBe(1);
+    expect(report.scenarios.fetch?.warnings).toEqual([]);
+  });
+
+  it('warns instead of hanging when the page never settles (C-03)', async () => {
+    const started = Date.now();
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      maxSettleMs: 800,
+      scenarios: [
+        { name: 'ticker', path: '/?ticker', steps: [{ action: 'click', selector: '#inc' }] },
+      ],
+    });
+    const report = await profile(config);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(report.scenarios.ticker?.warnings[0]).toMatch(/did not settle.*Ticker.*"clock": true/);
+  });
+
+  it('makes timer-driven apps deterministic with a fake clock (C-03)', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 3,
+      settleMs: 150,
+      maxSettleMs: 600,
+      clock: true,
+      scenarios: [
+        { name: 'ticker', path: '/?ticker', steps: [{ action: 'click', selector: '#inc' }] },
+      ],
+    });
+    const report = await profile(config);
+    const ticker = report.scenarios.ticker?.phases.interaction?.components.Ticker;
+    expect(ticker?.stable).toBe(true);
+    expect(ticker?.renders.median).toBeGreaterThan(0);
+  });
+});
