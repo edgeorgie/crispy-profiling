@@ -58,6 +58,18 @@ const ItemB = function Item() {
 ItemA.displayName = 'Item';
 ItemB.displayName = 'Item';
 
+// Receives a callback that cannot be stringified: only crispy's hook touches it,
+// which simulates an unexpected value shape without breaking React itself.
+function Boom(_: { fn: () => number }) {
+  return <span>boom</span>;
+}
+const unreadableFn = () =>
+  Object.assign(() => 1, {
+    toString() {
+      throw new Error('unreadable fn');
+    },
+  });
+
 function App() {
   const [data, setData] = useState('none');
   const [count, setCount] = useState(0);
@@ -89,6 +101,7 @@ function App() {
         fetch
       </button>
       {location.search.includes('ticker') && <Ticker />}
+      {location.search.includes('boom') && <Boom fn={unreadableFn()} />}
       {location.search.includes('dupes') && (
         <>
           <ItemA />
