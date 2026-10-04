@@ -53,6 +53,8 @@ export interface RawRun {
   vitals: { lcpMs: number | null; cls: number; longTasks: number; totalBlockingMs: number };
   /** Problems that make the numbers less trustworthy (e.g. the page never settled). */
   warnings: string[];
+  /** Component key -> file where the component function is defined (when resolvable). */
+  definitions?: Record<string, string>;
 }
 
 /** Aggregated (multi-run) statistic. Counts are deterministic, so min === max in a stable app. */
@@ -81,6 +83,8 @@ export interface ComponentReport {
   callbackRenders: Stat;
   /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */
   locations: string[];
+  /** File where the component function is defined, when known (part of its identity). */
+  definedIn?: string;
   stable: boolean;
 }
 
