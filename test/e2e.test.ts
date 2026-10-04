@@ -320,3 +320,28 @@ describe('concurrent rendering', () => {
     expect(slow.cells).toEqual(fast.cells);
   });
 });
+
+describe('iframes', () => {
+  it('keeps phases across navigation when the page has a same-origin iframe (R2-07)', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'frame',
+          path: '/?iframe',
+          steps: [
+            { action: 'click', selector: '#inc' },
+            { action: 'phase', name: 'after-nav' },
+            { action: 'goto', path: '/?iframe' },
+            { action: 'click', selector: '#inc' },
+          ],
+        },
+      ],
+    });
+    const phases = (await profile(config)).scenarios.frame?.phases;
+    expect(Object.keys(phases ?? {})).toEqual(['load', 'after-nav', 'interaction']);
+    expect(phases?.interaction?.components.App?.renders.median).toBe(1);
+  });
+});
