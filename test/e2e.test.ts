@@ -73,6 +73,23 @@ describe('profiling a real React app in Chromium', () => {
     expect(p?.components.Row?.changedProps).toEqual({ onSelect: 20 });
   });
 
+  it('counts identity-only prop changes as avoidable renders (C-05)', () => {
+    const p = slow.scenarios.list?.phases.interaction;
+    // Inline `onSelect` is recreated with the same source on every App render.
+    expect(p?.components.Row?.avoidableRenders.median).toBe(20);
+    expect(p?.components.Row?.unstableProps).toEqual({ onSelect: 20 });
+    expect(p?.components.Row?.causes).toEqual({
+      props: 0,
+      state: 0,
+      context: 0,
+      unstable: 20,
+      parent: 0,
+    });
+    // 20 Rows + Header + ThemedLabel + Status; the optimized variant keeps the last three.
+    expect(p?.totalAvoidableRenders.median).toBe(23);
+    expect(fast.scenarios.list?.phases.interaction?.totalAvoidableRenders.median).toBe(3);
+  });
+
   it('detects context-driven renders', () => {
     const p = slow.scenarios.list?.phases.theme;
     expect(p?.components.ThemedLabel?.causes.context).toBe(1);

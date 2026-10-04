@@ -26,7 +26,14 @@ export function compareReports(
 ): CompareResult {
   const opts = { ...DEFAULTS, ...options };
   const diffs: ComponentDiff[] = [];
-  const totals = { baseRenders: 0, headRenders: 0, baseWasted: 0, headWasted: 0 };
+  const totals = {
+    baseRenders: 0,
+    headRenders: 0,
+    baseWasted: 0,
+    headWasted: 0,
+    baseAvoidable: 0,
+    headAvoidable: 0,
+  };
 
   const scenarioNames = [
     ...new Set([...Object.keys(base.scenarios), ...Object.keys(head.scenarios)]),
@@ -44,6 +51,8 @@ export function compareReports(
       totals.headRenders += hp?.totalRenders.median ?? 0;
       totals.baseWasted += bp?.totalWastedRenders.median ?? 0;
       totals.headWasted += hp?.totalWastedRenders.median ?? 0;
+      totals.baseAvoidable += bp?.totalAvoidableRenders?.median ?? 0;
+      totals.headAvoidable += hp?.totalAvoidableRenders?.median ?? 0;
       const names = [
         ...new Set([...Object.keys(bp?.components ?? {}), ...Object.keys(hp?.components ?? {})]),
       ].sort(cmp);
@@ -54,16 +63,19 @@ export function compareReports(
         const headRenders = hc?.renders.median ?? 0;
         const delta = headRenders - baseRenders;
         const deltaPct = baseRenders === 0 ? null : Math.round((delta / baseRenders) * 10000) / 100;
+        const baseAvoidable = bc?.avoidableRenders?.median ?? 0;
+        const headAvoidable = hc?.avoidableRenders?.median ?? 0;
+        const grew = (b: number, h: number) =>
+          h - b >= opts.minRendersDelta &&
+          (b === 0 || ((h - b) / b) * 100 > opts.rendersIncreasePct);
         let status: ComponentDiff['status'];
         // New UI that only mounts is fine; something that now *re-renders* is not.
         const onlyMounts = !bc && (hc?.updates.median ?? 0) === 0;
         if (onlyMounts) status = 'added';
-        else if (
-          delta >= opts.minRendersDelta &&
-          (deltaPct === null || deltaPct > opts.rendersIncreasePct)
-        )
+        // More renders, or the same renders but more of them avoidable, is a regression.
+        else if (grew(baseRenders, headRenders) || grew(baseAvoidable, headAvoidable))
           status = 'regressed';
-        else if (delta < 0) status = 'improved';
+        else if (delta < 0 || headAvoidable < baseAvoidable) status = 'improved';
         else status = 'unchanged';
         diffs.push({
           scenario,
@@ -75,6 +87,8 @@ export function compareReports(
           deltaPct,
           baseWasted: bc?.wastedRenders.median ?? 0,
           headWasted: hc?.wastedRenders.median ?? 0,
+          baseAvoidable,
+          headAvoidable,
           status,
         });
       }

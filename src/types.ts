@@ -1,3 +1,15 @@
+/**
+ * Why updates happened. `props`/`state`/`context` = that input really changed;
+ * `unstable` = only identities changed (equal contents); `parent` = nothing changed.
+ */
+export interface Causes {
+  props: number;
+  state: number;
+  context: number;
+  unstable: number;
+  parent: number;
+}
+
 /** Raw data collected in the browser for a single phase of a single run. */
 export interface RawComponentStats {
   renders: number;
@@ -5,10 +17,17 @@ export interface RawComponentStats {
   updates: number;
   /** Updates where props (shallow), state and consumed context were all unchanged. */
   wastedRenders: number;
+  /**
+   * Updates where nothing really changed: wasted renders plus renders caused only by
+   * recreated-but-equal inputs (inline callbacks, object/array literals, context values).
+   */
+  avoidableRenders: number;
   /** Prop keys whose identity changed between renders, with how often. */
   changedProps: Record<string, number>;
+  /** Prop keys that changed identity but not content (e.g. inline callbacks), with how often. */
+  unstableProps: Record<string, number>;
   /** Number of updates attributed to each cause. A render can have several causes. */
-  causes: { props: number; state: number; context: number; parent: number };
+  causes: Causes;
   /** Sum of selfBaseDuration in ms (only available in development/profiling builds). */
   selfDurationMs: number;
 }
@@ -39,11 +58,14 @@ export interface ComponentReport {
   mounts: Stat;
   updates: Stat;
   wastedRenders: Stat;
+  avoidableRenders: Stat;
   /** Only present when `timings: true` (timings are not deterministic). */
   selfDurationMs?: Stat;
-  causes: { props: number; state: number; context: number; parent: number };
+  causes: Causes;
   /** Top changed prop keys (median across runs), sorted by count desc then name. */
   changedProps: Record<string, number>;
+  /** Prop keys that changed identity only (fix with useCallback/useMemo/hoisting). */
+  unstableProps: Record<string, number>;
   stable: boolean;
 }
 
@@ -51,6 +73,7 @@ export interface PhaseReport {
   commits: Stat;
   totalRenders: Stat;
   totalWastedRenders: Stat;
+  totalAvoidableRenders: Stat;
   components: Record<string, ComponentReport>;
 }
 
@@ -95,6 +118,8 @@ export interface ComponentDiff {
   deltaPct: number | null;
   baseWasted: number;
   headWasted: number;
+  baseAvoidable: number;
+  headAvoidable: number;
   status: 'regressed' | 'improved' | 'unchanged' | 'added';
 }
 
@@ -102,6 +127,13 @@ export interface CompareResult {
   regressions: ComponentDiff[];
   improvements: ComponentDiff[];
   diffs: ComponentDiff[];
-  totals: { baseRenders: number; headRenders: number; baseWasted: number; headWasted: number };
+  totals: {
+    baseRenders: number;
+    headRenders: number;
+    baseWasted: number;
+    headWasted: number;
+    baseAvoidable: number;
+    headAvoidable: number;
+  };
   passed: boolean;
 }

@@ -12,7 +12,7 @@
 
 crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
 tells you **which components rendered, how many times, why** (props / state / context / parent) and
-**which renders were wasted**. Render counts are deterministic, so two reports of the same scenario
+**which renders were avoidable**. Render counts are deterministic, so two reports of the same scenario
 only differ when the code changed. That makes it a reliable feedback loop for:
 
 - **AI coding agents**: an MCP server and an [Agent Skill](skills/react-render-profiling/SKILL.md)
@@ -36,18 +36,20 @@ npx crispy run                                       # writes .crispy/report.jso
 ```text
 ### Scenario `list` (`/`, 3 runs)
 
-**Phase `interaction`** — 1 commits, 23 renders, 2 wasted
+**Phase `interaction`** — 1 commits, 24 renders, 23 avoidable (3 wasted)
 
-| Component   | Renders | Wasted | Causes (props/state/context/parent) | Top changed props |
-| ----------- | ------: | -----: | ----------------------------------- | ----------------- |
-| Row         |      20 |      0 | 20/0/0/0                            | `onSelect`×20     |
-| App         |       1 |      0 | 0/1/0/0                             | —                 |
-| Header      |       1 |      1 | 0/0/0/1                             | —                 |
-| ThemedLabel |       1 |      1 | 0/0/0/1                             | —                 |
+| Component   | Renders | Avoidable | Causes (props/state/context/unstable/parent) | Unstable props |
+| ----------- | ------: | --------: | -------------------------------------------- | -------------- |
+| Row         |      20 |        20 | 0/0/0/20/0                                   | `onSelect`×20  |
+| Header      |       1 |         1 | 0/0/0/0/1                                    | —              |
+| Status      |       1 |         1 | 0/0/0/0/1                                    | —              |
+| ThemedLabel |       1 |         1 | 0/0/0/0/1                                    | —              |
+| App         |       1 |         0 | 0/1/0/0/0                                    | —              |
 ```
 
 Every `Row` re-rendered because `onSelect` got a new identity → `useCallback` in the parent plus
-`React.memo(Row)` fixes it. `Header` re-rendered with identical props → wasted.
+`React.memo(Row)` fixes it: `onSelect` is an *unstable* prop (same code, new identity), so all 20
+renders are avoidable. `Header` re-rendered with identical props → wasted.
 
 ## Configuration
 
@@ -68,7 +70,7 @@ Every `Row` re-rendered because `onSelect` got a new identity → `useCallback` 
         { "action": "click", "selector": "text=Price: low to high" }
       ],
       "budgets": {
-        "interaction": { "maxWastedRenders": 0, "components": { "ProductCard": { "maxRenders": 20 } } }
+        "interaction": { "maxAvoidableRenders": 0, "components": { "ProductCard": { "maxRenders": 20 } } }
       }
     }
   ]
@@ -93,17 +95,20 @@ Every `Row` re-rendered because `onSelect` got a new identity → `useCallback` 
 Renders before the first step are recorded in phase `load`; renders during steps go to
 `interaction` unless you name phases yourself with `{ "action": "phase", "name": "..." }`.
 
-**Budgets** (per phase): `maxCommits`, `maxTotalRenders`, `maxWastedRenders`, and per component
-`maxRenders` / `maxWastedRenders`.
+**Budgets** (per phase): `maxCommits`, `maxTotalRenders`, `maxAvoidableRenders`, `maxWastedRenders`,
+and per component `maxRenders` / `maxAvoidableRenders` / `maxWastedRenders`.
 
 ## What the numbers mean
 
 | Field | Meaning |
 | --- | --- |
 | `renders` | Times the component function/class rendered (mounts + updates). |
+| `avoidableRenders` | Updates where nothing really changed: wasted renders plus renders caused only by recreated-but-equal inputs. The number to drive down. |
 | `wastedRenders` | Updates where props (shallow), state and consumed context were all unchanged. |
 | `causes.props / state / context` | Updates where that input changed (one update can have several causes). |
+| `causes.unstable` | Only identities changed: inline callbacks, object/array literals, context values or hook results recreated with equal contents. |
 | `causes.parent` | Updates with no changed input: the parent re-rendered (same as wasted). |
+| `unstableProps` | Prop keys that changed identity but not content — usually fixed with `useCallback`/`useMemo`, hoisting, or React Compiler. |
 | `changedProps` | Prop keys whose identity changed, with counts — the "why" behind `causes.props`. |
 | `stable` | `false` when counts differ between runs (timers, network, randomness). |
 

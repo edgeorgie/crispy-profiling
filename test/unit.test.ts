@@ -13,8 +13,10 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     mounts: s(renders - updates),
     updates: s(updates),
     wastedRenders: s(wasted),
-    causes: { props: 0, state: 0, context: 0, parent: wasted },
+    avoidableRenders: s(wasted),
+    causes: { props: 0, state: 0, context: 0, unstable: 0, parent: wasted },
     changedProps: {},
+    unstableProps: {},
     stable: true,
   };
 }
@@ -22,7 +24,13 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
 function phase(components: Record<string, ComponentReport>): PhaseReport {
   const total = Object.values(components).reduce((a, c) => a + c.renders.median, 0);
   const wasted = Object.values(components).reduce((a, c) => a + c.wastedRenders.median, 0);
-  return { commits: s(1), totalRenders: s(total), totalWastedRenders: s(wasted), components };
+  return {
+    commits: s(1),
+    totalRenders: s(total),
+    totalWastedRenders: s(wasted),
+    totalAvoidableRenders: s(wasted),
+    components,
+  };
 }
 
 function report(phases: Record<string, PhaseReport>): CrispyReport {

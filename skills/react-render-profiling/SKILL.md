@@ -1,6 +1,6 @@
 ---
 name: react-render-profiling
-description: Measure and fix unnecessary React re-renders with deterministic numbers. Use when a React app feels slow, when asked to optimize renders, add React.memo/useCallback/useMemo, review a performance PR, or verify that a refactor did not add re-renders. Runs the app in headless Chromium via the crispy-profiling CLI or MCP server and reports renders, wasted renders and their causes per component.
+description: Measure and fix unnecessary React re-renders with deterministic numbers. Use when a React app feels slow, when asked to optimize renders, add React.memo/useCallback/useMemo, review a performance PR, or verify that a refactor did not add re-renders. Runs the app in headless Chromium via the crispy-profiling CLI or MCP server and reports renders, avoidable renders and their causes (including unstable inline callbacks/objects) per component.
 license: MIT
 metadata:
   author: edgeorgie
@@ -43,18 +43,20 @@ Chromium is required once: `npx playwright install chromium`.
    phase `load`; renders during steps go to `interaction` unless you name phases with
    `{ "action": "phase", "name": "..." }`.
 3. **Capture a baseline** before touching code (`outFile: ".crispy/base.json"`).
-4. **Read the report** — order of attention: highest `wasted` first, then highest `renders`.
+4. **Read the report** — components are already sorted by `avoidableRenders`, then `renders`.
 5. **Fix one cause at a time** using the table below.
 6. **Re-profile** to `.crispy/head.json` and run `compare_reports`. Keep the change only if
    the target component improved and nothing regressed. Report the before/after numbers.
 
 ## Reading the numbers
 
-Each component has `renders`, `wastedRenders`, `causes` (`props`/`state`/`context`/`parent`)
+Each component has `renders`, `avoidableRenders`, `wastedRenders`, `causes`
+(`props`/`state`/`context`/`unstable`/`parent`), `unstableProps` (keys recreated with equal contents)
 and `changedProps` (prop keys whose identity changed, with counts).
 
 | Signal | Likely cause | Fix |
 | --- | --- | --- |
+| cause `unstable`, `unstableProps` lists a key | Prop recreated each render with the same content (inline callback/object) | `useCallback`/`useMemo` in the owner, hoist constants, or enable React Compiler |
 | `wastedRenders` > 0, cause `parent` | Parent re-rendered, props identical | Wrap in `React.memo`, or move state down so the parent does not re-render |
 | `changedProps` lists a function (`onClick`, `onSelect`...) | Inline callback recreated every render | `useCallback` in the parent (and `React.memo` on the child) |
 | `changedProps` lists an object/array (`style`, `options`, `items`) | Literal recreated every render | `useMemo` or hoist the constant outside the component |
@@ -66,7 +68,7 @@ and `changedProps` (prop keys whose identity changed, with counts).
 Rules:
 - `React.memo` only helps if every prop is stable; check `changedProps` first.
 - Do not memoize everything. Fix components with the largest `renders × selfDurationMs`
-  or large `wastedRenders`; leave cheap leaf components alone.
+  or large `avoidableRenders`; leave cheap leaf components alone.
 - A component missing from a phase did not render in it (0 renders).
 - Production builds minify names; profile the development build.
 
@@ -82,7 +84,7 @@ Add budgets per scenario and phase in `crispy.config.json`; `crispy run` exits 1
     "path": "/products",
     "steps": [{ "action": "type", "selector": "#search", "value": "shoes" }],
     "budgets": {
-      "interaction": { "maxWastedRenders": 0, "components": { "ProductCard": { "maxRenders": 20 } } }
+      "interaction": { "maxAvoidableRenders": 0, "components": { "ProductCard": { "maxRenders": 20 } } }
     }
   }]
 }

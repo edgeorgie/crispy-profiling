@@ -31,8 +31,26 @@ export function stat(values: number[]): Stat {
 
 const medianOf = (values: number[]) => stat(values).median;
 
-function byRendersThenName(a: [string, ComponentReport], b: [string, ComponentReport]): number {
-  return b[1].renders.median - a[1].renders.median || cmp(a[0], b[0]);
+/** Most avoidable renders first (what to fix), then most renders, then name. */
+function byPriority(a: [string, ComponentReport], b: [string, ComponentReport]): number {
+  return (
+    b[1].avoidableRenders.median - a[1].avoidableRenders.median ||
+    b[1].renders.median - a[1].renders.median ||
+    cmp(a[0], b[0])
+  );
+}
+
+function medianCounts(
+  samples: (RawComponentStats | undefined)[],
+  get: (s: RawComponentStats) => Record<string, number> | undefined,
+): Record<string, number> {
+  const keys = new Set<string>();
+  for (const s of samples) for (const k of Object.keys((s && get(s)) ?? {})) keys.add(k);
+  const entries = [...keys]
+    .map((k) => [k, medianOf(samples.map((s) => (s && get(s)?.[k]) ?? 0))] as const)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]));
+  return Object.fromEntries(entries);
 }
 
 function aggregateComponent(
@@ -42,25 +60,21 @@ function aggregateComponent(
   const pick = (f: (s: RawComponentStats) => number) => samples.map((s) => (s ? f(s) : 0));
   const renders = stat(pick((s) => s.renders));
 
-  const propKeys = new Set<string>();
-  for (const s of samples) for (const k of Object.keys(s?.changedProps ?? {})) propKeys.add(k);
-  const changedProps = [...propKeys]
-    .map((k) => [k, medianOf(samples.map((s) => s?.changedProps[k] ?? 0))] as const)
-    .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]));
-
   const report: ComponentReport = {
     renders,
     mounts: stat(pick((s) => s.mounts)),
     updates: stat(pick((s) => s.updates)),
     wastedRenders: stat(pick((s) => s.wastedRenders)),
+    avoidableRenders: stat(pick((s) => s.avoidableRenders ?? 0)),
     causes: {
       props: medianOf(pick((s) => s.causes.props)),
       state: medianOf(pick((s) => s.causes.state)),
       context: medianOf(pick((s) => s.causes.context)),
+      unstable: medianOf(pick((s) => s.causes.unstable ?? 0)),
       parent: medianOf(pick((s) => s.causes.parent)),
     },
-    changedProps: Object.fromEntries(changedProps),
+    changedProps: medianCounts(samples, (s) => s.changedProps),
+    unstableProps: medianCounts(samples, (s) => s.unstableProps),
     stable: renders.min === renders.max,
   };
   if (timings) report.selfDurationMs = stat(pick((s) => s.selfDurationMs));
@@ -83,7 +97,7 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
           ),
         ] as [string, ComponentReport],
     )
-    .sort(byRendersThenName);
+    .sort(byPriority);
 
   const totals = (f: (s: RawComponentStats) => number) =>
     stat(
@@ -95,6 +109,7 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
     commits: stat(runs.map((r) => r.phases[phase]?.commits ?? 0)),
     totalRenders: totals((s) => s.renders),
     totalWastedRenders: totals((s) => s.wastedRenders),
+    totalAvoidableRenders: totals((s) => s.avoidableRenders ?? 0),
     components: {},
   };
   if (config.topComponents > 0) entries = entries.slice(0, config.topComponents);
@@ -133,12 +148,14 @@ export function checkBudgets(
     check('commits', b.maxCommits, p.commits.median);
     check('totalRenders', b.maxTotalRenders, p.totalRenders.median);
     check('wastedRenders', b.maxWastedRenders, p.totalWastedRenders.median);
+    check('avoidableRenders', b.maxAvoidableRenders, p.totalAvoidableRenders.median);
     for (const name of Object.keys(b.components ?? {}).sort(cmp)) {
       const cb = b.components?.[name];
       const c = p.components[name];
       if (!cb || !c) continue;
       check('renders', cb.maxRenders, c.renders.median, name);
       check('wastedRenders', cb.maxWastedRenders, c.wastedRenders.median, name);
+      check('avoidableRenders', cb.maxAvoidableRenders, c.avoidableRenders.median, name);
     }
   }
   return violations;

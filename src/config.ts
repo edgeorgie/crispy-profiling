@@ -29,12 +29,16 @@ export type Step = z.infer<typeof StepSchema>;
 export const ComponentBudgetSchema = z.object({
   maxRenders: z.number().int().min(0).optional(),
   maxWastedRenders: z.number().int().min(0).optional(),
+  /** Wasted renders plus renders caused only by recreated-but-equal inputs. */
+  maxAvoidableRenders: z.number().int().min(0).optional(),
 });
 
 export const BudgetSchema = z.object({
   maxCommits: z.number().int().min(0).optional(),
   maxTotalRenders: z.number().int().min(0).optional(),
   maxWastedRenders: z.number().int().min(0).optional(),
+  /** Wasted renders plus renders caused only by recreated-but-equal inputs. */
+  maxAvoidableRenders: z.number().int().min(0).optional(),
   components: z.record(z.string(), ComponentBudgetSchema).optional(),
 });
 export type Budget = z.infer<typeof BudgetSchema>;
@@ -142,7 +146,7 @@ export function exampleConfig(baseUrl = 'http://localhost:5173'): CrispyConfigIn
           { action: 'phase', name: 'interaction' },
           { action: 'click', selector: 'button' },
         ],
-        budgets: { load: { maxWastedRenders: 50 } },
+        budgets: { interaction: { maxAvoidableRenders: 50 } },
       },
     ],
   };
