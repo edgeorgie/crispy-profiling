@@ -7,7 +7,7 @@ Only the latest minor release receives security fixes.
 ## Reporting a vulnerability
 
 Please do **not** open a public issue. Use GitHub's
-[private vulnerability reporting](https://github.com/edgeorgie/crispy-profilling/security/advisories/new).
+[private vulnerability reporting](https://github.com/edgeorgie/crispy-profiling/security/advisories/new).
 You will get an answer within 7 days.
 
 ## Scope notes

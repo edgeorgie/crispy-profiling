@@ -4,7 +4,7 @@
   "title": "Crispy Profiling",
   "description": "Deterministic React render profiling: renders, wasted renders and their causes per component.",
   "repository": {
-    "url": "https://github.com/edgeorgie/crispy-profilling",
+    "url": "https://github.com/edgeorgie/crispy-profiling",
     "source": "github"
   },
   "version": "0.1.0",

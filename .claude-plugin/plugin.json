@@ -7,12 +7,12 @@
     "name": "Edwin Jorge",
     "url": "https://github.com/edgeorgie"
   },
-  "homepage": "https://github.com/edgeorgie/crispy-profilling#readme",
-  "repository": "https://github.com/edgeorgie/crispy-profilling",
+  "homepage": "https://github.com/edgeorgie/crispy-profiling#readme",
+  "repository": "https://github.com/edgeorgie/crispy-profiling",
   "license": "MIT",
   "keywords": ["react", "performance", "re-renders", "profiling", "mcp"],
-  "documentationUrl": "https://github.com/edgeorgie/crispy-profilling#readme",
-  "supportUrl": "https://github.com/edgeorgie/crispy-profilling/issues",
+  "documentationUrl": "https://github.com/edgeorgie/crispy-profiling#readme",
+  "supportUrl": "https://github.com/edgeorgie/crispy-profiling/issues",
   "mcpServers": {
     "crispy-profiling": {
       "command": "npx",

@@ -6,19 +6,19 @@ Render counts are deterministic, so two reports of the same scenario only differ
 
 ## Docs
 
-- [README](https://github.com/edgeorgie/crispy-profilling/blob/develop/README.md): install, configuration, CLI, MCP, CI, programmatic API
-- [Agent Skill](https://github.com/edgeorgie/crispy-profilling/blob/develop/skills/react-render-profiling/SKILL.md): measure → fix → re-measure workflow and how to map signals to fixes
-- [Architecture](https://github.com/edgeorgie/crispy-profilling/blob/develop/docs/ARCHITECTURE.md): how the React hook, fiber diffing and cause classification work
-- [Config JSON Schema](https://github.com/edgeorgie/crispy-profilling/blob/develop/schema/crispy.config.schema.json): every `crispy.config.json` field
+- [README](https://github.com/edgeorgie/crispy-profiling/blob/develop/README.md): install, configuration, CLI, MCP, CI, programmatic API
+- [Agent Skill](https://github.com/edgeorgie/crispy-profiling/blob/develop/skills/react-render-profiling/SKILL.md): measure → fix → re-measure workflow and how to map signals to fixes
+- [Architecture](https://github.com/edgeorgie/crispy-profiling/blob/develop/docs/ARCHITECTURE.md): how the React hook, fiber diffing and cause classification work
+- [Config JSON Schema](https://github.com/edgeorgie/crispy-profiling/blob/develop/schema/crispy.config.schema.json): every `crispy.config.json` field
 
 ## Integrations
 
 - MCP server: `npx -y crispy-profiling@latest mcp` (tools: profile_url, run_scenarios, compare_reports, inspect_component)
-- Agent Skill: `npx skills add edgeorgie/crispy-profilling`
-- Claude Code plugin: `/plugin marketplace add edgeorgie/crispy-profilling`
-- GitHub Action: `uses: edgeorgie/crispy-profilling@v0`
+- Agent Skill: `npx skills add edgeorgie/crispy-profiling`
+- Claude Code plugin: `/plugin marketplace add edgeorgie/crispy-profiling`
+- GitHub Action: `uses: edgeorgie/crispy-profiling@v0`
 
 ## Contributing
 
-- [AGENTS.md](https://github.com/edgeorgie/crispy-profilling/blob/develop/AGENTS.md): setup, code map, rules, GitFlow and commit conventions
-- [CONTRIBUTING.md](https://github.com/edgeorgie/crispy-profilling/blob/develop/CONTRIBUTING.md)
+- [AGENTS.md](https://github.com/edgeorgie/crispy-profiling/blob/develop/AGENTS.md): setup, code map, rules, GitFlow and commit conventions
+- [CONTRIBUTING.md](https://github.com/edgeorgie/crispy-profiling/blob/develop/CONTRIBUTING.md)

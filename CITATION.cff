@@ -6,6 +6,6 @@ authors:
   - given-names: Edwin
     family-names: Jorge
     alias: edgeorgie
-repository-code: https://github.com/edgeorgie/crispy-profilling
+repository-code: https://github.com/edgeorgie/crispy-profiling
 license: MIT
 keywords: [react, performance, profiling, mcp, ai-agents]

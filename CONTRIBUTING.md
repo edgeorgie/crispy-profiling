@@ -8,8 +8,8 @@ trying it on real React apps and reporting what it found (or missed).
 
 - **Try it** on your app and open an issue with the report and what you changed.
 - **Report bugs** with the bug template (a minimal component + `crispy.config.json` is ideal).
-- **Pick an issue** labeled [`good first issue`](https://github.com/edgeorgie/crispy-profilling/labels/good%20first%20issue)
-  or [`help wanted`](https://github.com/edgeorgie/crispy-profilling/labels/help%20wanted).
+- **Pick an issue** labeled [`good first issue`](https://github.com/edgeorgie/crispy-profiling/labels/good%20first%20issue)
+  or [`help wanted`](https://github.com/edgeorgie/crispy-profiling/labels/help%20wanted).
 - **Improve docs** — typos and unclear explanations count.
 
 ## Development setup
@@ -17,8 +17,8 @@ trying it on real React apps and reporting what it found (or missed).
 Use the dev container (GitHub Codespaces / VS Code "Reopen in Container"), or locally with Node 20+:
 
 ```bash
-git clone https://github.com/edgeorgie/crispy-profilling.git
-cd crispy-profilling
+git clone https://github.com/edgeorgie/crispy-profiling.git
+cd crispy-profiling
 git checkout develop
 npm ci
 npx tsx src/cli.ts install   # Chromium matching our playwright-core
