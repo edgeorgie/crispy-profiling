@@ -1,43 +1,66 @@
 # Contributing
 
 Thanks for helping make React re-renders less mysterious! 🥓
+This project is an early **proof of concept**: the most valuable contributions right now are
+trying it on real React apps and reporting what it found (or missed).
 
-## Setup
+## Ways to contribute
+
+- **Try it** on your app and open an issue with the report and what you changed.
+- **Report bugs** with the bug template (a minimal component + `crispy.config.json` is ideal).
+- **Pick an issue** labeled [`good first issue`](https://github.com/edgeorgie/crispy-profilling/labels/good%20first%20issue)
+  or [`help wanted`](https://github.com/edgeorgie/crispy-profilling/labels/help%20wanted).
+- **Improve docs** — typos and unclear explanations count.
+
+## Development setup
+
+Use the dev container (GitHub Codespaces / VS Code "Reopen in Container"), or locally with Node 20+:
 
 ```bash
 git clone https://github.com/edgeorgie/crispy-profilling.git
 cd crispy-profilling
+git checkout develop
 npm ci
 npx tsx src/cli.ts install   # Chromium matching our playwright-core
 npm run check                # lint + typecheck + tests + build
 ```
 
-Node 20+ is required (`.nvmrc` pins 22).
+Project layout and conventions are documented in [AGENTS.md](AGENTS.md) (it is written for both
+humans and AI coding agents).
 
-## Project layout
+## Git workflow
 
-| Path | What |
-| --- | --- |
-| `src/profiler/hook.ts` | Code injected into the page. Must stay self-contained (it is serialized). |
-| `src/profiler/run.ts` | Playwright orchestration: scenarios, steps, phases, settling. |
-| `src/report/` | Aggregation, budgets, comparison, Markdown rendering. |
-| `src/mcp/server.ts` | MCP tools. |
-| `src/cli.ts` | CLI. |
-| `skills/` | Agent Skill(s) shipped to agents. |
-| `test/fixtures/app` | React app with a naive and an optimized variant used by the e2e tests. |
+We use [GitFlow](https://nvie.com/posts/a-successful-git-branching-model/):
 
-## Rules of thumb
+| Branch | From | Merges into | Purpose |
+| --- | --- | --- | --- |
+| `main` | — | — | Released code. Every merge is tagged `vX.Y.Z`. |
+| `develop` | `main` | — | Integration branch (default). |
+| `feature/<name>` | `develop` | `develop` | New functionality. |
+| `bugfix/<name>` | `develop` | `develop` | Non-urgent fixes. |
+| `docs/<name>` | `develop` | `develop` | Documentation only. |
+| `release/<x.y.z>` | `develop` | `main` + `develop` | Version bump and release prep. |
+| `hotfix/<x.y.z>` | `main` | `main` + `develop` | Urgent fixes to a release. |
 
-- **Determinism first.** Reports must be byte-for-byte reproducible for the same app and scenario.
-  No timestamps, locale-dependent sorting or wall-clock data unless `timings: true`.
-- **Every metric needs an e2e test** against the fixture app with exact expected numbers.
-- Keep runtime dependencies minimal (currently: MCP SDK, playwright-core, zod).
-- Run `npm run check` before pushing; CI runs the same plus manifest validation.
-- Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:` …).
+1. Branch from `develop`: `git checkout -b feature/my-change develop`.
+2. Make **atomic commits** using [Conventional Commits](https://www.conventionalcommits.org/)
+   (`feat(cli): add --json flag`, `fix(report): sort phases deterministically`, …).
+3. Run `npm run check`, push and open a PR against `develop`. Fill in the template.
+4. PRs are merged with a merge commit to keep history readable.
 
 ## Releasing (maintainers)
 
 ```bash
-npm version minor          # syncs .claude-plugin/plugin.json and server.json, commits, tags
-git push --follow-tags     # the Release workflow publishes npm, MCP Registry and GitHub release
+git checkout -b release/0.2.0 develop
+npm version 0.2.0 --no-git-tag-version   # also syncs plugin.json and server.json
+git commit -am "chore(release): 0.2.0"
+# open PR release/0.2.0 -> main, merge it, then:
+git checkout main && git pull && git tag v0.2.0 && git push origin v0.2.0
+git checkout develop && git merge --no-ff main && git push
 ```
+
+The tag triggers the Release workflow: npm (with provenance), MCP Registry and GitHub release.
+
+## Code of conduct
+
+By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).

@@ -1,0 +1,25 @@
+# crispy-profiling
+
+> Deterministic React render profiling for humans, CI and AI agents. Opens a React app in headless Chromium, runs declared interactions and reports, per component, how many times it rendered, why (props/state/context/parent), which renders were wasted and which prop keys changed. Ships as a CLI (`crispy`), an MCP server, an Agent Skill, a Claude Code plugin and a GitHub Action.
+
+Render counts are deterministic, so two reports of the same scenario only differ when the code changed. Use it to verify re-render fixes with before/after numbers.
+
+## Docs
+
+- [README](https://github.com/edgeorgie/crispy-profilling/blob/develop/README.md): install, configuration, CLI, MCP, CI, programmatic API
+- [Agent Skill](https://github.com/edgeorgie/crispy-profilling/blob/develop/skills/react-render-profiling/SKILL.md): measure → fix → re-measure workflow and how to map signals to fixes
+- [Architecture](https://github.com/edgeorgie/crispy-profilling/blob/develop/docs/ARCHITECTURE.md): how the React hook, fiber diffing and cause classification work
+- [Config JSON Schema](https://github.com/edgeorgie/crispy-profilling/blob/develop/schema/crispy.config.schema.json): every `crispy.config.json` field
+
+## Integrations
+
+- MCP server: `npx -y crispy-profiling@latest mcp` (tools: profile_url, run_scenarios, compare_reports, inspect_component)
+- Agent Skill: `npx skills add edgeorgie/crispy-profilling`
+- Claude Code plugin: `/plugin marketplace add edgeorgie/crispy-profilling`
+- GitHub Action: `uses: edgeorgie/crispy-profilling@v0`
+
+## Contributing
+
+- [AGENTS.md](https://github.com/edgeorgie/crispy-profilling/blob/develop/AGENTS.md): setup, code map, rules, GitFlow and commit conventions
+- [CONTRIBUTING.md](https://github.com/edgeorgie/crispy-profilling/blob/develop/CONTRIBUTING.md)
+- [Roadmap](https://github.com/edgeorgie/crispy-profilling/blob/develop/docs/ROADMAP.md)

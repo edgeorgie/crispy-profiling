@@ -1,6 +1,8 @@
-# Release flow (see docs/PLAN.es.md):
-#   npm version <patch|minor|major>   # bumps package.json, plugin.json, server.json, tags vX.Y.Z
-#   git push --follow-tags            # triggers this workflow
+# Release flow (GitFlow, see CONTRIBUTING.md):
+#   1. release/x.y.z branch from develop; `npm version x.y.z --no-git-tag-version` + sync
+#   2. PR release/x.y.z -> main, merge with a merge commit
+#   3. tag the merge commit on main: git tag vx.y.z && git push origin vx.y.z  (triggers this workflow)
+#   4. merge main back into develop
 name: Release
 
 on:
@@ -15,10 +17,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

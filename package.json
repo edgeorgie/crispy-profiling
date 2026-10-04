@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
-    "playwright-core": "^1.50.0",
+    "playwright-core": "^1.63.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {
@@ -81,5 +81,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
   }
 }

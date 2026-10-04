@@ -5,8 +5,10 @@
 [![CI](https://github.com/edgeorgie/crispy-profilling/actions/workflows/ci.yml/badge.svg)](https://github.com/edgeorgie/crispy-profilling/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/crispy-profiling.svg)](https://www.npmjs.com/package/crispy-profiling)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/edgeorgie/crispy-profilling/badge)](https://scorecard.dev/viewer/?uri=github.com/edgeorgie/crispy-profilling)
 
-[Español](README.es.md)
+> **Status: proof of concept.** It works end to end on the test app; we are now validating it on
+> real-world React apps. Feedback and case studies are the most valuable contribution right now.
 
 crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
 tells you **which components rendered, how many times, why** (props / state / context / parent) and
@@ -179,8 +181,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Contributing
 
-Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). The roadmap lives in
-[docs/PLAN.es.md](docs/PLAN.es.md).
+Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) (GitFlow: branch from
+`develop`). AI coding agents: start with [AGENTS.md](AGENTS.md); docs index for LLMs:
+[llms.txt](llms.txt). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## License
 
