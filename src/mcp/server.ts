@@ -10,6 +10,7 @@ import { compareReports } from '../report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../report/markdown.js';
 import { runSnapshotTest } from '../snapshot-test.js';
 import type { CrispyReport } from '../types.js';
+import { cmp } from '../util/cmp.js';
 import { VERSION } from '../version.js';
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
@@ -177,14 +178,34 @@ export function createServer(): McpServer {
     async ({ reportPath, component }) => {
       try {
         const report = await readReport(reportPath);
+        const keys = new Set<string>();
+        for (const s of Object.values(report.scenarios)) {
+          for (const p of Object.values(s.phases))
+            for (const k of Object.keys(p.components)) keys.add(k);
+        }
+        // Exact key first, then keys sharing the base name (`Item (src/a.tsx)`, `Item#2`).
+        const base = (k: string) => k.replace(/ \(.*\)$/, '').replace(/#\d+$/, '');
+        const wanted = keys.has(component)
+          ? [component]
+          : [...keys].filter((k) => base(k) === base(component)).sort(cmp);
         const found: Record<string, unknown> = {};
         for (const s of Object.values(report.scenarios)) {
           for (const [phase, p] of Object.entries(s.phases)) {
-            const c = p.components[component];
-            if (c) found[`${s.name}/${phase}`] = c;
+            for (const k of wanted) {
+              const c = p.components[k];
+              if (c)
+                found[wanted.length > 1 ? `${s.name}/${phase}/${k}` : `${s.name}/${phase}`] = c;
+            }
           }
         }
-        if (Object.keys(found).length === 0) throw new Error(`Component "${component}" not found`);
+        if (Object.keys(found).length === 0) {
+          const needle = component.toLowerCase();
+          const similar = [...keys].filter((k) => k.toLowerCase().includes(needle)).sort(cmp);
+          throw new Error(
+            `Component "${component}" not found.` +
+              (similar.length ? ` Did you mean: ${similar.slice(0, 10).join(', ')}?` : ''),
+          );
+        }
         return text(JSON.stringify(found, null, 2));
       } catch (err) {
         return fail(err);
