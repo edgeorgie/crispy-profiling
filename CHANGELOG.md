@@ -6,15 +6,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-10-05
+
+First public release: snapshot testing for React re-renders — deterministic, runtime-proven,
+with the fix.
 
 ### Added
-- Browser hook that records renders, mounts, updates, wasted renders, render causes
-  (props/state/context/parent) and changed prop keys per component and phase.
-- Scenario runner on Playwright (Chromium) with declarative steps and phases.
+- `crispy test` and `crispy.snap.json`: snapshot tests for render counts per scenario, phase and
+  component. Fails on any increase in renders, avoidable renders or commits; flaky counts are
+  stored as ranges; renames (also combined with a move) are recognized; new UI is reported, with a
+  warning when it already renders avoidably (`snapshot.failOnNewAvoidable` to fail).
+- Root-cause fix hints in every report ("Why / how to fix"): the component whose state starts a
+  cascade, the component that creates each recreated prop, `useCallback`/`useMemo` whose
+  dependencies change, recreated context provider values with their location, and no `React.memo`
+  advice for library components or children-only renders.
+- Render causes per component: props, state, context, recreated data (`unstable`), recreated
+  callbacks (`callback`) and parent re-renders, with prop keys, `triggeredBy`, `creators`,
+  `staleMemo`, `recreatedContextFrom`, `memo` and `compiled` (React Compiler).
+- Source-mapped locations (`file:line (Owner)`) and definition files for Vite, webpack (including
+  eval modules) and Turbopack (sectioned maps); paths are always project-relative or
+  `node_modules/...`.
+- Stable component identity: same-named components keyed by file (`Item (src/a.tsx)`) or JSX site
+  (`styled.div @ src/Card.tsx:12`), stable across runs and full navigations.
+- Framework internals hidden by default (`includeInternals` to show them), including Next.js dev
+  overlay roots; commits that only touch internals are not counted.
+- Scenario runner on Playwright (Chromium): declarative steps and phases, settling on network idle
+  and React work, fake clock, CPU throttling, per-key typing.
 - Deterministic JSON reports (median/min/max over runs, stability flag); opt-in timings.
 - Render budgets and baseline comparison with regression thresholds.
-- CLI: `init`, `install`, `run`, `compare`, `mcp`.
-- MCP server: `profile_url`, `run_scenarios`, `compare_reports`, `inspect_component`.
+- CLI: `init`, `install`, `run`, `test`, `compare`, `mcp`.
+- MCP server: `profile_url`, `run_scenarios`, `test_render_snapshots` (read-only unless confirmed),
+  `compare_reports`, `inspect_component` (fuzzy match).
 - Agent Skill `react-render-profiling`, Claude Code plugin + marketplace, MCP Registry manifest.
-- Composite GitHub Action.
+- Composite GitHub Action that runs `crispy test` and writes the job summary.
+
+### Validated on
+- Vite 8 + React 19 (React Router, Zustand, TanStack Query, styled-components, React Compiler).
+- Next.js 16 (Turbopack and webpack dev servers), React 18.3.
