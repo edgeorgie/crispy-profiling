@@ -602,6 +602,16 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
     expect(hint).toContain('`onAdd` is a new function with the same code in `Shop`');
   });
 
+  it('never says React.memo helps a component that gets new children JSX (council round 2)', () => {
+    const c = at(component(4));
+    c.callbackProps = { onClick: 4 };
+    c.creators = { 'onClick|Toolbar': 4 };
+    c.unstableProps = { children: 4 };
+    const hint = hintFor(c) ?? '';
+    expect(hint).toContain('React.memo will not help yet');
+    expect(hint).not.toContain('Then wrap this component in React.memo');
+  });
+
   it('points at the changing dependency of an existing useCallback', () => {
     const c = at(component(3));
     c.callbackProps = { onAdd: 3 };
@@ -805,9 +815,11 @@ describe('root causes never double count (R6-03)', async () => {
     const total = causes.reduce((a, c) => a + c.renders, 0);
     expect(total).toBeLessThanOrEqual(14);
     expect(causes.some((c) => c.text.includes('SlotClone'))).toBe(false);
-    expect(causes.find((c) => c.text.startsWith('`Grid`'))?.text).toContain(
+    expect(causes.find((c) => c.text.includes('`Grid` recreates'))?.text).toContain(
       '`Grid` recreates `style`, `onPick` → 4 avoidable render(s) in `Row`',
     );
+    // 4 renders: listed, but marked as optional.
+    expect(causes.find((c) => c.text.includes('`Grid` recreates'))?.minor).toBe(true);
   });
 });
 
