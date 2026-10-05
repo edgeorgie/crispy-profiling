@@ -32,7 +32,7 @@ validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are no
 
 ```bash
 npm i -D crispy-profiling
-npx crispy install                                   # downloads the matching Chromium (once)
+npx crispy install   # downloads Chromium once (or set CRISPY_CHROMIUM_PATH to a Chrome you have)
 npx crispy scan      # zero config: starts your dev server, finds interactions, profiles them
 npx crispy test      # records crispy.snap.json from the scanned scenarios → commit it
 ```
@@ -43,7 +43,7 @@ delete, pay, sign out, submit…, in several languages), and prints the top root
 It is read-only: requests other than GET never leave the browser, and an interaction that tried to
 send one is reported and not saved (`--allow-writes` for apps with disposable data). Point it at a
 development or preview build, not production. It saves what it ran as
-`crispy.config.json`, so `crispy test` guards those flows from then on. On shadcn-admin it found
+`crispy.config.json`, so `crispy test` guards those flows from then on. Add `.crispy/` (reports) to `.gitignore`; commit `crispy.config.json` and `crispy.snap.json`. On shadcn-admin it found
 the first root causes in 2.5 minutes without a single line of config. Prefer writing the steps
 yourself? `npx crispy init` creates a config to edit.
 
@@ -280,16 +280,23 @@ to a fix (`React.memo`, `useCallback`, `useMemo`, context splitting, state coloc
 
 ## CI (GitHub Action)
 
+Save as `.github/workflows/crispy.yml`:
+
 ```yaml
+name: crispy
+on: pull_request
 permissions:
   contents: read
   pull-requests: write   # lets crispy comment on the PR
-steps:
-  - uses: actions/checkout@v7
-  - uses: actions/setup-node@v7
-    with: { node-version: 22 }
-  - run: npm ci
-  - uses: edgeorgie/crispy-profiling@v0   # starts your dev server (webServer) and runs `crispy test --ci`
+jobs:
+  renders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm ci
+      - uses: edgeorgie/crispy-profiling@v0   # starts your dev server (webServer) and runs `crispy test --ci`
 ```
 
 The step fails when any component renders more than the committed snapshot allows (or a budget is

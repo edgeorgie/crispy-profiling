@@ -338,6 +338,7 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
     );
   }
   let stopServer = async () => {};
+  let reusedServer: string | undefined;
   if (config.webServer) {
     const server = await startWebServer(
       { ...config.webServer, cwd: options.cwd },
@@ -346,6 +347,7 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
     );
     stopServer = server.stop;
     config = { ...config, baseUrl: server.url };
+    if (server.reused) reusedServer = server.url;
   }
   try {
     const browser = await launchBrowser(config);
@@ -375,6 +377,7 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
       {
         log,
         cwd: options.cwd,
+        reusedServer,
         onScenarioError: (name, err) => {
           skipped.push({ name, reason: err.message.split('\n')[0] ?? String(err) });
           log(`[crispy] skipped ${name}: ${err.message.split('\n')[0]}`);

@@ -30,7 +30,7 @@ export async function startWebServer(
   server: WebServerConfig,
   baseUrl: string,
   log: (line: string) => void = () => {},
-): Promise<{ stop: () => Promise<void>; url: string }> {
+): Promise<{ stop: () => Promise<void>; url: string; reused?: boolean }> {
   const url = server.url ?? baseUrl;
   const reuse = server.reuseExisting ?? !isCI();
   if (await isUp(url)) {
@@ -42,7 +42,7 @@ export async function startWebServer(
     log(
       `[crispy] ⚠️ reusing the server already running at ${url} — make sure it is this app's development build.`,
     );
-    return { stop: async () => {}, url };
+    return { stop: async () => {}, url, reused: true };
   }
   log(`[crispy] starting "${server.command}" and waiting for ${url}`);
   const child: ChildProcess = spawn(server.command, {

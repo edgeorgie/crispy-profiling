@@ -25,6 +25,17 @@ export interface RunOptions {
    * is reported, e.g. "POST /api/items".
    */
   onBlockedRequest?: (scenario: string, what: string) => void;
+  /** A server crispy did not start answered at this URL (step failures may come from another app). */
+  reusedServer?: string;
+}
+
+/** Adds a hint when a scenario failed against a server crispy did not start. */
+function explainReused(err: unknown, url: string | undefined): Error {
+  const e = err instanceof Error ? err : new Error(String(err));
+  if (url && /failed|Timeout/i.test(e.message)) {
+    e.message += `\nNote: crispy reused a server it did not start at ${url}. If another app is running there, stop it or give this app its own port.`;
+  }
+  return e;
 }
 
 /** Aborts writes and closes popups in a context (read-only profiling). */
@@ -114,7 +125,7 @@ export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
     });
   } catch (err) {
     throw new Error(
-      `Could not launch Chromium. Install it with "npx crispy-profiling install", ` +
+      `Could not launch Chromium. Install it with "npx crispy install", ` +
         `or set CRISPY_CHROMIUM_PATH / browser.executablePath / browser.channel.\n${withoutBanner((err as Error).message)}`,
     );
   }
@@ -666,6 +677,7 @@ export async function profile(
     );
     stopServer = server.stop;
     if (server.url !== config.baseUrl) config = { ...config, baseUrl: server.url };
+    if (server.reused) options = { ...options, reusedServer: server.url };
   }
   let browser: Browser;
   try {
@@ -694,8 +706,9 @@ export async function profile(
           );
         }
       } catch (err) {
-        if (!options.onScenarioError) throw err;
-        options.onScenarioError(scenario.name, err as Error);
+        const why = explainReused(err, options.reusedServer);
+        if (!options.onScenarioError) throw why;
+        options.onScenarioError(scenario.name, why);
         continue;
       }
       results.push({ scenario, runs });

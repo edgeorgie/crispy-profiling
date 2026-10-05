@@ -260,10 +260,36 @@ async function main(argv: string[]): Promise<number> {
       // Use the exact playwright-core crispy depends on, so browser revisions match.
       const require = createRequire(import.meta.url);
       const cliPath = join(dirname(require.resolve('playwright-core/package.json')), 'cli.js');
+      const own = process.env.CRISPY_CHROMIUM_PATH;
+      if (own && existsSync(own)) {
+        log(`[crispy] CRISPY_CHROMIUM_PATH is set (${own}): nothing to download.`);
+        return 0;
+      }
+      // Capture the output to explain a blocked download (corporate proxies) in one line.
       const child = spawn(process.execPath, [cliPath, 'install', ...rest, 'chromium'], {
-        stdio: 'inherit',
+        stdio: ['inherit', 'inherit', 'pipe'],
       });
-      return new Promise<number>((done) => child.on('exit', (code) => done(code ?? 2)));
+      let errors = '';
+      child.stderr?.on('data', (d) => {
+        errors += String(d);
+      });
+      return new Promise<number>((done) =>
+        child.on('exit', (code) => {
+          if (code) {
+            const blocked =
+              /\b(403|407|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|certificate)\b/i.test(errors);
+            log(
+              blocked
+                ? '[crispy] Could not download Chromium: the network blocked it (proxy or firewall).'
+                : `[crispy] Could not download Chromium:\n${errors.trim().split('\n').slice(-5).join('\n')}`,
+            );
+            log(
+              '[crispy] Use a Chrome or Chromium you already have instead: set CRISPY_CHROMIUM_PATH=/path/to/chrome, or "browser": { "channel": "chrome" } in crispy.config.json. Behind a proxy, HTTPS_PROXY also works for the download.',
+            );
+          }
+          done(code ?? 2);
+        }),
+      );
     }
     case 'run': {
       const { values } = parseArgs({
