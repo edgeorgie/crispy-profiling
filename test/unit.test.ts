@@ -364,6 +364,27 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('⚠️ check the UI');
   });
 
+  it('leaves node_modules components out of snapshots by default (council round 3)', () => {
+    const withIcon = (renders: number) => {
+      const r = make(10, 0);
+      const p = r.scenarios.home?.phases.interaction;
+      if (p) {
+        p.components.Icon = component(renders);
+        p.components.Icon.definedIn = 'node_modules/lucide-react/dist/esm/createLucideIcon.js';
+      }
+      return r;
+    };
+    expect(
+      Object.keys(toSnapshot(withIcon(3)).scenarios.home?.interaction?.components ?? {}),
+    ).toEqual(['Item']);
+    // An old snapshot that still lists it: neither a change nor a removal.
+    const old = toSnapshot(withIcon(3), true);
+    expect(compareSnapshot(old, withIcon(9)).changes).toEqual([]);
+    // Opt in to compare them.
+    const strict = compareSnapshot(old, withIcon(9), 0, false, false, false, false, true);
+    expect(strict.regressions.map((c) => c.component)).toEqual(['Icon']);
+  });
+
   it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
     const flaky = make(10, 0);
     const item = flaky.scenarios.home?.phases.interaction?.components.Item;

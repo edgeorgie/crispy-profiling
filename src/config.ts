@@ -186,6 +186,11 @@ export const ConfigSchema = z.object({
        * commit counts vary with load timing, so they are reported (ℹ️) instead.
        */
       failOnMoreCommits: z.boolean().default(false),
+      /**
+       * Also record components defined in node_modules (icons, Radix parts…). Off by
+       * default: their counts follow the app component that renders them.
+       */
+      includeLibraries: z.boolean().default(false),
     })
     .default({
       file: 'crispy.snap.json',
@@ -193,6 +198,7 @@ export const ConfigSchema = z.object({
       failOnNewAvoidable: false,
       failOnMoreAvoidable: false,
       failOnMoreCommits: false,
+      includeLibraries: false,
     }),
   scenarios: z.array(ScenarioSchema).min(1),
 });

@@ -102,7 +102,10 @@ export class RenderRecorder {
         );
       }
       await mkdir(dirname(file), { recursive: true });
-      await writeFile(file, serializeSnapshot(toSnapshot(report)));
+      await writeFile(
+        file,
+        serializeSnapshot(toSnapshot(report, this.config.snapshot.includeLibraries)),
+      );
       return;
     }
     const previous = parseSnapshot(await readFile(file, 'utf8'));
@@ -114,6 +117,7 @@ export class RenderRecorder {
       this.config.snapshot.failOnNewAvoidable,
       this.config.snapshot.failOnMoreAvoidable,
       this.config.snapshot.failOnMoreCommits,
+      this.config.snapshot.includeLibraries,
     );
     if (!result.passed) {
       // One remedy that fits Playwright tests (not the CLI's `crispy test --update`).

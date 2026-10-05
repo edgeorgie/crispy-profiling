@@ -134,14 +134,26 @@ export async function runSnapshotTest(
         }\n${insight(report)}${extra}`,
       };
     }
-    let next = previous ? keepRanges(toSnapshot(report), previous) : toSnapshot(report);
+    const snap = toSnapshot(report, config.snapshot.includeLibraries);
+    let next = previous ? keepRanges(snap, previous) : snap;
     if (previous && options.only?.length) {
       // Keep the scenarios that did not run.
       next = { schemaVersion: 1, scenarios: { ...previous.scenarios, ...next.scenarios } };
-      next = mergeAdditions(next, report);
+      next = mergeAdditions(next, report, config.snapshot.includeLibraries);
     }
     await save(file, next);
-    const result = previous ? compareSnapshot(previous, report, 0, !!options.only?.length) : null;
+    const result = previous
+      ? compareSnapshot(
+          previous,
+          report,
+          0,
+          !!options.only?.length,
+          false,
+          false,
+          false,
+          config.snapshot.includeLibraries,
+        )
+      : null;
     const header = previous
       ? `## 🥓 crispy render snapshots: ✍️ updated \`${shown}\` (${result?.changes.length ?? 0} change(s) accepted)`
       : `## 🥓 crispy render snapshots: ✍️ written \`${shown}\` — commit it to start guarding re-renders`;
@@ -163,6 +175,7 @@ export async function runSnapshotTest(
     config.snapshot.failOnNewAvoidable,
     config.snapshot.failOnMoreAvoidable,
     config.snapshot.failOnMoreCommits,
+    config.snapshot.includeLibraries,
   );
   // Never modify a committed snapshot as a side effect: new entries are only
   // recorded with --update, so every change to the file is a reviewed decision.
