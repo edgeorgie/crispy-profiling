@@ -134,8 +134,26 @@ interface SettleContext {
   warnings: string[];
 }
 
+const NAVIGATED = /Execution context was destroyed|Cannot find context with specified id/;
+
+/**
+ * page.evaluate that survives a navigation in flight: dev servers reload the page
+ * on their own (Vite after optimizing new dependencies, app redirects). Waits for
+ * the new document and runs again; the hook carries its data across documents.
+ */
+async function inPage<R>(page: Page, fn: (arg: any) => R, arg?: unknown): Promise<R> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await page.evaluate(fn, arg);
+    } catch (err) {
+      if (attempt >= 5 || !NAVIGATED.test(String(err))) throw err;
+      await page.waitForLoadState('load').catch(() => {});
+    }
+  }
+}
+
 const readActivity = (page: Page) =>
-  page.evaluate(() => {
+  inPage(page, () => {
     const s = (window as any).__CRISPY__;
     return {
       commits: s.commitCount as number,
@@ -216,7 +234,7 @@ const pageErrors = new WeakMap<Page, string[]>();
 async function waitForReact(page: Page, url: string, timeoutMs: number, clock: boolean) {
   const deadline = Date.now() + timeoutMs;
   const status = () =>
-    page.evaluate(() => {
+    inPage(page, () => {
       const s = (window as any).__CRISPY__;
       return { react: s?.reactDetected === true, rendered: (s?.commitCount ?? 0) > 0 };
     });
@@ -238,9 +256,13 @@ async function waitForReact(page: Page, url: string, timeoutMs: number, clock: b
 }
 
 async function setPhase(page: Page, name: string): Promise<void> {
-  await page.evaluate((n) => {
-    (window as any).__CRISPY__.phase = n;
-  }, name);
+  await inPage(
+    page,
+    (n: string) => {
+      (window as any).__CRISPY__.phase = n;
+    },
+    name,
+  );
 }
 
 async function runStep(
@@ -450,7 +472,7 @@ export class PageProfiler {
   /** Raw render data recorded so far, with source-mapped locations. */
   async collect(declaredPhases: string[] = []): Promise<RawRun> {
     await this.collectDefinitions();
-    const raw = await this.page.evaluate(() => {
+    const raw = await inPage(this.page, () => {
       const s = (window as any).__CRISPY__;
       return JSON.parse(
         JSON.stringify({
