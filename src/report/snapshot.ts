@@ -56,8 +56,8 @@ export interface SnapshotChange {
    */
   uncovered?: true;
   /**
-   * For a regressed component re-rendered by another regressed component's state
-   * update: that component (the root of the cascade). Fix the root first.
+   * The component whose state updates re-rendered this regressed one: the highest
+   * regressed ancestor in the cascade, else its direct trigger. Fix the root first.
    */
   rootCause?: string;
 }
@@ -550,32 +550,47 @@ function linkRootCauses(changes: SnapshotChange[], report: CrispyReport): void {
     let root = c.component;
     const seen = new Set([root]);
     for (;;) {
-      const by = Object.entries(phase.components[root]?.triggeredBy ?? {})
-        .filter(([k]) => k !== root)
-        .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]))[0]?.[0];
+      const by = dominantTrigger(phase.components[root]?.triggeredBy, root);
       if (!by || !names.has(by) || seen.has(by)) break;
       seen.add(by);
       root = by;
     }
     if (root !== c.component) c.rootCause = root;
   }
+  // The rest: the component whose state update re-rendered them, even if its own
+  // count did not change (unless they are the root of other regressions).
+  const roots = new Set(
+    changes.map((c) => c.rootCause && `${c.scenario}\0${c.phase}\0${c.rootCause}`),
+  );
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component || c.rootCause) continue;
+    if (roots.has(`${c.scenario}\0${c.phase}\0${c.component}`)) continue;
+    const phase = report.scenarios[c.scenario]?.phases[c.phase];
+    const by = dominantTrigger(phase?.components[c.component]?.triggeredBy, c.component);
+    if (by) c.rootCause = by;
+  }
 }
 
-/** One Markdown row per cause: regressions with the same root and fix are merged. */
+/** The component whose state updates re-rendered this one most often (not itself). */
+const dominantTrigger = (triggeredBy: Record<string, number> | undefined, self: string) =>
+  Object.entries(triggeredBy ?? {})
+    .filter(([k]) => k !== self)
+    .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]))[0]?.[0];
+
+/**
+ * One Markdown row per cause: a cascade's root and what it re-renders (in every
+ * scenario and phase), or the same component with the same fix across scenarios.
+ */
 function groupRegressions(changes: SnapshotChange[]): SnapshotChange[][] {
-  const hintOf = new Map<string, string | undefined>();
-  for (const c of changes) {
-    if (c.component && !c.rootCause)
-      hintOf.set(`${c.scenario}\0${c.phase}\0${c.component}`, c.hint);
-  }
+  const roots = new Set(changes.flatMap((c) => (c.rootCause ? [c.rootCause] : [])));
   const groups = new Map<string, SnapshotChange[]>();
   for (const c of changes) {
-    const root = c.rootCause ?? c.component ?? '';
-    const hint = c.rootCause ? hintOf.get(`${c.scenario}\0${c.phase}\0${root}`) : c.hint;
-    // Without a hint there is no shared cause to merge on.
-    const key =
-      hint || c.rootCause
-        ? `${root}\0${hint}`
+    const root = c.rootCause ?? (c.component && roots.has(c.component) ? c.component : undefined);
+    // Without a root or a hint there is no shared cause to merge on.
+    const key = root
+      ? `root\0${root}`
+      : c.hint
+        ? `hint\0${c.component}\0${c.hint}`
         : `${c.scenario}\0${c.phase}\0${c.component}\0${c.metric}`;
     groups.set(key, [...(groups.get(key) ?? []), c]);
   }
@@ -620,7 +635,10 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
     `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${valuesOf(c)} | ${c.hint ?? ''} |`;
   const blocking = new Set(result.regressions);
   for (const group of groupRegressions(sorted.filter((c) => blocking.has(c)))) {
-    const lead = group.find((c) => !c.rootCause) ?? group[0];
+    // The root's own row with the biggest increase (else the group's biggest).
+    const growth = (c: SnapshotChange) => hi(c.actual ?? 0) - lo(c.expected ?? 0);
+    const own = group.filter((c) => !c.rootCause);
+    const lead = (own.length ? own : group).reduce((a, b) => (growth(b) > growth(a) ? b : a));
     if (!lead) continue;
     if (group.length === 1) {
       lines.push(row(lead));
