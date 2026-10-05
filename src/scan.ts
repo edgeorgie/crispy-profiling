@@ -9,9 +9,8 @@ import {
   profile,
 } from './profiler/run.js';
 import { startWebServer } from './profiler/webserver.js';
-import { type RootCause, rootCauses } from './report/hints.js';
+import { byCost, type RootCause, rootCauses } from './report/hints.js';
 import type { CrispyReport } from './types.js';
-import { cmp } from './util/cmp.js';
 
 export interface ScanOptions {
   /** Start path (default "/"). */
@@ -418,7 +417,7 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
         }
       }
     }
-    causes.sort((a, b) => b.renders - a.renders || cmp(a.text, b.text));
+    causes.sort(byCost);
     return { report, scenarios: ran, skipped, causes };
   } finally {
     await stopServer();

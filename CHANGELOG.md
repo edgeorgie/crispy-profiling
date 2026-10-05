@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 - With `timings: true`, every phase reports its main-thread CPU in ms (`cost.scriptMs` for
   JavaScript, `cost.taskMs` for all main-thread work), measured through the DevTools protocol. Unlike
   component self time it includes reconciliation, effects and styles, and it works in production builds.
+- With timings, every root cause shows its estimated cost ("≈ 85 ms of JavaScript") and the
+  top-causes lists of `crispy test` and `crispy scan` rank by it, so the expensive fix comes first.
 - `crispy scan` (and the `scan_app` MCP tool): zero-config start. Detects the app and its dev
   server, visits a few routes, profiles their safe interactions (buttons, tabs, text inputs; never
   delete, pay, sign out, submit…), prints the top root causes and saves the scenarios that worked as

@@ -200,6 +200,17 @@ export interface RootCause {
   text: string;
   /** Avoidable or callback renders this cause is responsible for (for ranking). */
   renders: number;
+  /**
+   * Estimated JavaScript ms of those renders: the phase's measured JavaScript time
+   * times their share of the phase's renders. Only with `timings: true`.
+   */
+  ms?: number;
+}
+
+/** Most expensive first: by estimated ms when both are known, else by renders. */
+export function byCost(a: RootCause, b: RootCause): number {
+  if (a.ms !== undefined && b.ms !== undefined && a.ms !== b.ms) return b.ms - a.ms;
+  return b.renders - a.renders || cmp(a.text, b.text);
 }
 
 /**
@@ -366,5 +377,15 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     });
   }
 
-  return out.sort((a, b) => b.renders - a.renders || cmp(a.text, b.text)).slice(0, max);
+  // With measured CPU, put a cost on each cause (renders are not equally expensive
+  // across phases, but within one phase their share is the best estimate we have).
+  const js = phase.cost?.scriptMs.median;
+  const total = phase.totalRenders.median;
+  if (js !== undefined && total > 0) {
+    for (const c of out) {
+      c.ms = Math.round((js * c.renders) / total);
+      if (c.ms > 0) c.text += ` (≈ ${c.ms} ms of JavaScript)`;
+    }
+  }
+  return out.sort(byCost).slice(0, max);
 }

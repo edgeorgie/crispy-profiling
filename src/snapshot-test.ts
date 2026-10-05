@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import type { CrispyConfig } from './config.js';
 import { profile } from './profiler/run.js';
-import { rootCauses } from './report/hints.js';
+import { byCost, rootCauses } from './report/hints.js';
 import {
   compareSnapshot,
   keepRanges,
@@ -81,7 +81,7 @@ function insight(report: CrispyReport, max = 5): string {
     ),
   );
   if (!all.length) return '\nNo avoidable re-renders found in these flows. 🎉\n';
-  const top = all.sort((a, b) => b.renders - a.renders).slice(0, max);
+  const top = all.sort(byCost).slice(0, max);
   return [
     '',
     `**Already worth fixing** (avoidable renders recorded in this snapshot):`,

@@ -893,6 +893,12 @@ describe('CPU per phase (timings)', () => {
     const timed = (await profile(parseConfig({ ...base, timings: true }))).scenarios.c?.phases;
     expect(timed?.load?.cost?.scriptMs.median).toBeGreaterThan(0);
     expect(timed?.interaction?.cost?.taskMs.median).toBeGreaterThan(0);
+    // Root causes carry an estimated cost and say it.
+    const { rootCauses } = await import('../src/report/hints.js');
+    const causes = timed?.interaction ? rootCauses(timed.interaction) : [];
+    expect(causes.length).toBeGreaterThan(0);
+    for (const c of causes) expect(c.ms).toBeGreaterThanOrEqual(0);
+    expect(causes.some((c) => /≈ \d+ ms of JavaScript/.test(c.text))).toBe(true);
     const plain = (await profile(parseConfig(base))).scenarios.c?.phases;
     expect(plain?.interaction?.cost).toBeUndefined();
   });
