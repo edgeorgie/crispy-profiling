@@ -530,7 +530,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   }
   if (result.regressions.length) {
     lines.push(
-      `If a regression is intended, accept it with \`crispy test --update\` and commit \`${file}\`.`,
+      `Fix the cause above. Only if the change is intended (a person decides, not an agent), accept it with \`crispy test --update\` and commit \`${file}\`.`,
     );
   }
   return `${lines.join('\n')}\n`;
