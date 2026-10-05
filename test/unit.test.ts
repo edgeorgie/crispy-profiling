@@ -721,3 +721,41 @@ describe('root causes never double count (R6-03)', async () => {
     );
   });
 });
+
+describe('dev server lifecycle (R6-04, R6-07)', async () => {
+  const { spawn } = await import('node:child_process');
+  const { isUp, startWebServer } = await import('../src/profiler/webserver.js');
+
+  it('stops the dev server when crispy is interrupted', async () => {
+    const port = 48000 + Math.floor(Math.random() * 1000);
+    const child = spawn(
+      process.execPath,
+      ['--import', 'tsx', 'test/fixtures/start-server.ts', String(port)],
+      {
+        stdio: ['ignore', 'pipe', 'inherit'],
+      },
+    );
+    await new Promise<void>((done) =>
+      child.stdout?.on('data', (d) => String(d).includes('ready') && done()),
+    );
+    expect(await isUp(`http://127.0.0.1:${port}`)).toBe(true);
+    child.kill('SIGINT');
+    await new Promise((r) => child.on('exit', r));
+    await new Promise((r) => setTimeout(r, 2000));
+    expect(await isUp(`http://127.0.0.1:${port}`)).toBe(false);
+  }, 30_000);
+
+  it('refuses to profile whatever already runs on the port unless reuse is allowed', async () => {
+    const port = 49000 + Math.floor(Math.random() * 1000);
+    const url = `http://127.0.0.1:${port}`;
+    const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
+    const stop = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: false }, url);
+    try {
+      await expect(
+        startWebServer({ command, timeoutMs: 5000, reuseExisting: false }, url),
+      ).rejects.toThrow(/already running/);
+    } finally {
+      await stop();
+    }
+  });
+});

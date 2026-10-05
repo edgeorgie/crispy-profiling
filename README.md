@@ -164,7 +164,7 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
 | `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
-| `webServer` | — | `{ "command": "npm run dev" }`: crispy starts your dev server, waits for `baseUrl` (or `url`) and stops it afterwards; a server already running there is reused. `crispy init` fills it in. |
+| `webServer` | — | `{ "command": "npm run dev" }`: crispy starts your dev server, waits for `baseUrl` (or `url`) and stops it afterwards, also on Ctrl-C. A server already running there is reused locally (with a warning) but not on CI, where it fails instead (`reuseExisting` to override). `crispy init` fills it in. |
 | `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment. |
 | `storageState` | — | A saved session file (cookies + localStorage), e.g. from `crispy login` for SSO/OAuth logins. Keep it out of git. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |

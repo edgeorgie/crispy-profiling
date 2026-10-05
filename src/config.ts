@@ -100,8 +100,9 @@ export const ConfigSchema = z.object({
     .object({
       command: z.string().min(1),
       url: z.url().optional(),
-      timeoutMs: z.number().int().min(1000).default(120_000),
-      reuseExisting: z.boolean().default(true),
+      timeoutMs: z.number().int().min(1000).default(60_000),
+      /** Reuse a server already answering at the URL. Default: yes locally, no on CI. */
+      reuseExisting: z.boolean().optional(),
     })
     .optional(),
   runs: z.number().int().min(1).max(20).default(3),

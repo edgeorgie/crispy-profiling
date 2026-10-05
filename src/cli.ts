@@ -13,6 +13,7 @@ import { compareReports } from './report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from './report/markdown.js';
 import { runSnapshotTest } from './snapshot-test.js';
 import type { CrispyReport } from './types.js';
+import { isCI } from './util/ci.js';
 import { VERSION } from './version.js';
 
 const HELP = `crispy ${VERSION} — deterministic React render profiling
@@ -45,22 +46,6 @@ Usage:
 Exit codes: 0 ok · 1 budget violation / regression · 2 usage or runtime error`;
 
 const log = (msg: string) => process.stderr.write(`${msg}\n`);
-
-/** Detects CI providers: generic `CI` (true/1) plus common provider variables. */
-function isCI(env = process.env): boolean {
-  const ci = env.CI?.toLowerCase();
-  if (ci === 'true' || ci === '1') return true;
-  return [
-    'GITHUB_ACTIONS',
-    'GITLAB_CI',
-    'BUILDKITE',
-    'CIRCLECI',
-    'TF_BUILD',
-    'JENKINS_URL',
-    'TEAMCITY_VERSION',
-    'BITBUCKET_BUILD_NUMBER',
-  ].some((k) => Boolean(env[k]));
-}
 
 async function write(path: string, content: string): Promise<void> {
   const abs = resolve(path);
