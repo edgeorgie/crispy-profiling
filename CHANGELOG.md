@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
   avoidable renders without a single standout cause.
 
 ### Changed
+- `crispy scan` adds `.crispy/` (reports) to `.gitignore` in a git project.
 - Fewer renders on a component that reads a mutable instance (a TanStack table, a form API) or
   mutable data is shown as "⚠️ check the UI" instead of 🟢 in snapshots and `compare`: a React.memo
   there freezes the UI. Snapshots mark such components `"mutable": true`.

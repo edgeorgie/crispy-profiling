@@ -209,6 +209,17 @@ async function main(argv: string[]): Promise<number> {
           : `Scenarios saved to ${DEFAULT_CONFIG_FILE}. Next: "npx crispy test" records crispy.snap.json; commit both and CI fails on new re-renders. (crispy test runs each scenario 3 times, "runs" in the config; the scan ran it twice to be quick.)`,
         'Full report: .crispy/scan.json',
       );
+      // Reports are per-run output, not source: keep them out of git (if it is a git repo).
+      if (existsSync('.git') || existsSync('.gitignore')) {
+        const ignore = existsSync('.gitignore') ? await readFile('.gitignore', 'utf8') : '';
+        if (!/^\/?\.crispy\/?$/m.test(ignore)) {
+          await writeFile(
+            '.gitignore',
+            `${ignore}${ignore && !ignore.endsWith('\n') ? '\n' : ''}.crispy/\n`,
+          );
+          lines.push('Added .crispy/ (reports) to .gitignore.');
+        }
+      }
       process.stdout.write(`${lines.join('\n')}\n`);
       return 0;
     }
