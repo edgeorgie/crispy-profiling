@@ -560,8 +560,19 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
     c.creators = { 'onAdd|Shop': 3 };
     c.staleMemo = { 'onAdd|Shop|#1 (an object)': 3 };
     expect(hintFor(c)).toContain(
-      '`onAdd` is already memoized in `Shop`, but its dependency #1 (an object) changes',
+      '`onAdd` in `Shop` is memoized, but its dependency #1 (an object) is recreated on every render',
     );
+  });
+
+  it('calls a primitive dependency a real change, not something to stabilize', () => {
+    const c = at(component(3));
+    c.callbackProps = { onAdd: 3 };
+    c.creators = { 'onAdd|Shop': 3 };
+    c.staleMemo = { 'onAdd|Shop|`query` (string)': 3 };
+    const hint = hintFor(c) ?? '';
+    expect(hint).toContain('its dependency `query` (string) really changes');
+    expect(hint).toContain('that render is expected');
+    expect(hint).not.toContain('memoize it where it is created');
   });
 
   it('never tells library components or children-only renders to use React.memo', () => {

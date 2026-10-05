@@ -56,6 +56,18 @@ export function effectCascade(c: ComponentReport): {
   return { total, renders: c.cascadeRenders ?? total, states, fix };
 }
 
+/** Every changed dependency is a primitive (e.g. the search text): it really changes. */
+const realChange = (deps: string) =>
+  /\((string|number|boolean|bigint|undefined|symbol)\)/.test(deps) &&
+  !/\((an object|an array|a function)\)/.test(deps);
+
+/** How to fix a useCallback/useMemo whose dependencies change. */
+function depFix(what: string, deps: string): string {
+  return realChange(deps)
+    ? `${what} is memoized, but its dependency ${deps} really changes (a new value, not just a new object): that render is expected. To avoid it, read the value when the callback runs (a state updater like \`setX(x => …)\`, or a ref) instead of listing it as a dependency`
+    : `${what} is memoized, but its dependency ${deps} is recreated on every render: memoize it where it is created, or read it inside the callback (a state updater like \`setX(x => …)\`, or a ref) instead of listing it`;
+}
+
 /** First entry of a "prop|Creator[|extra]" count map for `prop`. */
 function lookup(m: Record<string, number>, prop: string): string[] | null {
   const key = Object.keys(m).find((k) => k.startsWith(`${prop}|`));
@@ -68,7 +80,7 @@ function propFix(c: ComponentReport, prop: string, owner: string | null): string
   const inCreator = creator ? ` in \`${creator}\`` : '';
   const stale = lookup(c.staleMemo, prop);
   if (stale?.[1]) {
-    return `\`${prop}\` is already memoized${inCreator}, but its dependency ${stale[1]} changes on every render: make that dependency stable (memoize it, or read it inside the callback)`;
+    return depFix(`\`${prop}\`${inCreator}`, stale[1]);
   }
   if (c.unstableProps[prop]) {
     return `\`${prop}\` is recreated with equal data${inCreator}: hoist it out of the component or wrap it in useMemo`;
@@ -119,7 +131,7 @@ export function hintFor(
     const at = c.providerAt[0] ? ` (${c.providerAt[0].replace(/ \(.*\)$/, '')})` : '';
     const stale = lookup(c.staleMemo, '(context value)');
     if (stale?.[1]) {
-      return `reads a context whose value is already memoized in \`${stale[0]}\`${at}, but its dependency ${stale[1]} changes on every render: make that dependency stable.`;
+      return `reads a context whose value ${depFix(`in \`${stale[0]}\`${at}`, stale[1])}.`;
     }
     return `reads a context whose value is recreated on every render of ${code(contexts)}${at}: memoize the provider value there with useMemo (and useCallback for functions inside it).`;
   }
@@ -166,6 +178,10 @@ export function hintFor(
     const because = trigger ? `\`${trigger}\` updates its state` : 'its parent re-renders';
     if (library) {
       return `library component re-rendered with identical props because ${because}${where}. Nothing to change here; if it matters, stop ${owner ? `\`${owner}\`` : 'its parent'} from re-rendering.`;
+    }
+    const masked = top(c.maskedContextFrom ?? {}).filter((k) => !isLibrary(k));
+    if (masked.length) {
+      return `re-renders with identical props because ${because}${where}, and it reads a context whose value ${code(masked)} recreates on every render: React.memo alone will not skip it. Memoize that provider value (useMemo) first, then wrap it in React.memo.`;
     }
     return `re-renders with identical props because ${because}${where}: wrap it in React.memo, or move ${trigger ? `\`${trigger}\`'s` : 'the parent’s'} state closer to where it is used.`;
   }
@@ -276,7 +292,7 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       ? `, then wrap ${code(notMemo.slice(0, 2))} in React.memo (stable props alone do not skip renders)`
       : '';
     const fix = stale
-      ? `\`${stale[0]}\` is memoized, but its dependency ${stale[2]} changes every render: stabilize that dependency${wrap}`
+      ? `${depFix(`\`${stale[0]}\``, stale[2] ?? '')}${realChange(stale[2] ?? '') ? '' : wrap}`
       : `memoize them there (useCallback / useMemo, or hoist constants)${wrap}`;
     out.push({
       renders: e.renders,
@@ -363,6 +379,8 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
           !libraryKey(k) &&
           !c.memo &&
           c.causes.parent > 0 &&
+          // React.memo cannot skip it while it reads a recreated context value.
+          !Object.keys(c.maskedContextFrom ?? {}).length &&
           /^[A-Z]/.test(k),
       )
       .map(([k]) => [k, below(k)] as const)

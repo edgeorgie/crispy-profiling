@@ -436,6 +436,8 @@ export function scanConfig(
     $schema: './node_modules/crispy-profiling/schema/crispy.config.schema.json',
     ...base,
     runs: 3,
+    // Generated interactions are replayed read-only, like during the scan.
+    readOnly: true,
     scenarios,
   };
 }

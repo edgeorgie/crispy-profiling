@@ -77,6 +77,11 @@ async function main(argv: string[]): Promise<number> {
     console.log(HELP);
     return command ? 0 : 2;
   }
+  // `crispy <command> --help` shows the help instead of an unknown-option error.
+  if (rest.includes('--help') || rest.includes('-h')) {
+    console.log(HELP);
+    return 0;
+  }
   if (command === '--version' || command === '-v') {
     console.log(VERSION);
     return 0;

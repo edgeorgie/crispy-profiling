@@ -535,6 +535,11 @@ describe('root-cause hints (R3-04, R3-05)', () => {
     expect(hintFor(ctx?.components.CartBadge, ctx, 'CartBadge')).toContain('`CartProvider`');
     // When the parent re-creates the element anyway, context is not blamed (R5-02).
     expect(c?.CartBadge?.recreatedContextFrom).toEqual({});
+    // ...but React.memo alone would not help it: it says so (council round 1).
+    expect(c?.CartBadge?.maskedContextFrom).toEqual({ CartProvider: 1 });
+    expect(hintFor(c?.CartBadge, phase, 'CartBadge')).toContain(
+      'React.memo alone will not skip it',
+    );
     expect(c?.Swatch?.memo).toBe(true);
     expect(hintFor(c?.Swatch, phase, 'Swatch')).toContain('already wrapped in React.memo');
     // App's count update started the cascade.
@@ -901,5 +906,47 @@ describe('CPU per phase (timings)', () => {
     expect(causes.some((c) => /≈ \d+ ms of JavaScript/.test(c.text))).toBe(true);
     const plain = (await profile(parseConfig(base))).scenarios.c?.phases;
     expect(plain?.interaction?.cost).toBeUndefined();
+  });
+});
+
+describe('memoized dependencies by name (council round 1)', () => {
+  it('names the dependency that changes', async () => {
+    const steps = [
+      { action: 'click' as const, selector: '#deps-add' },
+      { action: 'click' as const, selector: '#deps-add' },
+    ];
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'deps', path: '/?deps', steps }],
+    });
+    const p = (await profile(config)).scenarios.deps?.phases.interaction;
+    // esbuild renames the memo's inner function (AddButton2).
+    const button = Object.entries(p?.components ?? {}).find(([k]) =>
+      k.startsWith('AddButton'),
+    )?.[1];
+    expect(Object.keys(button?.staleMemo ?? {})).toEqual(['onAdd|Deps|`cart` (an array)']);
+  });
+});
+
+describe('readOnly configs (council round 1)', () => {
+  it('blocks writes when scanned interactions are replayed', async () => {
+    writes.length = 0;
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      readOnly: true,
+      scenarios: [
+        {
+          name: 'trap',
+          path: '/?trap',
+          steps: [{ action: 'click', selector: 'text=Save changes' }],
+        },
+      ],
+    });
+    await profile(config);
+    expect(writes).toEqual([]);
   });
 });

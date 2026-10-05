@@ -378,6 +378,10 @@
       "default": false,
       "type": "boolean"
     },
+    "readOnly": {
+      "default": false,
+      "type": "boolean"
+    },
     "topComponents": {
       "default": 0,
       "type": "integer",

@@ -98,6 +98,8 @@ function aggregateComponent(
   }
   const inCascades = medianOf(pick((s) => s.inEffectCascades ?? 0));
   if (inCascades > 0) report.inEffectCascades = inCascades;
+  const masked = medianCounts(samples, (s) => s.maskedContextFrom);
+  if (Object.keys(masked).length) report.maskedContextFrom = masked;
   if (timings) report.selfDurationMs = stat(pick((s) => s.selfDurationMs));
   return report;
 }

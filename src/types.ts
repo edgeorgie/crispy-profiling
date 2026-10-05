@@ -37,6 +37,8 @@ export interface RawComponentStats {
   triggeredBy: Record<string, number>;
   /** Components whose context value was recreated with equal content (provider owners). */
   recreatedContextFrom: Record<string, number>;
+  /** Same, when the parent re-rendered the component anyway (React.memo alone would not help). */
+  maskedContextFrom?: Record<string, number>;
   /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
   stateChanges?: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), with counts. */
@@ -120,6 +122,8 @@ export interface ComponentReport {
   triggeredBy: Record<string, number>;
   /** Provider owners whose context value was recreated with equal content. */
   recreatedContextFrom: Record<string, number>;
+  /** Provider owners recreating a context value it reads while its parent re-renders it anyway. */
+  maskedContextFrom?: Record<string, number>;
   /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
   stateChanges: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), most frequent first. */
