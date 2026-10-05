@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Effect cascades: `effectCascades` counts state set in a `useEffect` right after a render (an
+  extra commit each time), named per state, with a hint and a root cause ("compute it during render
+  or set it in the event handler"). React 18 and 19.
+
 ## [0.1.0] - 2026-10-05
 
 First public release: snapshot testing for React re-renders — deterministic, runtime-proven,
