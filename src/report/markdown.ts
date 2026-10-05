@@ -14,7 +14,7 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
     lines.push(`### Scenario \`${s.name}\` (\`${s.path}\`, ${s.runs} runs)`, '');
     for (const [phase, p] of Object.entries(s.phases)) {
       lines.push(
-        `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted), ${p.totalCallbackRenders.median} from recreated callbacks`,
+        `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted), ${p.totalCallbackRenders.median} from recreated callbacks${p.cost ? `, **${Math.round(p.cost.scriptMs.median)} ms JavaScript** (${Math.round(p.cost.taskMs.median)} ms main thread)` : ''}`,
         '',
       );
       const causes = rootCauses(p);

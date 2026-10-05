@@ -885,3 +885,15 @@ describe('crispy scan safety (red-team round 9)', () => {
     expect(result.scenarios.some((s) => s.name.includes('add-item'))).toBe(true);
   }, 180_000);
 });
+
+describe('CPU per phase (timings)', () => {
+  it('reports main-thread ms per phase only with timings', async () => {
+    const steps = [{ action: 'click' as const, selector: '#inc' }];
+    const base = { baseUrl: slowUrl, runs: 1, settleMs: 150, scenarios: [{ name: 'c', steps }] };
+    const timed = (await profile(parseConfig({ ...base, timings: true }))).scenarios.c?.phases;
+    expect(timed?.load?.cost?.scriptMs.median).toBeGreaterThan(0);
+    expect(timed?.interaction?.cost?.taskMs.median).toBeGreaterThan(0);
+    const plain = (await profile(parseConfig(base))).scenarios.c?.phases;
+    expect(plain?.interaction?.cost).toBeUndefined();
+  });
+});

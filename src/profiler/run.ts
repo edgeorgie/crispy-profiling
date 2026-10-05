@@ -406,6 +406,10 @@ async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Pro
 export class PageProfiler {
   private definitions: Record<string, string> = {};
   private ambiguous = new Set<string>();
+  /** Main-thread CPU per phase (CDP Performance metrics), only with `timings`. */
+  private cost: Record<string, { scriptMs: number; taskMs: number }> = {};
+  private costPhase = 'load';
+  private costMark: { script: number; task: number } | null = null;
 
   private constructor(
     readonly page: Page,
@@ -454,7 +458,37 @@ export class PageProfiler {
         return null;
       }
     });
-    return new PageProfiler(page, cdp, scripts, sourceMaps, ctx);
+    const profiler = new PageProfiler(page, cdp, scripts, sourceMaps, ctx);
+    if (config.timings) {
+      await cdp.send('Performance.enable').catch(() => {});
+      profiler.costMark = await profiler.cpu();
+    }
+    return profiler;
+  }
+
+  /** Cumulative main-thread script and task time of the page, in ms. */
+  private async cpu(): Promise<{ script: number; task: number } | null> {
+    try {
+      const { metrics } = await this.cdp.send('Performance.getMetrics');
+      const get = (n: string) => (metrics.find((m) => m.name === n)?.value ?? 0) * 1000;
+      return { script: get('ScriptDuration'), task: get('TaskDuration') };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Adds the CPU time since the last mark to the current phase. */
+  private async markCost(): Promise<void> {
+    if (!this.ctx.config.timings) return;
+    const now = await this.cpu();
+    if (now && this.costMark) {
+      const c = this.cost[this.costPhase] ?? { scriptMs: 0, taskMs: 0 };
+      this.cost[this.costPhase] = c;
+      // A navigation resets the counters: then only the time since it counts.
+      c.scriptMs += Math.max(0, now.script - this.costMark.script) || 0;
+      c.taskMs += Math.max(0, now.task - this.costMark.task) || 0;
+    }
+    this.costMark = now;
   }
 
   get warnings(): string[] {
@@ -472,8 +506,10 @@ export class PageProfiler {
   }
 
   /** Renders from now on are recorded in this phase. */
-  phase(name: string): Promise<void> {
-    return setPhase(this.page, name);
+  async phase(name: string): Promise<void> {
+    await this.markCost();
+    this.costPhase = name;
+    await setPhase(this.page, name);
   }
 
   /**
@@ -499,6 +535,7 @@ export class PageProfiler {
 
   /** Raw render data recorded so far, with source-mapped locations. */
   async collect(declaredPhases: string[] = []): Promise<RawRun> {
+    await this.markCost();
     await this.collectDefinitions();
     const raw = await inPage(this.page, () => {
       const s = (window as any).__CRISPY__;
@@ -526,6 +563,7 @@ export class PageProfiler {
       raw.phases[phase] ??= { commits: 0, components: {} };
     }
     await rewriteLocations(raw as RawRun, this.sourceMaps);
+    if (this.ctx.config.timings) raw.cost = this.cost;
     return { ...raw, warnings } as RawRun;
   }
 }
@@ -553,6 +591,10 @@ export async function runScenarioOnce(
     }
     for (const [i, step] of scenario.steps.entries()) {
       if (step.action === 'goto') await profiler.collectDefinitions();
+      if (step.action === 'phase') {
+        await profiler.phase(step.name);
+        continue;
+      }
       try {
         await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
           profiler.settle(`step ${i + 1} (${step.action})`),
@@ -564,7 +606,7 @@ export async function runScenarioOnce(
             'Check that the selector matches a visible element on that page, and edit the steps in your crispy config.',
         );
       }
-      if (step.action !== 'phase') await profiler.settle(`step ${i + 1} (${step.action})`);
+      await profiler.settle(`step ${i + 1} (${step.action})`);
     }
     return await profiler.collect(phasesOf(scenario));
   } finally {

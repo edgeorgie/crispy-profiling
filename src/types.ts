@@ -88,6 +88,8 @@ export interface RawRun {
   warnings: string[];
   /** Component key -> file where the component function is defined (when resolvable). */
   definitions?: Record<string, string>;
+  /** Main-thread CPU per phase in ms (CDP ScriptDuration / TaskDuration), only with `timings`. */
+  cost?: Record<string, { scriptMs: number; taskMs: number }>;
 }
 
 /** Aggregated (multi-run) statistic. Counts are deterministic, so min === max in a stable app. */
@@ -161,6 +163,12 @@ export interface PhaseReport {
   totalWastedRenders: Stat;
   totalAvoidableRenders: Stat;
   totalCallbackRenders: Stat;
+  /**
+   * Main-thread CPU spent in the phase, in ms: JavaScript (`scriptMs`) and all
+   * tasks (`taskMs`, including layout and style). Works in production builds.
+   * Only with `timings: true` (not reproducible byte for byte).
+   */
+  cost?: { scriptMs: Stat; taskMs: Stat };
   components: Record<string, ComponentReport>;
   /**
    * Components referenced by this phase (as creators, providers, triggers or owners)
