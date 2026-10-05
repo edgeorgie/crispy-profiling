@@ -73,6 +73,8 @@ from `crispy-profiling/playwright` to the relevant test over writing a new scena
    🟢 only proves fewer renders: also check that the UI you touched still updates (run the app's
    tests or look at the screen). A component that drops to 0 renders after a React.memo is suspect,
    and "⚠️ check the UI" means crispy knows it reads mutable data: undo the memo unless the UI is fine.
+   Better: before fixing, add an `expect` step after the interaction (`{ "action": "expect",
+   "selector": "…", "text": "…" }`) so a frozen UI fails the scenario.
 
 ## Reading the numbers
 

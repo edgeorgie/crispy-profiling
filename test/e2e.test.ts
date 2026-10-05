@@ -1010,3 +1010,29 @@ describe('mutable reads (council round 1, expert)', () => {
     expect(p?.components.Static?.wastedRenders.median).toBe(2);
   });
 });
+
+describe('expect step (council round 3)', () => {
+  it('passes when the UI updates and fails the scenario when it does not', async () => {
+    const steps = [
+      { action: 'click' as const, selector: '#inc' },
+      { action: 'expect' as const, selector: '#inc', text: 'count 1' },
+    ];
+    const ok = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'e', steps }],
+    });
+    expect((await profile(ok)).scenarios.e).toBeDefined();
+    const frozen = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      timeoutMs: 2000,
+      scenarios: [{ name: 'f', steps: [steps[0], { ...steps[1], text: 'count 2' }] }],
+    });
+    await expect(profile(frozen)).rejects.toThrow(
+      /expect failed: "#inc" should show text "count 2", found text "count 1"/,
+    );
+  });
+});

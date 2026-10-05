@@ -68,6 +68,8 @@ All notable changes to this project are documented here. The format follows
   inline callback back can no longer show up as 🟢 improved. Existing snapshots may need `-u` once.
 
 ### Added
+- `expect` step (`selector` with `text` or `count`): fails the scenario when the UI did not update,
+  so a memo that freezes the screen fails `crispy test` instead of showing 🟢.
 - `mutableReads`: renders with unchanged props, state and context whose output still changed (the
   component reads a mutable object such as a TanStack table instance). They are not counted as
   avoidable and never get React.memo advice, which would show stale data.

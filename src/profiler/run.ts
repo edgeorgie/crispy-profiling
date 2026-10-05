@@ -446,6 +446,41 @@ async function runStep(
       return;
     case 'phase':
       return setPhase(page, step.name);
+    case 'expect': {
+      const target = page.locator(step.selector);
+      // The step before has settled: a short grace period is enough.
+      const deadline = Date.now() + Math.min(timeoutMs, 5000);
+      let seen = '';
+      for (;;) {
+        const n = await target.count();
+        const text = n > 0 ? ((await target.first().textContent()) ?? '') : '';
+        const ok =
+          step.count !== undefined
+            ? n === step.count
+            : n > 0 &&
+              (step.text !== undefined
+                ? text.includes(withEnv(step.text))
+                : await target.first().isVisible());
+        if (ok) return;
+        seen =
+          step.count !== undefined
+            ? `${n} match(es)`
+            : n
+              ? `text "${text.slice(0, 80)}"`
+              : 'nothing';
+        if (Date.now() > deadline) break;
+        await page.waitForTimeout(POLL_MS * 4);
+      }
+      const want =
+        step.count !== undefined
+          ? `${step.count} match(es)`
+          : step.text !== undefined
+            ? `text "${step.text}"`
+            : 'a visible element';
+      throw new Error(
+        `expect failed: "${step.selector}" should show ${want}, found ${seen}. The UI did not update as expected.`,
+      );
+    }
   }
 }
 

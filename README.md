@@ -196,7 +196,10 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 
 **Steps:** `click`, `hover`, `fill`, `type`, `press`, `select` (a `<select>` option), `drag`
 (`selector` to `to`, or by `dx`/`dy`, with pointer `steps`), `scroll`, `waitFor` (`state`:
-`visible`, `hidden`, `attached`, `detached`), `wait`, `goto`, `phase`.
+`visible`, `hidden`, `attached`, `detached`), `wait`, `goto`, `phase`, and `expect` (`selector` with
+`text` or `count`): it fails the scenario when the screen does not show what it should, so a fix that
+freezes the UI fails `crispy test` instead of passing with fewer renders. Add one after each
+interaction whose result matters, e.g. `{ "action": "expect", "selector": "#cart-count", "text": "3" }`.
 `type` presses one key at a time and waits for React to finish (including deferred values and
 transitions) before the next key, so concurrent features give the same counts on fast and slow CPUs.
 Renders before the first step are recorded in phase `load`; renders during steps go to
