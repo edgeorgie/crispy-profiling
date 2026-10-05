@@ -91,5 +91,12 @@
   },
   "overrides": {
     "esbuild": "^0.28.2"
+  },
+  "typesVersions": {
+    "*": {
+      "playwright": [
+        "dist/playwright.d.ts"
+      ]
+    }
   }
 }

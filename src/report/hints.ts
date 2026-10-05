@@ -1,4 +1,5 @@
 import type { ComponentReport, PhaseReport } from '../types.js';
+import { cmp } from '../util/cmp.js';
 import { LIBRARY_FILE } from '../util/paths.js';
 
 const code = (keys: string[]) => keys.map((k) => `\`${k}\``).join(', ');
@@ -232,9 +233,13 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       )
       .find(Boolean)
       ?.split('|');
+    const notMemo = e.affected.filter((k) => !phase.components[k]?.memo && !libraryKey(k));
+    const wrap = notMemo.length
+      ? `, then wrap ${code(notMemo.slice(0, 2))} in React.memo (stable props alone do not skip renders)`
+      : '';
     const fix = stale
-      ? `\`${stale[0]}\` is memoized, but its dependency ${stale[2]} changes every render: stabilize that dependency`
-      : 'memoize them there (useCallback / useMemo, or hoist constants)';
+      ? `\`${stale[0]}\` is memoized, but its dependency ${stale[2]} changes every render: stabilize that dependency${wrap}`
+      : `memoize them there (useCallback / useMemo, or hoist constants)${wrap}`;
     out.push({
       renders: e.renders,
       text: `\`${creator}\` recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
@@ -318,5 +323,5 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     });
   }
 
-  return out.sort((a, b) => b.renders - a.renders || (a.text < b.text ? -1 : 1)).slice(0, max);
+  return out.sort((a, b) => b.renders - a.renders || cmp(a.text, b.text)).slice(0, max);
 }

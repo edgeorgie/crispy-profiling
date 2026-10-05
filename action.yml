@@ -60,6 +60,7 @@ runs:
         mkdir -p .crispy
         summary=".crispy/summary.md"
         log=".crispy/crispy.log"
+        rm -f "$summary" "$summary.compare" "$log"
         if [ "$CRISPY_COMMAND" = "test" ]; then
           "$CRISPY_BIN" test -c "$CRISPY_CONFIG" --ci --markdown "$summary" 2> >(tee "$log" >&2)
           status=$?
@@ -68,14 +69,19 @@ runs:
           "$CRISPY_BIN" run -c "$CRISPY_CONFIG" -o "$CRISPY_OUT" --markdown "$summary" $flag 2> >(tee "$log" >&2)
           status=$?
           if [ "$status" -le 1 ] && [ -n "$CRISPY_BASELINE" ] && [ -f "$CRISPY_BASELINE" ]; then
-            "$CRISPY_BIN" compare "$CRISPY_BASELINE" "$CRISPY_OUT" --threshold "$CRISPY_THRESHOLD" --markdown "$summary.compare" $flag
+            "$CRISPY_BIN" compare "$CRISPY_BASELINE" "$CRISPY_OUT" --threshold "$CRISPY_THRESHOLD" --markdown "$summary.compare" $flag 2> >(tee -a "$log" >&2)
             cmp_status=$?
-            cat "$summary.compare" >> "$summary"
-            [ "$cmp_status" -gt "$status" ] && status=$cmp_status
+            if [ -f "$summary.compare" ]; then
+              cat "$summary.compare" >> "$summary"
+            else
+              printf '\n### ❌ compare could not run\n\n```text\n%s\n```\n' "$(tail -10 "$log")" >> "$summary"
+            fi
+            # A failed comparison is reported next to the report, not instead of it.
+            [ "$cmp_status" -eq 1 ] && [ "$status" -eq 0 ] && status=1
           fi
         fi
         # crispy could not run (e.g. the dev server failed): still explain why.
-        if [ ! -f "$summary" ] || [ "$status" -ge 2 ]; then
+        if [ ! -f "$summary" ]; then
           {
             echo "## 🥓 crispy render snapshots: ❌ could not run"
             echo
@@ -108,8 +114,10 @@ runs:
             printf '\n\n…truncated: the full report is in the job summary (%s).\n' "$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
           fi
         } > "$body_file"
+        # The token's own identity (a PAT or App token is not github-actions[bot]).
+        me=$(gh api user --jq .login 2>/dev/null || echo 'github-actions[bot]')
         existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-          --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" 2>/dev/null | head -1)
+          --jq ".[] | select(.user.login == \"$me\" and (.body | startswith(\"$marker\"))) | .id" 2>/dev/null | head -1)
         if [ -n "$existing" ]; then
           gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@"$body_file" >/dev/null \
             || echo "::warning::crispy could not update its PR comment (needs pull-requests: write)"

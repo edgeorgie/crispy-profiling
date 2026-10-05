@@ -124,7 +124,8 @@ export function detectApp(dir: string): DetectedApp {
   const port =
     (portInScript ? Number(portInScript) : undefined) ??
     (framework === 'vite' || framework === 'react-router' ? vitePort(dir) : undefined) ??
-    envPort(dir) ??
+    // Vite ignores PORT; Next.js and CRA read it.
+    (framework === 'next' || framework === 'cra' ? envPort(dir) : undefined) ??
     defaultPort;
 
   // "yarn && vite": skip the reinstall on every run, start the tool directly.

@@ -402,6 +402,8 @@ export function buildReport(
   let reactVersion: string | null = null;
   let profilingBuild = false;
 
+  const skips: Record<string, number> = {};
+  const updates: Record<string, number> = {};
   for (const { scenario, runs: rawRuns } of results) {
     const visible = config.includeInternals ? { runs: rawRuns, hidden: 0 } : hideInternals(rawRuns);
     const { runs, definedIn } = stabilizeKeys(visible.runs);
@@ -437,10 +439,8 @@ export function buildReport(
       if (library.length) phase.library = library;
     }
 
-    // React.memo verdicts look at the whole scenario: a memo that skips nothing in
-    // one phase may skip every render in another.
-    const skips: Record<string, number> = {};
-    const updates: Record<string, number> = {};
+    // React.memo verdicts look at every phase of every scenario: a memo that
+    // skips nothing in one flow may skip every render in another.
     for (const p of order) {
       const keys = new Set(runs.flatMap((r) => Object.keys(r.phases[p]?.memoSkips ?? {})));
       for (const k of keys) {
@@ -448,12 +448,6 @@ export function buildReport(
       }
       for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
         updates[k] = (updates[k] ?? 0) + c.updates.median;
-      }
-    }
-    for (const p of order) {
-      for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
-        c.memoSkips = skips[k] ?? 0;
-        if (c.memo && !skips[k] && (updates[k] ?? 0) >= 3) c.uselessMemo = true;
       }
     }
 
@@ -487,6 +481,15 @@ export function buildReport(
       };
     }
     scenarios[scenario.name] = report;
+  }
+
+  for (const s of Object.values(scenarios)) {
+    for (const p of Object.values(s.phases)) {
+      for (const [k, c] of Object.entries(p.components)) {
+        c.memoSkips = skips[k] ?? 0;
+        if (c.memo && !skips[k] && (updates[k] ?? 0) >= 3) c.uselessMemo = true;
+      }
+    }
   }
 
   return {

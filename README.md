@@ -164,8 +164,8 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
 | `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
-| `webServer` | — | `{ "command": "npm run dev" }`: crispy starts your dev server, waits for `baseUrl` (or `url`) and stops it afterwards, also on Ctrl-C. A server already running there is reused locally (with a warning) but not on CI, where it fails instead (`reuseExisting` to override). `crispy init` fills it in. |
-| `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment. |
+| `webServer` | — | `{ "command": "npm run dev" }`: crispy starts your dev server, waits for `baseUrl` (or `url`) and stops it afterwards, also on Ctrl-C. A server already running there is reused locally (with a warning) but not on CI, where it fails instead (`reuseExisting` to override). If `baseUrl` never answers but the server announces another local URL, crispy uses it and tells you. `crispy init` fills it in. |
+| `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment (`"$${NAME}"` types a literal `${NAME}`). |
 | `storageState` | — | A saved session file (cookies + localStorage), e.g. from `crispy login` for SSO/OAuth logins. Keep it out of git. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
 | `snapshot` | `crispy.snap.json`, `0`, `false` | `file` (relative to the config file), `tolerance` and `failOnNewAvoidable` used by `crispy test`. |
@@ -204,7 +204,7 @@ even when `topComponents` trims the report.
 | `recreatedContextFrom` | Components that own a context provider whose `value` was recreated with equal content (e.g. `value={{ user, logout }}`) — memoize the value there. |
 | `memo` | `true` when the component is wrapped in `React.memo`, so hints never suggest wrapping it again. |
 | `memoSkips` / `uselessMemo` | Renders that `React.memo` skipped in the scenario (all phases). A memo component that updated at least 3 times and never skipped one is flagged `uselessMemo`, with a hint to consider removing it — a guardrail against memoizing everything. |
-| `stateChanges` | Which state changed when the component's own state caused the render: `` `query` (useState) `` when the hook is written in the component, or `store subscription (useSyncExternalStore) in `useLocation`` for store/router hooks (Redux, Zustand, routers). React DevTools only shows hook numbers. |
+| `stateChanges` | Which state changed when the component's own state caused the render: `` `query` (useState) `` when the hook is written in the component, or `store subscription (useSyncExternalStore) in `useAppSelector`` for store and router hooks (Redux, Zustand, routers); when several custom hooks could hold it, it says "in one of …". React DevTools only shows hook numbers. |
 | `creators` | `prop|Component`: who created each recreated prop (components that only forwarded it are skipped) — where the fix goes. |
 | `staleMemo` | `prop|Component|#2 (an object)`: the prop already comes from `useCallback`/`useMemo`, but those dependencies change on every render. |
 | `providerAt` | Where the provider of a recreated context value is rendered. |

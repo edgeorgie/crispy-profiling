@@ -501,9 +501,17 @@ export async function runScenarioOnce(
     }
     for (const [i, step] of scenario.steps.entries()) {
       if (step.action === 'goto') await profiler.collectDefinitions();
-      await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
-        profiler.settle(`step ${i + 1} (${step.action})`),
-      );
+      try {
+        await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
+          profiler.settle(`step ${i + 1} (${step.action})`),
+        );
+      } catch (err) {
+        const what = 'selector' in step ? `${step.action} "${step.selector}"` : step.action;
+        throw new Error(
+          `Scenario "${scenario.name}", step ${i + 1} (${what}) failed: ${(err as Error).message.split('\n')[0]}\n` +
+            'Check that the selector matches a visible element on that page, and edit the steps in your crispy config.',
+        );
+      }
       if (step.action !== 'phase') await profiler.settle(`step ${i + 1} (${step.action})`);
     }
     return await profiler.collect(phasesOf(scenario));

@@ -788,8 +788,13 @@ describe('real-world app detection (R6-06)', async () => {
         }),
       ).baseUrl,
     ).toBe('http://localhost:3005');
+    // Vite ignores PORT; Next.js reads it.
     expect(
       detectApp(project({ 'package.json': JSON.stringify(vite), '.env': 'PORT=4100\n' })).baseUrl,
+    ).toBe('http://localhost:5173');
+    const next = { dependencies: { next: '16' }, scripts: { dev: 'next dev' } };
+    expect(
+      detectApp(project({ 'package.json': JSON.stringify(next), '.env': 'PORT=4100\n' })).baseUrl,
     ).toBe('http://localhost:4100');
     const both = {
       devDependencies: { vite: '8' },

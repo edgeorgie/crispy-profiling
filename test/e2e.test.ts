@@ -693,15 +693,20 @@ describe('useless React.memo', () => {
         },
       ],
     });
-    const report = await profile(config);
-    const useless = report.scenarios['only-inc']?.phases.interaction;
+    // Only the flow where the memo never helps: flagged.
+    const alone = await profile({ ...config, scenarios: config.scenarios.slice(0, 1) });
+    const useless = alone.scenarios['only-inc']?.phases.interaction;
     expect(useless?.components.CounterView?.uselessMemo).toBe(true);
     expect(hintFor(useless?.components.CounterView, useless, 'CounterView')).toContain(
       'React.memo did not skip any render in these flows',
     );
-    const helped = report.scenarios['inc-then-theme']?.phases.interaction?.components.CounterView;
-    expect(helped?.memoSkips).toBeGreaterThan(0);
-    expect(helped?.uselessMemo).toBeUndefined();
+    // With a flow where it skips renders anywhere in the report: never flagged (R7-04).
+    const report = await profile(config);
+    for (const s of Object.values(report.scenarios)) {
+      const c = s.phases.interaction?.components.CounterView;
+      expect(c?.memoSkips).toBeGreaterThan(0);
+      expect(c?.uselessMemo).toBeUndefined();
+    }
     // The memo that always works skipped its renders, so it is not in the interaction at all.
     expect(useless?.components.LabelView).toBeUndefined();
   });
