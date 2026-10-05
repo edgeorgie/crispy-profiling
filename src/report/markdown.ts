@@ -1,5 +1,25 @@
-import type { CompareResult, CrispyReport } from '../types.js';
-import { hintFor } from './hints.js';
+import type { CompareResult, ComponentReport, CrispyReport } from '../types.js';
+import { hintFor, rootCauses } from './hints.js';
+
+/** Shown with every 🟢: fewer renders is not proof that the UI still works. */
+export const GREEN_CAVEAT =
+  '🟢 means fewer renders, not that the screen still updates: before accepting it, check that the affected UI still changes when it should (a React.memo on a component that reads mutable data can freeze it).';
+
+const CAUSE_NAMES = {
+  props: 'props changed',
+  state: 'own state',
+  context: 'context',
+  unstable: 'recreated props',
+  callback: 'recreated callbacks',
+  parent: 'parent re-rendered',
+} as const;
+
+/** "parent re-rendered 30, own state 2": only the causes that happened, in that wording. */
+const causeList = (c: ComponentReport) =>
+  (Object.keys(CAUSE_NAMES) as (keyof typeof CAUSE_NAMES)[])
+    .filter((k) => c.causes[k] > 0)
+    .map((k) => `${CAUSE_NAMES[k]} ${c.causes[k]}`)
+    .join(', ') || '—';
 
 const esc = (s: string) => s.replace(/\|/g, '\\|');
 
@@ -14,9 +34,20 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
     lines.push(`### Scenario \`${s.name}\` (\`${s.path}\`, ${s.runs} runs)`, '');
     for (const [phase, p] of Object.entries(s.phases)) {
       lines.push(
-        `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted), ${p.totalCallbackRenders.median} from recreated callbacks`,
+        `**Phase \`${phase}\`** — ${p.commits.median} React commits (screen updates), ${p.totalRenders.median} renders, **${p.totalAvoidableRenders.median + p.totalCallbackRenders.median} avoidable** (${p.totalAvoidableRenders.median} with unchanged inputs, ${p.totalCallbackRenders.median} from recreated callbacks)${p.cost ? `, **${Math.round(p.cost.scriptMs.median)} ms JavaScript** (${Math.round(p.cost.taskMs.median)} ms main thread)` : ''}`,
         '',
-        '| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Rendered at | Why / how to fix |',
+      );
+      const causes = rootCauses(p);
+      if (causes.length) {
+        lines.push(
+          '**Root causes — fix these first:**',
+          '',
+          ...causes.map((c, i) => `${i + 1}. ${c.text}`),
+          '',
+        );
+      }
+      lines.push(
+        '| Component | Renders | Avoidable: unchanged inputs | Avoidable: recreated callbacks | Why it rendered | Rendered at | Why / how to fix |',
         '| --- | ---: | ---: | ---: | --- | --- | --- |',
       );
       // Top components, plus every component whose own state changed: the likely
@@ -27,7 +58,7 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
         const flaky = c.stable ? '' : ' ⚠️';
         const hint = hintFor(c, p, name) ?? '';
         lines.push(
-          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.callbackRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.callback}/${c.causes.parent} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} | ${esc(hint)} |`,
+          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.callbackRenders.median} | ${causeList(c)} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} | ${esc(hint)} |`,
         );
       }
       if (entries.length > shown.length) {
@@ -61,9 +92,19 @@ export function compareToMarkdown(result: CompareResult, top = 20): string {
   const lines: string[] = [
     `## 🥓 crispy-profiling: ${result.passed ? '✅ no render regressions' : `❌ ${result.regressions.length} render regression(s)`}`,
     '',
-    `Total renders: ${t.baseRenders} → ${t.headRenders} · Avoidable: ${t.baseAvoidable} → ${t.headAvoidable}`,
+    `Total renders: ${t.baseRenders} → ${t.headRenders} · Avoidable (unchanged inputs + recreated callbacks): ${t.baseAvoidable} → ${t.headAvoidable}${
+      t.baseMs !== undefined && t.headMs !== undefined
+        ? ` · JavaScript: ${Math.round(t.baseMs)} → ${Math.round(t.headMs)} ms (${t.headMs > t.baseMs ? '+' : ''}${t.baseMs ? Math.round(((t.headMs - t.baseMs) / t.baseMs) * 100) : 0}%, medians; ms vary between runs)`
+        : ''
+    }`,
     '',
   ];
+  if (result.notCompared?.length) {
+    lines.push(
+      `⚠️ Not compared (ran on one side only): ${result.notCompared.map(esc).join(', ')}. Profile the same scenarios on both sides.`,
+      '',
+    );
+  }
   const interesting = result.diffs.filter((d) => d.status !== 'unchanged').slice(0, top);
   if (interesting.length === 0) {
     lines.push('No component changed its render count.');
@@ -77,8 +118,9 @@ export function compareToMarkdown(result: CompareResult, top = 20): string {
   for (const d of interesting) {
     const pct = d.deltaPct === null ? '' : ` (${d.deltaPct > 0 ? '+' : ''}${d.deltaPct}%)`;
     lines.push(
-      `| ${icon[d.status]} ${d.status} | ${esc(d.scenario)} / ${esc(d.phase)} | ${esc(d.component)} | ${d.baseRenders} → ${d.headRenders} | ${d.delta > 0 ? '+' : ''}${d.delta}${pct} | ${d.baseAvoidable} → ${d.headAvoidable} |`,
+      `| ${d.suspect ? '⚠️ check the UI' : `${icon[d.status]} ${d.status}`} | ${esc(d.scenario)} / ${esc(d.phase)} | ${d.renamedFrom ? `${esc(d.renamedFrom)} → ` : ''}${esc(d.component)} | ${d.baseRenders} → ${d.headRenders} | ${d.delta > 0 ? '+' : ''}${d.delta}${pct} | ${d.baseAvoidable} → ${d.headAvoidable} |`,
     );
   }
+  if (interesting.some((d) => d.status === 'improved')) lines.push('', GREEN_CAVEAT);
   return `${lines.join('\n')}\n`;
 }

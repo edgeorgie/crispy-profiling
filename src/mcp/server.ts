@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -5,15 +6,28 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { loadConfig, parseConfig, StepSchema } from '../config.js';
 import { profile } from '../profiler/run.js';
+import { localPackageName, servedPackageName } from '../profiler/webserver.js';
 import { serializeReport } from '../report/aggregate.js';
 import { compareReports } from '../report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../report/markdown.js';
+import { scan } from '../scan.js';
 import { runSnapshotTest } from '../snapshot-test.js';
 import type { CrispyReport } from '../types.js';
 import { cmp } from '../util/cmp.js';
 import { VERSION } from '../version.js';
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
+/** The CLI wording of the shared Markdown, rewritten as the MCP calls an agent makes. */
+const forAgents = (md: string) =>
+  md
+    .replace(
+      /`crispy test (?:--update|-u)`/g,
+      '`test_render_snapshots` with update=true (after the user approves, with confirm="accept-render-changes")',
+    )
+    .replace(/with `-u`/g, 'with update=true')
+    .replace(/`crispy test`/g, '`test_render_snapshots`')
+    .replace(/`crispy run`/g, '`profile_url`');
+
 const fail = (err: unknown) => ({ ...text(`Error: ${(err as Error).message}`), isError: true });
 
 async function readReport(path: string): Promise<CrispyReport> {
@@ -28,6 +42,20 @@ async function saveReport(report: CrispyReport, outFile?: string): Promise<strin
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, serializeReport(report));
   return `\n\nFull JSON report written to ${abs}`;
+}
+
+/**
+ * Agents run the MCP server in their project: refuse a URL that serves another
+ * app (Vite exposes its package.json), so numbers never come from the wrong app.
+ */
+async function assertThisApp(url: string): Promise<void> {
+  const served = await servedPackageName(url);
+  const local = localPackageName(process.cwd());
+  if (served && local && served !== local) {
+    throw new Error(
+      `${new URL(url).origin} serves "${served}", not this project ("${local}"). Start this app's dev server (on its own port if another app uses this one) and pass its URL.`,
+    );
+  }
 }
 
 export function createServer(): McpServer {
@@ -52,18 +80,72 @@ export function createServer(): McpServer {
         runs: z.number().int().min(1).max(10).default(1),
         top: z.number().int().min(1).max(100).default(15).describe('Components shown per phase'),
         outFile: z.string().optional().describe('Optional path to write the full JSON report'),
+        timings: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Also measure JavaScript ms per phase (varies between runs, unlike render counts): use it to tell the user how much faster an interaction got.',
+          ),
       },
     },
-    async ({ url, steps, runs, top, outFile }) => {
+    async ({ url, steps, runs, top, outFile, timings }) => {
       try {
         const u = new URL(url);
+        await assertThisApp(url);
         const config = parseConfig({
           baseUrl: u.origin,
           runs,
+          timings,
           scenarios: [{ name: 'page', path: `${u.pathname}${u.search}${u.hash}`, steps }],
         });
         const report = await profile(config);
         return text(reportToMarkdown(report, top) + (await saveReport(report, outFile)));
+      } catch (err) {
+        return fail(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'scan_app',
+    {
+      title: 'Find and profile interactions automatically',
+      description:
+        'Zero-config start: opens the app, finds safe interactions on a few routes (buttons, tabs, ' +
+        'text inputs; never delete/pay/sign-out/submit), profiles each one and returns the top root ' +
+        'causes of avoidable renders with fixes, plus the scenarios as crispy.config.json scenarios ' +
+        'so they can be saved and guarded with test_render_snapshots.',
+      inputSchema: {
+        url: z.url().describe('Start page, e.g. http://localhost:5173/'),
+        maxRoutes: z.number().int().min(1).max(10).default(2),
+        maxActions: z.number().int().min(1).max(20).default(4).describe('Interactions per route'),
+      },
+    },
+    async ({ url, maxRoutes, maxActions }) => {
+      try {
+        const u = new URL(url);
+        await assertThisApp(url);
+        const config = parseConfig({ baseUrl: u.origin, scenarios: [{ name: 'scan' }] });
+        const result = await scan(config, {
+          path: `${u.pathname}${u.search}`,
+          maxRoutes,
+          maxActions,
+          // One run each keeps an exploratory scan fast; test_render_snapshots re-runs them.
+          runs: 1,
+        });
+        const causes = result.causes.length
+          ? result.causes
+              .slice(0, 10)
+              .map((c, i) => `${i + 1}. [${c.where}] ${c.text}`)
+              .join('\n')
+          : 'No avoidable renders found in these interactions.';
+        const skipped = result.skipped.length
+          ? `\n\nSkipped:\n${result.skipped.map((s) => `- ${s.name}: ${s.reason}`).join('\n')}`
+          : '';
+        return text(
+          `${result.scenarios.length} interaction(s) profiled.\n\nTop root causes:\n${causes}${skipped}\n\n` +
+            `Scenarios (save under "scenarios" in crispy.config.json):\n${JSON.stringify(result.scenarios)}`,
+        );
       } catch (err) {
         return fail(err);
       }
@@ -87,7 +169,10 @@ export function createServer(): McpServer {
     async ({ configPath, scenarios, outFile, top }) => {
       try {
         const config = await loadConfig(configPath);
-        const report = await profile(config, { only: scenarios });
+        const report = await profile(config, {
+          only: scenarios,
+          cwd: dirname(resolve(configPath)),
+        });
         return text(reportToMarkdown(report, top) + (await saveReport(report, outFile)));
       } catch (err) {
         return fail(err);
@@ -103,8 +188,9 @@ export function createServer(): McpServer {
         'Runs the crispy.config.json scenarios and compares render counts with the committed ' +
         'snapshot (crispy.snap.json), like snapshot tests for re-renders. Regressions include the ' +
         'unstable prop, where the component is rendered and a suggested fix. Read-only by default: ' +
-        'it never creates or edits the snapshot. To accept new counts, the USER must approve; then ' +
-        'pass update=true together with confirm="accept-render-changes".',
+        'it never edits an existing snapshot. With no snapshot yet, update=true records the first one ' +
+        '(it only stores the current counts). To accept changed counts later, the USER must approve; ' +
+        'then pass update=true together with confirm="accept-render-changes".',
       inputSchema: {
         configPath: z.string().default('crispy.config.json'),
         update: z.boolean().default(false),
@@ -119,7 +205,12 @@ export function createServer(): McpServer {
     },
     async ({ configPath, update, confirm, scenarios }) => {
       try {
-        if (update && confirm !== 'accept-render-changes') {
+        // Recording the first snapshot accepts nothing: it only stores today's counts.
+        const first = async () => {
+          const c = await loadConfig(configPath).catch(() => null);
+          return !!c && !existsSync(resolve(dirname(resolve(configPath)), c.snapshot.file));
+        };
+        if (update && confirm !== 'accept-render-changes' && !(await first())) {
           throw new Error(
             'update=true changes the committed snapshot. Ask the user to approve the new counts, then pass confirm="accept-render-changes".',
           );
@@ -132,7 +223,7 @@ export function createServer(): McpServer {
           baseDir: dirname(resolve(configPath)),
         });
         return text(
-          `${outcome.markdown}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
+          `Status: ${outcome.exitCode !== 0 ? 'FAIL' : outcome.result?.changes.some((c) => c.suspect) ? 'WARN (fewer renders on a component that reads mutable data: check the UI, or undo that React.memo)' : 'PASS'}\n\n${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
         );
       } catch (err) {
         return fail(err);

@@ -1,7 +1,8 @@
-import type { ComponentReport, CrispyReport, Stat } from '../types.js';
+import type { ComponentReport, CrispyReport, PhaseReport, Stat } from '../types.js';
 import { cmp } from '../util/cmp.js';
 import { LIBRARY_FILE } from '../util/paths.js';
 import { hintFor } from './hints.js';
+import { GREEN_CAVEAT } from './markdown.js';
 
 /**
  * Render snapshot: the expected render counts of every scenario, committed to the
@@ -22,7 +23,11 @@ export type Count = number | [number, number];
 export interface PhaseSnapshot {
   commits: Count;
   /** `file` = where the component is defined; used to match it if its key changes. */
-  components: Record<string, { renders: Count; avoidable: Count; file?: string }>;
+  /**
+   * `mutable`: the component reads a mutable instance (a table or form API) or data
+   * that changes without its props. Fewer renders there may mean a frozen UI.
+   */
+  components: Record<string, { renders: Count; avoidable: Count; file?: string; mutable?: true }>;
 }
 
 const lo = (c: Count) => (Array.isArray(c) ? c[0] : c);
@@ -50,6 +55,20 @@ export interface SnapshotChange {
   renamedFrom?: string;
   /** New component that already renders avoidably (reported, not failing). */
   warning?: true;
+  /**
+   * More avoidable renders, but not more renders: the same renders now have a
+   * clear, fixable cause (often uncovered by a previous fix). Reported, not failing.
+   */
+  uncovered?: true;
+  /** More commits, reported but not failing (`snapshot.failOnMoreCommits` makes it fail). */
+  info?: true;
+  /** Fewer renders on a `mutable` component: check that the UI still updates. */
+  suspect?: true;
+  /**
+   * The component whose state updates re-rendered this regressed one: the highest
+   * regressed ancestor in the cascade, else its direct trigger. Fix the root first.
+   */
+  rootCause?: string;
 }
 
 export interface SnapshotResult {
@@ -67,7 +86,38 @@ const inOrder = (names: Iterable<string>, order: string[]) => {
   return [...new Set(names)].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
 };
 
-export function toSnapshot(report: CrispyReport): RenderSnapshot {
+/** Renders that could be avoided: unchanged inputs plus recreated callbacks. */
+function fixableStat(c: ComponentReport): Stat {
+  return {
+    median: c.avoidableRenders.median + c.callbackRenders.median,
+    min: c.avoidableRenders.min + c.callbackRenders.min,
+    max: c.avoidableRenders.max + c.callbackRenders.max,
+  };
+}
+
+/** Defined in node_modules: its counts follow the app component that renders it. */
+const isLibrary = (file: string | undefined) => file !== undefined && LIBRARY_FILE.test(file);
+
+/** One phase's expected counts. */
+export function phaseSnapshot(p: PhaseReport, includeLibraries = false): PhaseSnapshot {
+  const components: PhaseSnapshot['components'] = {};
+  for (const c of Object.keys(p.components).sort(cmp)) {
+    const r = p.components[c] as ComponentReport;
+    if (!includeLibraries && isLibrary(r.definedIn)) continue;
+    components[c] = {
+      renders: toCount(r.renders),
+      // Avoidable = unchanged inputs + recreated callbacks (as in the report header).
+      avoidable: toCount(fixableStat(r)),
+      ...(r.definedIn && { file: r.definedIn }),
+      ...((Object.keys(r.instanceProps ?? {}).length > 0 || (r.mutableReads ?? 0) > 0) && {
+        mutable: true as const,
+      }),
+    };
+  }
+  return { commits: toCount(p.commits), components };
+}
+
+export function toSnapshot(report: CrispyReport, includeLibraries = false): RenderSnapshot {
   const scenarios: RenderSnapshot['scenarios'] = {};
   for (const name of Object.keys(report.scenarios).sort(cmp)) {
     const s = report.scenarios[name];
@@ -76,16 +126,7 @@ export function toSnapshot(report: CrispyReport): RenderSnapshot {
     for (const phase of Object.keys(s.phases)) {
       const p = s.phases[phase];
       if (!p) continue;
-      const components: PhaseSnapshot['components'] = {};
-      for (const c of Object.keys(p.components).sort(cmp)) {
-        const r = p.components[c] as ComponentReport;
-        components[c] = {
-          renders: toCount(r.renders),
-          avoidable: toCount(r.avoidableRenders),
-          ...(r.definedIn && { file: r.definedIn }),
-        };
-      }
-      phases[phase] = { commits: toCount(p.commits), components };
+      phases[phase] = phaseSnapshot(p, includeLibraries);
     }
     scenarios[name] = phases;
   }
@@ -113,8 +154,9 @@ export function serializeSnapshot(snapshot: RenderSnapshot): string {
         comps.forEach(([c, v], ci) => {
           const comma = ci < comps.length - 1 ? ',' : '';
           const file = v.file ? `, "file": ${q(v.file)}` : '';
+          const mutable = v.mutable ? ', "mutable": true' : '';
           out.push(
-            `          ${q(c)}: { "renders": ${q(v.renders)}, "avoidable": ${q(v.avoidable)}${file} }${comma}`,
+            `          ${q(c)}: { "renders": ${q(v.renders)}, "avoidable": ${q(v.avoidable)}${file}${mutable} }${comma}`,
           );
         });
         out.push('        }');
@@ -201,7 +243,19 @@ const knownIn = (phases: Record<string, PhaseSnapshot> | undefined) =>
  * Pure renames: a snapshot component missing now and a new component defined in
  * the same file with identical counts. Returns snapshot key -> current key.
  */
-function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, string> {
+/**
+ * `loose`: also when the counts changed (`compare`, where a fix often renames the
+ * component it memoized); only an unambiguous candidate with the same name or file.
+ */
+export function detectRenames(
+  exp: PhaseSnapshot,
+  current: PhaseSnapshot,
+  loose = false,
+): Map<string, string> {
+  const matches = (
+    a: { renders: Count; avoidable: Count },
+    b: { renders: Count; avoidable: Count },
+  ) => loose || (sameCount(a.renders, b.renders) && sameCount(a.avoidable, b.avoidable));
   const renames = new Map<string, string>();
   const added = Object.keys(current.components).filter((k) => !exp.components[k]);
   const taken = () => [...renames.values()];
@@ -212,11 +266,7 @@ function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, 
     const candidates = added.filter((k) => {
       const c = current.components[k];
       return (
-        c !== undefined &&
-        baseName(k) === baseName(old) &&
-        !taken().includes(k) &&
-        sameCount(c.renders, e.renders) &&
-        sameCount(c.avoidable, e.avoidable)
+        c !== undefined && baseName(k) === baseName(old) && !taken().includes(k) && matches(c, e)
       );
     });
     if (candidates.length === 1) renames.set(old, candidates[0] as string);
@@ -229,11 +279,7 @@ function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, 
     const candidates = added.filter((k) => {
       const c = current.components[k];
       return (
-        c !== undefined &&
-        c.file === e.file &&
-        ![...renames.values()].includes(k) &&
-        sameCount(c.renders, e.renders) &&
-        sameCount(c.avoidable, e.avoidable)
+        c !== undefined && c.file === e.file && ![...renames.values()].includes(k) && matches(c, e)
       );
     });
     // Ambiguous (several identical candidates): don't guess.
@@ -264,8 +310,14 @@ export function compareSnapshot(
   /** When only some scenarios ran, don't report the others as removed. */
   partial = false,
   failOnNewAvoidable = false,
+  failOnMoreAvoidable = false,
+  /** Commit counts vary with load timing: by default more commits are reported, not failed. */
+  failOnMoreCommits = false,
+  /** Also compare components defined in node_modules (off: they follow their app parent). */
+  includeLibraries = false,
 ): SnapshotResult {
-  const current = toSnapshot(report);
+  const current = toSnapshot(report, includeLibraries);
+  if (!includeLibraries) snapshot = withoutLibraries(snapshot);
   const changes: SnapshotChange[] = [];
 
   /**
@@ -281,11 +333,17 @@ export function compareSnapshot(
     actual: Stat,
     hint?: string,
     slack = tolerance,
+    uncovered = false,
   ) => {
     const flaky = Array.isArray(expected) || actual.min !== actual.max;
     const entry = { ...base, metric, expected, actual: toCount(actual), ...(flaky && { flaky }) };
     if (actual.min > hi(expected) + slack) {
-      changes.push({ ...entry, status: 'regressed', ...(hint && { hint }) });
+      changes.push({
+        ...entry,
+        status: 'regressed',
+        ...(uncovered && { uncovered: true }),
+        ...(hint && { hint }),
+      });
     } else if (actual.max < lo(expected)) {
       changes.push({ ...entry, status: 'improved' });
     }
@@ -319,6 +377,7 @@ export function compareSnapshot(
       // One extra commit (a framework scheduling detail) is tolerated in phases that
       // already commit; component counts still catch every extra render.
       const commitSlack = hi(exp.commits) > 0 ? Math.max(tolerance, 1) : tolerance;
+      const beforeCommits = changes.length;
       check(
         { scenario, phase },
         'commits',
@@ -327,12 +386,18 @@ export function compareSnapshot(
         undefined,
         commitSlack,
       );
+      if (!failOnMoreCommits)
+        for (const c of changes.slice(beforeCommits)) if (c.status === 'regressed') c.info = true;
 
       const renames = detectRenames(exp, actualPhases[phase] ?? { commits: 0, components: {} });
       for (const [from, to] of renames) {
         const e = exp.components[from];
         delete exp.components[from];
         if (e) exp.components[to] = e;
+        // Wrapping a component in React.memo often renames it (`X` → `XImpl`). On a
+        // mutable-instance reader that is the change that freezes the UI.
+        const now = reportPhase?.components[to];
+        const memoOnInstance = !!now?.memo && Object.keys(now.instanceProps ?? {}).length > 0;
         changes.push({
           scenario,
           phase,
@@ -342,12 +407,15 @@ export function compareSnapshot(
           actual: e?.renders ?? null,
           status: 'renamed',
           renamedFrom: from,
+          ...((e?.mutable || memoOnInstance) && { suspect: true as const }),
         });
       }
 
       const names = [
         ...new Set([...Object.keys(exp.components), ...Object.keys(reportPhase?.components ?? {})]),
-      ].sort(cmp);
+      ]
+        .filter((k) => includeLibraries || !isLibrary(reportPhase?.components[k]?.definedIn))
+        .sort(cmp);
       for (const component of names) {
         const e = exp.components[component];
         const full = reportPhase?.components[component];
@@ -368,6 +436,7 @@ export function compareSnapshot(
           continue;
         }
         const base = { scenario, phase, component };
+        const before = changes.length;
         check(
           base,
           'renders',
@@ -375,13 +444,20 @@ export function compareSnapshot(
           full?.renders ?? zero,
           hintFor(full, reportPhase, component),
         );
+        // Same or fewer renders, more of them avoidable: the cause changed (e.g. a
+        // fix removed the real input change and left a recreated prop), not the cost.
+        const rendersUp = (full?.renders ?? zero).min > hi(e.renders) + tolerance;
         check(
           base,
           'avoidable',
           e.avoidable,
-          full?.avoidableRenders ?? zero,
+          full ? fixableStat(full) : zero,
           hintFor(full, reportPhase, component),
+          tolerance,
+          !rendersUp && !failOnMoreAvoidable,
         );
+        if (e.mutable)
+          for (const c of changes.slice(before)) if (c.status === 'improved') c.suspect = true;
       }
     }
   }
@@ -400,7 +476,8 @@ export function compareSnapshot(
     }
   }
 
-  const regressions = changes.filter((c) => c.status === 'regressed');
+  linkRootCauses(changes, report);
+  const regressions = changes.filter((c) => c.status === 'regressed' && !c.uncovered && !c.info);
   return {
     passed: regressions.length === 0,
     changes,
@@ -435,6 +512,8 @@ export function keepRanges(next: RenderSnapshot, previous: RenderSnapshot): Rend
         if (!o) continue;
         c.renders = union(c.renders, o.renders);
         c.avoidable = union(c.avoidable, o.avoidable);
+        // Sticky: after a memo the component may no longer render to show it.
+        if (o.mutable) c.mutable = true;
       }
     }
   }
@@ -445,8 +524,22 @@ export function keepRanges(next: RenderSnapshot, previous: RenderSnapshot): Rend
  * Snapshot to write: the current counts, but without silently accepting
  * regressions — used to record new scenarios/phases/components on a normal run.
  */
-export function mergeAdditions(snapshot: RenderSnapshot, report: CrispyReport): RenderSnapshot {
-  const current = toSnapshot(report);
+/** A copy without node_modules components (snapshots recorded before they were left out). */
+function withoutLibraries(snapshot: RenderSnapshot): RenderSnapshot {
+  const out: RenderSnapshot = JSON.parse(JSON.stringify(snapshot));
+  for (const phases of Object.values(out.scenarios))
+    for (const p of Object.values(phases))
+      for (const [k, c] of Object.entries(p.components))
+        if (isLibrary(c.file)) delete p.components[k];
+  return out;
+}
+
+export function mergeAdditions(
+  snapshot: RenderSnapshot,
+  report: CrispyReport,
+  includeLibraries = false,
+): RenderSnapshot {
+  const current = toSnapshot(report, includeLibraries);
   const merged: RenderSnapshot = JSON.parse(JSON.stringify(snapshot));
   for (const [scenario, phases] of Object.entries(current.scenarios)) {
     const target = merged.scenarios[scenario];
@@ -497,12 +590,127 @@ const ICON: Record<SnapshotStatus, string> = {
   removed: '➖',
 };
 
+/**
+ * Marks regressions caused by another regressed component in the same phase: each
+ * one follows its main trigger (the component whose state update re-rendered it)
+ * up to the highest regressed ancestor, so one cause is reported once.
+ */
+function linkRootCauses(changes: SnapshotChange[], report: CrispyReport): void {
+  const regressed = new Map<string, Set<string>>();
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component) continue;
+    const key = `${c.scenario}\0${c.phase}`;
+    regressed.set(key, (regressed.get(key) ?? new Set()).add(c.component));
+  }
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component) continue;
+    const phase = report.scenarios[c.scenario]?.phases[c.phase];
+    const names = regressed.get(`${c.scenario}\0${c.phase}`);
+    if (!phase || !names) continue;
+    let root = c.component;
+    const seen = new Set([root]);
+    for (;;) {
+      const by = dominantTrigger(phase.components[root]?.triggeredBy, root);
+      if (!by || !names.has(by) || seen.has(by)) break;
+      seen.add(by);
+      root = by;
+    }
+    if (root !== c.component) c.rootCause = root;
+  }
+  // Rendered (directly or not) by another regressed component: part of that cause.
+  const ownerOf = (phase: PhaseReport, key: string) =>
+    /\(([^()]+)\)$/.exec(phase.components[key]?.locations[0] ?? '')?.[1];
+  const id = (c: SnapshotChange, k: string) => `${c.scenario}\0${c.phase}\0${k}`;
+  // Nearest regressed ancestor of each regression without a cause yet...
+  const parent = new Map<string, string>();
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component) continue;
+    if (c.rootCause) {
+      parent.set(id(c, c.component), c.rootCause);
+      continue;
+    }
+    const phase = report.scenarios[c.scenario]?.phases[c.phase];
+    const names = regressed.get(`${c.scenario}\0${c.phase}`);
+    if (!phase || !names) continue;
+    const seen = new Set([c.component]);
+    for (let k = ownerOf(phase, c.component); k && !seen.has(k); k = ownerOf(phase, k)) {
+      seen.add(k);
+      if (names.has(k)) {
+        parent.set(id(c, c.component), k);
+        break;
+      }
+    }
+  }
+  // ...then up to the top of that chain.
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component || c.rootCause) continue;
+    let root = parent.get(id(c, c.component));
+    const seen = new Set([c.component]);
+    while (root && !seen.has(root)) {
+      seen.add(root);
+      const up = parent.get(id(c, root));
+      if (!up || seen.has(up)) break;
+      root = up;
+    }
+    if (root && root !== c.component) c.rootCause = root;
+  }
+  // The rest: the component whose state update re-rendered them, even if its own
+  // count did not change (unless they are the root of other regressions).
+  const roots = new Set(
+    changes.map((c) => c.rootCause && `${c.scenario}\0${c.phase}\0${c.rootCause}`),
+  );
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component || c.rootCause) continue;
+    if (roots.has(`${c.scenario}\0${c.phase}\0${c.component}`)) continue;
+    const phase = report.scenarios[c.scenario]?.phases[c.phase];
+    const by = dominantTrigger(phase?.components[c.component]?.triggeredBy, c.component);
+    if (by) c.rootCause = by;
+  }
+}
+
+/** The component whose state updates re-rendered this one most often (not itself). */
+const dominantTrigger = (triggeredBy: Record<string, number> | undefined, self: string) =>
+  Object.entries(triggeredBy ?? {})
+    .filter(([k]) => k !== self)
+    .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]))[0]?.[0];
+
+/**
+ * One Markdown row per cause: a cascade's root and what it re-renders (in every
+ * scenario and phase), or the same component with the same fix across scenarios.
+ */
+function groupRegressions(changes: SnapshotChange[]): SnapshotChange[][] {
+  const roots = new Set(changes.flatMap((c) => (c.rootCause ? [c.rootCause] : [])));
+  const groups = new Map<string, SnapshotChange[]>();
+  for (const c of changes) {
+    const root = c.rootCause ?? (c.component && roots.has(c.component) ? c.component : undefined);
+    // Without a root or a hint there is no shared cause to merge on.
+    const key = root
+      ? `root\0${root}`
+      : c.hint
+        ? `hint\0${c.component}\0${c.hint}`
+        : `${c.scenario}\0${c.phase}\0${c.component}\0${c.metric}`;
+    groups.set(key, [...(groups.get(key) ?? []), c]);
+  }
+  return [...groups.values()];
+}
+
+const list = (items: string[], max = 3) =>
+  items.length > max
+    ? `${items.slice(0, max).join(', ')} and ${items.length - max} more`
+    : items.join(', ');
+
+/** " from 1 cause" when regressions share causes. */
+function causes(regressions: SnapshotChange[]): string {
+  const n = groupRegressions(regressions).length;
+  return n < regressions.length ? ` from ${n} cause${n === 1 ? '' : 's'}` : '';
+}
+
 export function snapshotToMarkdown(result: SnapshotResult, file: string): string {
   const lines = [
     `## 🥓 crispy render snapshots: ${
       result.passed
         ? '✅ no render regressions'
-        : `❌ ${result.regressions.length} render regression(s)`
+        : `❌ ${result.regressions.length} render regression(s)${causes(result.regressions)}`
     }`,
     '',
   ];
@@ -518,19 +726,56 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   const sorted = [...result.changes].sort(
     (a, b) => order.indexOf(a.status) - order.indexOf(b.status),
   );
-  for (const c of sorted) {
-    const values = `${fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
+  const valuesOf = (c: SnapshotChange) =>
+    `${c.expected === null && c.actual !== null ? '0' : fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
+  const row = (c: SnapshotChange) =>
+    `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : c.info ? 'ℹ️ more commits' : c.suspect ? '⚠️ check the UI' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${valuesOf(c)} | ${c.hint ?? ''} |`;
+  const blocking = new Set(result.regressions);
+  for (const group of groupRegressions(sorted.filter((c) => blocking.has(c)))) {
+    // The root's own row with the biggest increase (else the group's biggest).
+    const growth = (c: SnapshotChange) => hi(c.actual ?? 0) - lo(c.expected ?? 0);
+    const own = group.filter((c) => !c.rootCause);
+    const lead = (own.length ? own : group).reduce((a, b) => (growth(b) > growth(a) ? b : a));
+    if (!lead) continue;
+    if (group.length === 1) {
+      lines.push(row(lead));
+      continue;
+    }
+    const root = lead.rootCause ?? lead.component ?? '—';
+    const unique = (xs: string[]) => [...new Set(xs)];
+    const where = list(unique(group.map((c) => `${c.scenario} / ${c.phase}`)));
+    const others = unique(group.map((c) => c.component ?? '—')).filter((k) => k !== root);
+    const component = others.length ? `${root}, which re-renders ${list(others)}` : root;
+    const metrics = unique(group.map((c) => c.metric)).join(', ');
+    const hint = group.find((c) => c.component === root && c.hint)?.hint ?? lead.hint ?? '';
     lines.push(
-      `| ${c.warning ? '⚠️ new' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
+      `| ❌ regressed | ${where} | ${component} | ${metrics} | ${valuesOf(lead)} (${lead.metric}); ${group.length - 1} more from this cause | ${hint} |`,
     );
   }
+  for (const c of sorted) if (!blocking.has(c)) lines.push(row(c));
   lines.push('');
   if (result.improvements.length) {
     lines.push(`Improvements found: run \`crispy test --update\` to lock them into \`${file}\`.`);
+    lines.push(GREEN_CAVEAT);
+  }
+  if (result.changes.some((c) => c.suspect)) {
+    lines.push(
+      '⚠️ check the UI: fewer renders on a component that reads a mutable instance (a table or form API) or data that changes without its props. A React.memo there hides those changes: make sure the screen still updates before accepting it.',
+    );
+  }
+  if (result.changes.some((c) => c.info)) {
+    lines.push(
+      'ℹ️ more commits: React committed more often (often load timing, sometimes a setState in an effect). Not failing: component render counts are the gate. Set `snapshot.failOnMoreCommits` to fail on it.',
+    );
+  }
+  if (result.changes.some((c) => c.uncovered)) {
+    lines.push(
+      '🟡 now avoidable: not worse. The renders are the same; you removed one cause, so the next one is visible now, with its fix. They do not fail the test.',
+    );
   }
   if (result.regressions.length) {
     lines.push(
-      `If a regression is intended, accept it with \`crispy test --update\` and commit \`${file}\`.`,
+      `Fix the cause above. Only if the change is intended (a person decides, not an agent), accept it with \`crispy test --update\` and commit \`${file}\`.`,
     );
   }
   return `${lines.join('\n')}\n`;

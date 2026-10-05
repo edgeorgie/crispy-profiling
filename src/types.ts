@@ -37,12 +37,34 @@ export interface RawComponentStats {
   triggeredBy: Record<string, number>;
   /** Components whose context value was recreated with equal content (provider owners). */
   recreatedContextFrom: Record<string, number>;
+  /** Same, when the parent re-rendered the component anyway (React.memo alone would not help). */
+  maskedContextFrom?: Record<string, number>;
+  /**
+   * Renders with unchanged props, state and context whose output still changed: the
+   * component reads mutable data (a table/form instance, a ref, a global). Not avoidable.
+   */
+  mutableReads?: number;
+  /** Props that were the same mutable instance (an object with methods), with counts. */
+  instanceProps?: Record<string, number>;
+  /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
+  stateChanges?: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), with counts. */
   providerAt?: Record<string, number>;
   /** "prop|Creator": the component that created a recreated prop value (forwarders skipped). */
   creators?: Record<string, number>;
   /** "prop|Creator|#2 (an object)": the prop comes from useCallback/useMemo whose deps changed. */
   staleMemo?: Record<string, number>;
+  /**
+   * State set by this component's useEffect right after the previous commit (an
+   * extra commit), by state: "`d` (useState)", "`total` (useState) in `Parent`"
+   * (a setter passed as a prop) or "a store read by `Reader`".
+   */
+  effectCascades?: Record<string, number>;
+  /** Extra commits those effects caused, and the renders in them. */
+  cascadeCommits?: number;
+  cascadeRenders?: number;
+  /** Renders of this component inside extra commits caused by effects (anyone's). */
+  inEffectCascades?: number;
   /** Compiled by React Compiler. */
   compiled?: boolean;
   /** Wrapped in React.memo. */
@@ -62,6 +84,8 @@ export interface RawPhase {
   components: Record<string, RawComponentStats>;
   /** Component keys rendered by each commit ("\n"-joined, sorted) -> number of commits. */
   commitKeys?: Record<string, number>;
+  /** Component key -> times React.memo skipped its render while its parent rendered. */
+  memoSkips?: Record<string, number>;
 }
 
 export interface RawRun {
@@ -73,6 +97,8 @@ export interface RawRun {
   warnings: string[];
   /** Component key -> file where the component function is defined (when resolvable). */
   definitions?: Record<string, string>;
+  /** Main-thread CPU per phase in ms (CDP ScriptDuration / TaskDuration), only with `timings`. */
+  cost?: Record<string, { scriptMs: number; taskMs: number }>;
 }
 
 /** Aggregated (multi-run) statistic. Counts are deterministic, so min === max in a stable app. */
@@ -103,16 +129,42 @@ export interface ComponentReport {
   triggeredBy: Record<string, number>;
   /** Provider owners whose context value was recreated with equal content. */
   recreatedContextFrom: Record<string, number>;
+  /** Provider owners recreating a context value it reads while its parent re-renders it anyway. */
+  maskedContextFrom?: Record<string, number>;
+  /** Renders with unchanged inputs but changed output (reads mutable data; not avoidable). */
+  mutableReads?: number;
+  /** Props that were the same mutable instance (e.g. a TanStack `table`): never memo it. */
+  instanceProps?: Record<string, number>;
+  /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
+  stateChanges: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), most frequent first. */
   providerAt: string[];
   /** "prop|Creator": the component that created a recreated prop value (forwarders skipped). */
   creators: Record<string, number>;
   /** "prop|Creator|#2 (an object)": the prop comes from useCallback/useMemo whose dependencies changed. */
   staleMemo: Record<string, number>;
+  /**
+   * State set by a useEffect right after the previous commit, by state name, e.g.
+   * {"`doubled` (useState)": 2}: each one costs an extra commit (derive the value
+   * during render instead). Omitted when empty.
+   */
+  effectCascades?: Record<string, number>;
+  /** Extra commits those effects caused, and the renders in them (medians). */
+  cascadeCommits?: number;
+  cascadeRenders?: number;
+  /** Renders of this component inside extra commits caused by effects (median). */
+  inEffectCascades?: number;
   /** Compiled by React Compiler. */
   compiled: boolean;
   /** Wrapped in React.memo. */
   memo: boolean;
+  /** Renders React.memo skipped across all phases and scenarios of this report. */
+  memoSkips: number;
+  /**
+   * Wrapped in React.memo, updated at least 3 times in this report and never
+   * skipped a render in any flow: its props change every time, so the memo only adds cost.
+   */
+  uselessMemo?: true;
   /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */
   locations: string[];
   /** File where the component function is defined, when known (part of its identity). */
@@ -126,7 +178,19 @@ export interface PhaseReport {
   totalWastedRenders: Stat;
   totalAvoidableRenders: Stat;
   totalCallbackRenders: Stat;
+  /**
+   * Main-thread CPU spent in the phase, in ms: JavaScript (`scriptMs`) and all
+   * tasks (`taskMs`, including layout and style). Works in production builds.
+   * Only with `timings: true` (not reproducible byte for byte).
+   */
+  cost?: { scriptMs: Stat; taskMs: Stat };
   components: Record<string, ComponentReport>;
+  /**
+   * Components referenced by this phase (as creators, providers, triggers or owners)
+   * that are library code, including internals hidden from `components`. Used so
+   * hints never point into libraries.
+   */
+  library?: string[];
 }
 
 export interface BudgetViolation {
@@ -178,6 +242,10 @@ export interface ComponentDiff {
   baseAvoidable: number;
   headAvoidable: number;
   status: 'regressed' | 'improved' | 'unchanged' | 'added';
+  /** Improved, but the base reads a mutable instance or mutable data: check the UI. */
+  /** Same component under another key in base (`Row` → `Row2` after React.memo). */
+  renamedFrom?: string;
+  suspect?: true;
 }
 
 export interface CompareResult {
@@ -191,6 +259,11 @@ export interface CompareResult {
     headWasted: number;
     baseAvoidable: number;
     headAvoidable: number;
+    /** JavaScript ms (median per phase, summed), when both reports have `timings`. */
+    baseMs?: number;
+    headMs?: number;
   };
   passed: boolean;
+  /** Scenarios/phases that ran on one side only ("checkout / load (only in base)"). */
+  notCompared?: string[];
 }

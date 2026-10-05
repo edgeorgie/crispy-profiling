@@ -33,6 +33,17 @@ export const StepSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('wait'), ms: z.number().int().min(0).max(60_000) }),
   z.object({ action: z.literal('scroll'), y: z.number(), selector: z.string().optional() }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
+  /**
+   * Checks the screen, so a "fix" that freezes the UI fails instead of passing with
+   * fewer renders: the element exists (and is visible), contains `text`, or matches
+   * `count` times. Waits up to `timeoutMs`.
+   */
+  z.object({
+    action: z.literal('expect'),
+    selector: z.string().min(1),
+    text: z.string().optional(),
+    count: z.number().int().min(0).optional(),
+  }),
   z.object({
     action: z.literal('phase'),
     name: z
@@ -79,6 +90,34 @@ export type CompareOptions = z.infer<typeof CompareOptionsSchema>;
 export const ConfigSchema = z.object({
   $schema: z.string().optional(),
   baseUrl: z.url(),
+  /**
+   * Sign in once before profiling (never counted in any phase). Values like
+   * "${E2E_PASSWORD}" are read from the environment ("$${NAME}" types a literal "${NAME}").
+   */
+  login: z
+    .object({
+      path: z.string().min(1).default('/login'),
+      steps: z.array(StepSchema).min(1),
+    })
+    .optional(),
+  /** Saved browser session (cookies + localStorage), e.g. written by `crispy login`. */
+  storageState: z.string().optional(),
+  /**
+   * Start the app's dev server for you (like Playwright's webServer): crispy runs
+   * `command`, waits until `url` (default: baseUrl) answers, and stops it at the end,
+   * also on Ctrl-C. A server already answering there is reused locally (with a
+   * warning) but not on CI. If baseUrl never answers but the server announces another
+   * local URL serving HTML, crispy uses that one and tells you to update baseUrl.
+   */
+  webServer: z
+    .object({
+      command: z.string().min(1),
+      url: z.url().optional(),
+      timeoutMs: z.number().int().min(1000).default(60_000),
+      /** Reuse a server already answering at the URL. Default: yes locally, no on CI. */
+      reuseExisting: z.boolean().optional(),
+    })
+    .optional(),
   runs: z.number().int().min(1).max(20).default(3),
   viewport: z
     .object({ width: z.number().int().min(200), height: z.number().int().min(200) })
@@ -113,6 +152,14 @@ export const ConfigSchema = z.object({
    * Off by default because timings make reports non-reproducible.
    */
   timings: z.boolean().default(false),
+  /**
+   * Block every request other than GET/HEAD/OPTIONS and every WebSocket message the
+   * page sends (hot-reload sockets excepted) in the browser (and close popups), so
+   * replaying interactions never changes data. On by default; blocked writes are
+   * listed in the report's warnings. Set `false` for flows that must write (e.g. a
+   * disposable test database).
+   */
+  readOnly: z.boolean().default(true),
   /** Number of components to keep per phase in the report (sorted by renders). 0 = all. */
   topComponents: z.number().int().min(0).default(0),
   /**
@@ -141,8 +188,30 @@ export const ConfigSchema = z.object({
        * avoidably. Off by default: new UI is reported with a warning instead.
        */
       failOnNewAvoidable: z.boolean().default(false),
+      /**
+       * Fail when the same number of renders becomes more avoidable (e.g. a fix
+       * uncovered a recreated prop). Off by default: reported as 🟡 instead.
+       */
+      failOnMoreAvoidable: z.boolean().default(false),
+      /**
+       * Fail when a phase commits more often than in the snapshot. Off by default:
+       * commit counts vary with load timing, so they are reported (ℹ️) instead.
+       */
+      failOnMoreCommits: z.boolean().default(false),
+      /**
+       * Also record components defined in node_modules (icons, Radix parts…). Off by
+       * default: their counts follow the app component that renders them.
+       */
+      includeLibraries: z.boolean().default(false),
     })
-    .default({ file: 'crispy.snap.json', tolerance: 0, failOnNewAvoidable: false }),
+    .default({
+      file: 'crispy.snap.json',
+      tolerance: 0,
+      failOnNewAvoidable: false,
+      failOnMoreAvoidable: false,
+      failOnMoreCommits: false,
+      includeLibraries: false,
+    }),
   scenarios: z.array(ScenarioSchema).min(1),
 });
 export type CrispyConfig = z.infer<typeof ConfigSchema>;
@@ -162,7 +231,52 @@ export function phasesOf(scenario: Scenario): string[] {
   return phases;
 }
 
+/** Edit distance, to suggest the key a typo meant. */
+function distance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0] as number;
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = row[j] as number;
+      row[j] = Math.min(
+        (row[j] as number) + 1,
+        (row[j - 1] as number) + 1,
+        prev + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      prev = tmp;
+    }
+  }
+  return row[b.length] as number;
+}
+
+/** Unknown keys are dropped by the schema: a typo (`readonly`) would be silently ignored. */
+function unknownKeys(value: unknown, known: string[], where: string): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  return Object.keys(value)
+    .filter((k) => !known.includes(k))
+    .map((k) => {
+      const near = known
+        .map((n) => [n, n.toLowerCase() === k.toLowerCase() ? 0 : distance(n, k)] as const)
+        .filter(([, d]) => d <= 2)
+        .sort((a, b) => a[1] - b[1])[0]?.[0];
+      return `unknown key "${k}"${where}${near ? ` (did you mean "${near}"?)` : ''}`;
+    });
+}
+
 export function parseConfig(input: unknown): CrispyConfig {
+  const problems = unknownKeys(input, Object.keys(ConfigSchema.shape), '');
+  const scenarios = (input as { scenarios?: unknown })?.scenarios;
+  if (Array.isArray(scenarios)) {
+    for (const s of scenarios) {
+      const name = (s as { name?: unknown })?.name;
+      problems.push(
+        ...unknownKeys(s, Object.keys(ScenarioSchema.shape), ` in scenario "${String(name)}"`),
+      );
+    }
+  }
+  if (problems.length)
+    throw new Error(`Invalid crispy config:\n${problems.map((p) => `✖ ${p}`).join('\n')}`);
   const result = ConfigSchema.safeParse(input);
   if (!result.success) {
     throw new Error(`Invalid crispy config:\n${z.prettifyError(result.error)}`);
@@ -203,10 +317,15 @@ export async function loadConfig(path = DEFAULT_CONFIG_FILE): Promise<CrispyConf
   return parseConfig(json);
 }
 
-export function exampleConfig(baseUrl = 'http://localhost:5173'): CrispyConfigInput {
+export function exampleConfig(
+  baseUrl = 'http://localhost:5173',
+  devCommand: string | null = null,
+): CrispyConfigInput {
   return {
     $schema: './node_modules/crispy-profiling/schema/crispy.config.schema.json',
     baseUrl,
+    // crispy starts the dev server itself (or reuses a running one).
+    ...(devCommand && { webServer: { command: devCommand } }),
     runs: 3,
     scenarios: [
       {
@@ -214,9 +333,9 @@ export function exampleConfig(baseUrl = 'http://localhost:5173'): CrispyConfigIn
         path: '/',
         // Replace with the interaction you want to guard: wait for the app, then act.
         steps: [
-          { action: 'waitFor', selector: 'button' },
+          { action: 'waitFor', selector: 'button:visible' },
           { action: 'phase', name: 'interaction' },
-          { action: 'click', selector: 'button' },
+          { action: 'click', selector: 'button:visible' },
         ],
       },
     ],

@@ -6,6 +6,108 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-05
+
+### Breaking
+- `readOnly` is on by default in `run`, `test` and the MCP tools, not only in `crispy scan` (the
+  Playwright integration is unchanged: there your own test drives the page): replayed clicks never send POST/PUT/DELETE requests or
+  WebSocket messages, and what was blocked is listed in the report's warnings. Set
+  `"readOnly": false` for flows that must write (e.g. a disposable test database).
+
+### Fixed
+- `compare` no longer lists the components of a scenario or phase that ran on one side only as
+  🟢 −100%: it says they were not compared (`notCompared`).
+- Hints never suggest useCallback/useMemo inside a render function (a TanStack `cell`, lowercase
+  keys), where hooks break the rules of hooks: they suggest moving that markup into a component.
+- A useEffect that copies a prop into state with equal content (`setShown(items)`) is now reported
+  as an effect cascade instead of a recreated prop.
+- The first `crispy test` no longer says "No avoidable re-renders 🎉" when the snapshot it wrote has
+  avoidable renders without a single standout cause.
+
+### Changed
+- `compare` follows renamed components (`Row` → `Row2` after a React.memo) instead of showing them as
+  new and -100%, counts recreated-callback renders as avoidable (as snapshots do), and shows the
+  JavaScript ms of both reports when they have `timings`.
+- MCP `test_render_snapshots` says `Status: WARN` when a component that reads mutable data renders
+  less, and a failed `expect` says to undo the change rather than edit the step.
+- Without `crispy install`, crispy also finds a Chromium that another Playwright version downloaded
+  (`PLAYWRIGHT_BROWSERS_PATH`, `~/.cache/ms-playwright`…), and a launch error lists where it looked.
+- A failed `expect` step exits 1 (the app regressed), like a render regression, instead of 2.
+- A regression rendered (directly or not) by another regressed component is folded into that
+  component's row: one injected `useLocation()` on shadcn-admin gives 3 causes instead of 4.
+- An unknown key in `crispy.config.json` (or in a scenario) is an error with a suggestion
+  (`unknown key "readonly" (did you mean "readOnly"?)`) instead of being silently ignored.
+- MCP `test_render_snapshots` starts with `Status: PASS` or `Status: FAIL`, and `profile_url` takes
+  `timings: true` to report JavaScript ms per phase (the skill says how to use it for before/after).
+- Snapshots leave out components defined in `node_modules` (icons, Radix parts…): about half the
+  size on shadcn-admin, and fewer noisy rows. Old entries are ignored; `snapshot.includeLibraries`
+  keeps them.
+- Without `crispy install`, crispy uses a Chrome or Chromium already installed in the usual place
+  (macOS, Windows, Linux), and `crispy install` says so instead of failing when the download is
+  blocked. The install error suggests `browser.executablePath` (saved in the config) over an env var.
+- A root cause under 10 renders is optional only if it is also under 20% of the phase's renders.
+- Root causes say where the values are created (`src/App.tsx:36`) and give the fix for their kind
+  (useCallback for functions, hoist or useMemo for objects) instead of a generic "useCallback / useMemo".
+- MCP `test_render_snapshots` speaks MCP: it points at `update=true` and the tool names instead of
+  `crispy test -u`.
+- `crispy scan` adds `.crispy/` (reports) to `.gitignore` in a git project.
+- A renamed component (React.memo often renames `X` to `XImpl`) that reads a mutable instance is
+  shown as "⚠️ check the UI" too.
+- More commits than the snapshot are reported (ℹ️) but no longer fail `crispy test`: they vary with
+  load timing and failed CI on unchanged code. `snapshot.failOnMoreCommits: true` restores the gate.
+- Fewer renders on a component that reads a mutable instance (a TanStack table, a form API) or
+  mutable data is shown as "⚠️ check the UI" instead of 🟢 in snapshots and `compare`: a React.memo
+  there freezes the UI. Snapshots mark such components `"mutable": true`.
+- A page with no scripts (another app's static page, a directory listing) fails in ~2 s with the
+  "another app" message, instead of waiting 30 s for React.
+- Every 🟢 improvement (snapshot and `compare`) now says that fewer renders is not proof the UI still
+  updates; the README and the skill say the same.
+- Hints no longer suggest React.memo for a component that gets new `children` JSX on most renders
+  (the memo would compare and render anyway). Root causes under 10 renders, or under 2% of the
+  phase's renders, are marked "Optional (low impact)" (`minor` in the API).
+- When a reused server has no React (usually another app on the same port), the error says so first
+  and gives a free port and `webServer.command` to use.
+- Markdown reports name the causes ("parent re-rendered 30, own state 2") instead of `0/2/0/0/0/30`,
+  and the 🟡 snapshot note says it is not worse.
+- `crispy install` prints one line while it downloads and, on failure, a short reason instead of
+  Playwright's repeated progress lines and stack trace (`--verbose` shows them).
+- `crispy scan` keeps one scenario for list rows that differ only by a number ("Member 1",
+  "Member 2"…), and says that `crispy test` runs each scenario 3 times.
+- Read-only mode (`crispy scan`, `readOnly`) also drops messages the page sends over a WebSocket
+  (chat, realtime mutations) and reports them like blocked requests. Dev-server hot-reload sockets
+  (Vite, webpack, Next.js) still work.
+- Snapshot reports show one row per cause: regressions of components re-rendered by another
+  regressed component (or by the same trigger), and the same fix across scenarios, are merged
+  ("❌ 142 render regression(s) from 4 causes" on shadcn-admin, down from 142 rows). New components
+  show `0 → N` instead of `— → N`.
+- Snapshots count renders from recreated callbacks as avoidable, like the report does, so putting an
+  inline callback back can no longer show up as 🟢 improved. Existing snapshots may need `-u` once.
+
+### Added
+- `expect` step (`selector` with `text` or `count`): fails the scenario when the UI did not update,
+  so a memo that freezes the screen fails `crispy test` instead of showing 🟢.
+- `mutableReads`: renders with unchanged props, state and context whose output still changed (the
+  component reads a mutable object such as a TanStack table instance). They are not counted as
+  avoidable and never get React.memo advice, which would show stale data.
+- `crispy test` reports "🟡 now avoidable" instead of a regression when a component renders as often
+  as before but more of those renders are avoidable (a fix uncovered the next cause); it does not
+  fail unless `snapshot.failOnMoreAvoidable` is set.
+- With `timings: true`, every phase reports its main-thread CPU in ms (`cost.scriptMs` for
+  JavaScript, `cost.taskMs` for all main-thread work), measured through the DevTools protocol. Unlike
+  component self time it includes reconciliation, effects and styles, and it works in production builds.
+- With timings, every root cause shows its estimated cost ("≈ 85 ms of JavaScript") and the
+  top-causes lists of `crispy test` and `crispy scan` rank by it, so the expensive fix comes first.
+- `crispy scan` (and the `scan_app` MCP tool): zero-config start. Detects the app and its dev
+  server, visits a few routes, profiles their safe interactions (buttons, tabs, text inputs; never
+  delete, pay, sign out, submit…), prints the top root causes and saves the scenarios that worked as
+  `crispy.config.json` for `crispy test`. Read-only by default: writes are blocked in the browser and
+  interactions that tried one are not saved.
+- `page.evaluate` survives page reloads (Vite reloading after optimizing dependencies).
+- Effect cascades: `effectCascades` names the state a `useEffect` sets right after a render (its
+  own, a parent's through a setter prop, or a store), blamed on the component whose effect ran,
+  with the extra commits and renders it costs, a hint and a root cause ranked above the
+  `React.memo` advice it would otherwise produce. `createRoot` on React 18 and 19.
+
 ## [0.1.0] - 2026-10-05
 
 First public release: snapshot testing for React re-renders — deterministic, runtime-proven,

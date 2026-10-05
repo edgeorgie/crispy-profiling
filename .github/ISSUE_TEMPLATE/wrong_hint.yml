@@ -1,0 +1,28 @@
+name: Wrong or unhelpful fix hint
+description: A "Why / how to fix" hint was wrong, or following it did not reduce renders
+labels: [hint-quality]
+body:
+  - type: textarea
+    id: hint
+    attributes:
+      label: The hint
+      description: Paste the row from the report (component, counts and hint text).
+    validations:
+      required: true
+  - type: textarea
+    id: reality
+    attributes:
+      label: What was actually going on?
+      description: What did you change (or would you change), and what happened to the counts?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: A public repo or a minimal component, plus the scenario steps. Attaching the JSON report helps a lot.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: crispy-profiling 0.1.0, React 19.2, Vite 8 / Next.js 16 (Turbopack)

@@ -249,9 +249,11 @@ export function installCrispyHook(): void {
         callbackRenders: 0,
         triggeredBy: {},
         recreatedContextFrom: {},
+        stateChanges: {},
         providerAt: {},
         creators: {},
         staleMemo: {},
+        effectCascades: {},
         memo: false,
         compiled: false,
         locations: {},
@@ -349,6 +351,144 @@ export function installCrispyHook(): void {
       ms.length === 2 &&
       (ms[1] === null || Array.isArray(ms[1]))
     );
+  }
+
+  const PRIMITIVE_HOOKS: Record<string, true> = {
+    useState: true,
+    useReducer: true,
+    useRef: true,
+    useMemo: true,
+    useCallback: true,
+    useEffect: true,
+    useLayoutEffect: true,
+    useInsertionEffect: true,
+    useImperativeHandle: true,
+    useSyncExternalStore: true,
+    useTransition: true,
+    useDeferredValue: true,
+    useId: true,
+    useOptimistic: true,
+    useActionState: true,
+    useContext: true,
+    use: true,
+    useDebugValue: true,
+  };
+  // Hook calls written in each component's own source, in order, with the
+  // variable they are assigned to: `const [query, setQuery] = useState(...)`.
+  const sourceCalls = new WeakMap<object, { hook: string; name: string | null }[]>();
+  function callsIn(type: any): { hook: string; name: string | null }[] {
+    const fn = typeof type === 'function' ? type : type && (type.render || type.type);
+    if (!fn || typeof fn !== 'function') return [];
+    let calls = sourceCalls.get(fn);
+    if (calls) return calls;
+    calls = [];
+    try {
+      const src = Function.prototype.toString.call(fn);
+      const re = /\b(use[A-Z]\w*)["']?\]?\)?\s*\(/g;
+      for (let m = re.exec(src); m; m = re.exec(src)) {
+        const hook = m[1] as string;
+        // Turbopack/webpack import identifiers can be ~200 chars: look back to the statement start.
+        const before = src.slice(Math.max(0, m.index - 600), m.index);
+        const stmt = before.slice(
+          Math.max(before.lastIndexOf(';'), before.lastIndexOf('{'), before.lastIndexOf('}')) + 1,
+        );
+        const named =
+          stmt.match(/(?:const|let|var)\s*\[\s*(\w+)/) ||
+          stmt.match(/(?:const|let|var)\s+(\w+)\s*=\s*(?:\(0,\s*)?[\w$.[\]"']*$/);
+        calls.push({ hook, name: named ? (named[1] as string) : null });
+      }
+    } catch {}
+    sourceCalls.set(fn, calls);
+    return calls;
+  }
+
+  /** Hook-list nodes each hook type occupies (React 18/19 layout). */
+  const HOOK_SLOTS: Record<string, number> = {
+    useContext: 0,
+    use: 0,
+    useDebugValue: 0,
+    useFormStatus: 0,
+    useSyncExternalStore: 2,
+    useTransition: 2,
+    useActionState: 3,
+    useFormState: 3,
+  };
+  const slotsOf = (t: string) => (t in HOOK_SLOTS ? (HOOK_SLOTS[t] as number) : 1);
+  /** Hooks whose value is state (a change re-renders the component). */
+  const STATE_KINDS: Record<string, true> = {
+    useState: true,
+    useReducer: true,
+    useSyncExternalStore: true,
+    useTransition: true,
+    useActionState: true,
+    useFormState: true,
+    useOptimistic: true,
+    useDeferredValue: true,
+  };
+
+  /**
+   * Names the state that really changed in a function component, e.g.
+   * "`query` (useState)" or "store subscription (useSyncExternalStore) in
+   * `useLocation`". Only names what can be told for sure: primitives written
+   * before the first or after the last custom hook map to exact list slots;
+   * inside custom hooks it names the hook only when there is one candidate.
+   */
+  function changedStateName(prev: any, next: any, level: Change = 3): string | null {
+    if (next.tag === 1) return 'class state (this.state)';
+    let a = prev.memoizedState;
+    let b = next.memoizedState;
+    if (!a || !b || typeof b !== 'object' || !('next' in b)) return null;
+    let index = -1;
+    let count = 0;
+    for (let i = 0; a && b; i++, a = a.next, b = b.next) {
+      count = i + 1;
+      if (index >= 0 || isEffect(a.memoizedState) || isMemoHook(b)) continue;
+      if (classify(a.memoizedState, b.memoizedState) === level) index = i;
+    }
+    if (index < 0) return null;
+
+    // Slot -> hook type, following React's layout.
+    const slotType: string[] = [];
+    for (const t of next._debugHookTypes || []) {
+      for (let k = 0; k < slotsOf(t); k++) slotType.push(k === 0 ? t : `${t}(internal)`);
+    }
+    const kind = slotType.length === count ? slotType[index] : undefined;
+    if (!kind || !STATE_KINDS[kind]) return `state (hook #${index + 1})`;
+
+    const calls = callsIn(next.type);
+    const custom = (c: { hook: string }) => !PRIMITIVE_HOOKS[c.hook];
+    const label = (c: { hook: string; name: string | null }) =>
+      c.name ? `\`${c.name}\` (${c.hook})` : `${c.hook}`;
+    // Primitives before the first custom hook occupy the first slots...
+    let slot = 0;
+    for (const c of calls) {
+      if (custom(c)) break;
+      const n = slotsOf(c.hook);
+      if (index >= slot && index < slot + n) return c.hook === kind ? label(c) : `${kind}`;
+      slot += n;
+    }
+    // ...and primitives after the last custom hook occupy the last ones.
+    slot = count;
+    for (let i = calls.length - 1; i >= 0; i--) {
+      const c = calls[i] as { hook: string; name: string | null };
+      if (custom(c)) break;
+      const n = slotsOf(c.hook);
+      if (index >= slot - n && index < slot) return c.hook === kind ? label(c) : `${kind}`;
+      slot -= n;
+    }
+    const owners = calls.filter(custom).map((c) => c.hook);
+    const uniq = owners.filter((h, i) => owners.indexOf(h) === i);
+    const where = !uniq.length
+      ? ''
+      : uniq.length === 1
+        ? ` in \`${uniq[0]}\``
+        : ` in one of ${uniq
+            .slice(0, 3)
+            .map((h) => `\`${h}\``)
+            .join(', ')}`;
+    return kind === 'useSyncExternalStore'
+      ? `store subscription (useSyncExternalStore)${where}`
+      : `${kind}${where}`;
   }
 
   function stateChange(prev: any, next: any): Change {
@@ -449,20 +589,87 @@ export function installCrispyHook(): void {
    * dependencies that changed, e.g. "#2 (an object)" (1-based), or "" when the
    * hook has no dependency list. null when the value is not memoized there.
    */
+  // Dependency-list names of each useCallback/useMemo in a component's source, in
+  // order ([["cart"], ["query", "page"]]), cached per function. Rough parsing:
+  // used only when the count matches the component's memo hooks.
+  const memoDepNames = new WeakMap<object, string[][]>();
+  function depNamesOf(fn: any): string[][] {
+    if (!fn || typeof fn !== 'function') return [];
+    let cached = memoDepNames.get(fn);
+    if (cached) return cached;
+    cached = [];
+    try {
+      const src = Function.prototype.toString.call(fn);
+      const re = /\b(useCallback|useMemo)["']?\]?\)?\s*\(/g;
+      for (let m = re.exec(src); m; m = re.exec(src)) {
+        // Find the matching ")" of the call, then the last top-level [...] inside it.
+        let depth = 0;
+        let end = -1;
+        let lastOpen = -1;
+        let lastClose = -1;
+        let quote = '';
+        for (let i = m.index + m[0].length - 1; i < src.length; i++) {
+          const ch = src[i] as string;
+          if (quote) {
+            if (ch === '\\') i++;
+            else if (ch === quote) quote = '';
+            continue;
+          }
+          if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+          else if (ch === '(' || ch === '{' || ch === '[') {
+            if (depth === 1 && ch === '[') lastOpen = i;
+            depth++;
+          } else if (ch === ')' || ch === '}' || ch === ']') {
+            depth--;
+            if (depth === 1 && ch === ']') lastClose = i;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        const names =
+          end > 0 &&
+          lastOpen > 0 &&
+          lastClose > lastOpen &&
+          !/\S/.test(src.slice(lastClose + 1, end).replace(/,/g, ''))
+            ? src
+                .slice(lastOpen + 1, lastClose)
+                .split(',')
+                .map((x) => x.trim())
+                .filter(Boolean)
+            : [];
+        cached.push(names);
+      }
+    } catch {}
+    memoDepNames.set(fn, cached);
+    return cached;
+  }
+
   function changedMemoDeps(owner: any, value: any): string | null {
     let h = owner.memoizedState;
     let old = owner.alternate ? owner.alternate.memoizedState : null;
+    let memoCount = 0;
+    for (let a = h; a && typeof a === 'object' && 'next' in a; a = a.next)
+      if (isMemoHook(a)) memoCount++;
+    let memoIndex = 0;
     for (let i = 0; h && typeof h === 'object' && 'next' in h && i < 200; i++) {
       if (isMemoHook(h) && h.memoizedState[0] === value) {
         const deps = h.memoizedState[1];
         const prevDeps = old && isMemoHook(old) ? old.memoizedState[1] : null;
         if (!deps || !prevDeps) return '';
+        const fn = owner.type && (owner.type.render || owner.type);
+        const all = depNamesOf(fn);
+        const names = all.length === memoCount ? all[memoIndex] || [] : [];
+        const named = names.length === deps.length && names.every((n) => /^[\w$.]+$/.test(n));
         const out: string[] = [];
         for (let d = 0; d < deps.length; d++) {
-          if (!Object.is(deps[d], prevDeps[d])) out.push(`#${d + 1} (${kindOf(deps[d])})`);
+          if (!Object.is(deps[d], prevDeps[d]))
+            out.push(`${named ? `\`${names[d]}\`` : `#${d + 1}`} (${kindOf(deps[d])})`);
         }
         return out.join(', ');
       }
+      if (isMemoHook(h)) memoIndex++;
       h = h.next;
       old = old ? old.next : null;
     }
@@ -471,6 +678,68 @@ export function installCrispyHook(): void {
 
   function isMemo(fiber: any): boolean {
     return fiber.tag === 15 || fiber.return?.tag === 14;
+  }
+
+  /**
+   * Props that are the same object as before and look like a mutable instance:
+   * a plain object (not an array or element) with at least two methods.
+   */
+  function instanceProps(prev: any, next: any): string[] {
+    const pp = prev.memoizedProps;
+    const np = next.memoizedProps;
+    const out: string[] = [];
+    if (!pp || !np || typeof np !== 'object') return out;
+    for (const k in np) {
+      const v = np[k];
+      if (k === 'children' || v !== pp[k] || !v || typeof v !== 'object') continue;
+      if (Array.isArray(v) || v.$$typeof || v instanceof Date) continue;
+      let methods = 0;
+      try {
+        for (const m in v) if (typeof v[m] === 'function' && ++methods >= 2) break;
+        if (methods < 2) {
+          const proto = Object.getPrototypeOf(v);
+          if (proto && proto !== Object.prototype)
+            for (const m of Object.getOwnPropertyNames(proto))
+              if (m !== 'constructor' && typeof proto[m] === 'function' && ++methods >= 2) break;
+        }
+      } catch {}
+      if (methods >= 2) out.push(k);
+    }
+    return out;
+  }
+
+  /** Whether a component's rendered output (its host subtree, a few levels deep) changed. */
+  function outputChanged(fiber: any): boolean {
+    const stack: [any, number][] = [];
+    for (let c = fiber.child; c; c = c.sibling) stack.push([c, 0]);
+    let seen = 0;
+    while (stack.length && seen++ < 200) {
+      const [f, depth] = stack.pop() as [any, number];
+      const prev = f.alternate;
+      if (!prev) return true; // something new was rendered
+      const a = prev.memoizedProps;
+      const b = f.memoizedProps;
+      if (a !== b) {
+        if (typeof b !== 'object' || b === null || typeof a !== 'object' || a === null) {
+          if (!Object.is(a, b)) return true; // text changed
+        } else {
+          for (const k in b) {
+            if (k === 'children') {
+              const x = a[k];
+              const y = b[k];
+              if ((typeof y === 'string' || typeof y === 'number') && !Object.is(x, y)) return true;
+              continue;
+            }
+            if (typeof b[k] !== 'function' && classify(a[k], b[k]) === 3) return true;
+          }
+        }
+      }
+      // Child components judge their own renders; only follow host elements.
+      if (depth < 4 && !COMPONENT_TAGS[f.tag]) {
+        for (let c = f.child; c; c = c.sibling) stack.push([c, depth + 1]);
+      }
+    }
+    return false;
   }
 
   /** Changed prop keys, split by how they changed. */
@@ -501,6 +770,9 @@ export function installCrispyHook(): void {
   function recordMount(fiber: any): void {
     if (!COMPONENT_TAGS[fiber.tag]) return;
     const e = entry(fiber);
+    commitRenders++;
+    commitRenderKeys.push(e);
+    currentMountSet.add(fiber);
     e.renders++;
     e.mounts++;
     addDuration(e, fiber);
@@ -515,9 +787,17 @@ export function installCrispyHook(): void {
     const e = entry(next);
     e.renders++;
     e.updates++;
+    commitRenders++;
+    commitRenderKeys.push(e);
+    if (firedPassive(next)) currentFirers.push(next);
     addDuration(e, next);
     const p = propChanges(prev, next);
     const s = stateChange(prev, next);
+    const instances = instanceProps(prev, next);
+    for (const k of instances) {
+      if (!e.instanceProps) e.instanceProps = {};
+      e.instanceProps[k] = (e.instanceProps[k] || 0) + 1;
+    }
     const raw = contextChange(prev, next);
     // A parent that creates a new element re-renders a non-memo child anyway: a
     // recreated context value is then not the reason, the parent is.
@@ -532,10 +812,32 @@ export function installCrispyHook(): void {
     bump(e.unstableProps, p.unstable);
     bump(e.callbackProps, p.callbacks);
     if (p.changed.length) e.causes.props++;
-    if (s === 3) e.causes.state++;
+    let what: string | null = null;
+    if (s === 3) {
+      e.causes.state++;
+      what = changedStateName(prev, next);
+      if (what) e.stateChanges[what] = (e.stateChanges[what] || 0) + 1;
+    }
     if (c === 3) e.causes.context++;
-    if (s === 3) return true;
+    if (s === 3) {
+      if (cascadeCommit) cascadeOwners.push({ fiber: next, key: keyOf(next), what });
+      return true;
+    }
+    // An effect that copies a prop into state (`setShown(items)`) often sets a value
+    // with equal content: still an extra commit caused by that effect.
+    if (s === 1 && cascadeCommit)
+      cascadeOwners.push({ fiber: next, key: keyOf(next), what: changedStateName(prev, next, 1) });
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
+    // The parent re-renders this component anyway, but it also reads a context value
+    // recreated with equal content: React.memo alone would not skip it.
+    if (forced && (raw === 1 || raw === 2)) {
+      for (const ctx of recreatedContexts) {
+        const found = providerOwner(next, ctx);
+        if (!found) continue;
+        if (!e.maskedContextFrom) e.maskedContextFrom = {};
+        e.maskedContextFrom[found.owner] = (e.maskedContextFrom[found.owner] || 0) + 1;
+      }
+    }
     for (const ctx of c ? recreatedContexts : []) {
       const found = providerOwner(next, ctx);
       if (!found) continue;
@@ -578,8 +880,16 @@ export function installCrispyHook(): void {
       e.avoidableRenders++;
     } else {
       e.causes.parent++;
-      e.wastedRenders++;
-      e.avoidableRenders++;
+      // Same props, state and context, but different output: it reads data that
+      // changes without changing its inputs (a mutable object like a table or form
+      // instance, a ref, a global). Not avoidable: React.memo would show stale output.
+      // Same for a component handed a mutable instance (an object with methods, like
+      // a TanStack table or a form API): its output can change in flows not recorded.
+      if (instances.length || outputChanged(next)) e.mutableReads = (e.mutableReads || 0) + 1;
+      else {
+        e.wastedRenders++;
+        e.avoidableRenders++;
+      }
     }
     return false;
   }
@@ -609,9 +919,37 @@ export function installCrispyHook(): void {
     return (flags & PERFORMED_WORK) === PERFORMED_WORK;
   }
 
-  function updateSubtree(next: any, prev: any, trigger: string | null): void {
+  /** React.memo saved a render: the parent rendered, this memo component did not. */
+  function memoSkip(fiber: any): void {
+    try {
+      const p = phaseData();
+      if (!p.memoSkips) p.memoSkips = {};
+      const k = keyOf(fiber);
+      p.memoSkips[k] = (p.memoSkips[k] || 0) + 1;
+    } catch (err) {
+      noteError(err);
+    }
+  }
+
+  function updateSubtree(
+    next: any,
+    prev: any,
+    trigger: string | null,
+    parentRendered = false,
+  ): void {
     let below = trigger;
-    if (COMPONENT_TAGS[next.tag] && didRender(next)) {
+    const isComponent = COMPONENT_TAGS[next.tag];
+    const rendered = isComponent && didRender(next);
+    if (parentRendered) {
+      if (next.tag === 15 && !rendered) memoSkip(next);
+      else if (
+        next.tag === 14 &&
+        next.child &&
+        (next.child === prev.child || !didRender(next.child))
+      )
+        memoSkip(next.child);
+    }
+    if (rendered) {
       try {
         if (recordUpdate(prev, next, trigger)) below = keyOf(next);
       } catch (err) {
@@ -619,9 +957,11 @@ export function installCrispyHook(): void {
       }
     }
     if (next.child === prev.child) return; // whole subtree bailed out
+    // Host elements pass their parent component's "rendered" down.
+    const passDown = isComponent ? rendered : parentRendered;
     let child = next.child;
     while (child) {
-      if (child.alternate) updateSubtree(child, child.alternate, below);
+      if (child.alternate) updateSubtree(child, child.alternate, below, passDown);
       else mountSubtree(child);
       child = child.sibling;
     }
@@ -639,8 +979,158 @@ export function installCrispyHook(): void {
     return false;
   };
 
+  /**
+   * Effect cascades. A passive effect that sets state schedules a DefaultLane
+   * update, which is already pending when React reports the commit (React 19
+   * flushes effects of discrete updates first) or right after the effects ran
+   * (onPostCommitFiberRoot, React 18). The next commit of that root is then
+   * attributed to the components whose passive effects ran in the previous
+   * commit: the owner of the state when its own effect ran, else the child whose
+   * effect ran (a setter passed as a prop); a store change goes to the only effect
+   * that ran. Layout effects (SyncLane: measuring the DOM),
+   * transitions and deferred values use other lanes; effects of components that
+   * just mounted, legacy roots and React <= 17 are skipped.
+   */
+  // React 19 added SyncHydrationLane, shifting the lanes: DefaultLane is 16 in
+  // React 18 and 32 in 19. Store updates (useSyncExternalStore) always use SyncLane.
+  function laneBits(): { sync: number; def: number } | null {
+    const major = Number.parseInt(String(state.reactVersion || ''), 10);
+    if (major === 18) return { sync: 1, def: 16 };
+    if (major >= 19) return { sync: 2, def: 32 };
+    return null;
+  }
+  const HOOK_HAS_EFFECT = 1;
+  const HOOK_PASSIVE = 8;
+  /** Root -> lanes left pending right after its last commit or its effects. */
+  const cascadeNext = new WeakMap<object, number>();
+  let cascadeCommit = 0;
+  let cascadeOwners: { fiber: any; key: string; what: string | null }[] = [];
+  let commitRenders = 0;
+  /** Entries of the renders in this commit (one per render). */
+  let commitRenderKeys: any[] = [];
+  let currentFirers: any[] = [];
+  const firersByRoot = new WeakMap<object, any[]>();
+  let currentMountSet = new WeakSet<object>();
+  const mountsByRoot = new WeakMap<object, WeakSet<object>>();
+  // Timers and input between a commit and its deferred effects can schedule the
+  // same lane: then the next commit is not only the effects' work.
+  let outsideEvents = 0;
+  const outsideAtCommit = new WeakMap<object, number>();
+  for (const t of ['pointerdown', 'keydown', 'input', 'change', 'submit', 'wheel', 'message']) {
+    try {
+      w.addEventListener(t, () => outsideEvents++, true);
+    } catch {}
+  }
+  for (const name of ['setTimeout', 'setInterval', 'requestAnimationFrame']) {
+    const original = w[name];
+    if (typeof original !== 'function') continue;
+    w[name] = function (this: any, cb: any, ...rest: any[]) {
+      const wrapped =
+        typeof cb === 'function'
+          ? function (this: any, ...args: any[]) {
+              outsideEvents++;
+              return cb.apply(this, args);
+            }
+          : cb;
+      return original.call(this, wrapped, ...rest);
+    };
+  }
+
+  /** A passive effect of this function component ran in this commit (deps changed). */
+  function firedPassive(fiber: any): boolean {
+    const last = fiber.updateQueue?.lastEffect;
+    if (!last?.next) return false;
+    const first = last.next;
+    let e = first;
+    do {
+      if ((e.tag & (HOOK_HAS_EFFECT | HOOK_PASSIVE)) === (HOOK_HAS_EFFECT | HOOK_PASSIVE))
+        return true;
+      e = e.next;
+    } while (e && e !== first);
+    return false;
+  }
+
+  const same = (a: any, b: any) => a === b || a === b.alternate;
+  function inside(fiber: any, ancestor: any): boolean {
+    for (let x = fiber; x; x = x.return) if (same(x, ancestor)) return true;
+    return false;
+  }
+
+  /** Attributes the state changes of a flagged commit to the effects that set them. */
+  function blameCascade(firers: any[], mounted: WeakSet<object> | undefined): void {
+    const bits = laneBits();
+    if (!firers.length || !bits) return;
+    const viaState = (cascadeCommit & bits.def) !== 0;
+    const hits: { fiber: any; label: string }[] = [];
+    let store = false;
+    for (const o of cascadeOwners) {
+      // Effects of a component that just mounted ("mounted" flags, SSR) are expected.
+      if (
+        mounted &&
+        (mounted.has(o.fiber) || (o.fiber.alternate && mounted.has(o.fiber.alternate)))
+      )
+        continue;
+      const what = o.what || 'state';
+      // A store write is SyncLane; other state set in a passive effect is DefaultLane
+      // (SyncLane there comes from layout effects, which may measure the DOM).
+      if (what.indexOf('useSyncExternalStore') >= 0) {
+        // Any effect may have written the store: only blame when one effect ran.
+        if (!store && firers.length === 1)
+          hits.push({ fiber: firers[0], label: `a store read by \`${o.key}\`` });
+        store = true;
+        continue;
+      }
+      if (!viaState) continue;
+      const own = firers.filter((f) => same(f, o.fiber));
+      if (own.length) {
+        hits.push({ fiber: own[0], label: what });
+        continue;
+      }
+      // A child's effect calling a setter it got as a prop. Nothing else is guessed:
+      // events crispy cannot see (e.g. an image loading) may have set the state.
+      const below = firers.filter((f) => inside(f, o.fiber));
+      if (below.length === 1)
+        hits.push({ fiber: below[0], label: `${what} in \`${o.key}\` (via a prop)` });
+    }
+    // Renders in an extra commit are not also another root cause's (React.memo advice).
+    if (hits.length)
+      for (const e of commitRenderKeys) e.inEffectCascades = (e.inEffectCascades || 0) + 1;
+    const counted = new Set<string>();
+    for (const h of hits) {
+      const key = keyOf(h.fiber);
+      const e = phaseData().components[key] || entry(h.fiber);
+      if (!e.effectCascades) e.effectCascades = {};
+      e.effectCascades[h.label] = (e.effectCascades[h.label] || 0) + 1;
+      if (!counted.has(key)) {
+        counted.add(key);
+        e.cascadeCommits = (e.cascadeCommits || 0) + 1;
+        e.cascadeRenders = (e.cascadeRenders || 0) + commitRenders;
+      }
+    }
+  }
+
+  function onPostCommit(root: any): void {
+    try {
+      const bits = laneBits();
+      if (!bits || !root || root.tag !== 1 || outsideAtCommit.get(root) !== outsideEvents) return;
+      const pending = root.pendingLanes & (bits.sync | bits.def);
+      if (pending) cascadeNext.set(root, (cascadeNext.get(root) || 0) | pending);
+    } catch (err) {
+      noteError(err);
+    }
+  }
+
   function onCommit(root: any): void {
     roots.add(root);
+    // Concurrent roots only (createRoot): legacy roots and React <= 17 use other lanes.
+    const concurrent = root.tag === 1;
+    cascadeCommit = concurrent ? cascadeNext.get(root) || 0 : 0;
+    cascadeNext.delete(root);
+    cascadeOwners = [];
+    currentFirers = [];
+    currentMountSet = new WeakSet<object>();
+    commitRenders = 0;
+    commitRenderKeys = [];
     try {
       const current = root.current;
       const prev = current.alternate;
@@ -666,6 +1156,13 @@ export function installCrispyHook(): void {
       } else {
         updateSubtree(current, prev, null);
       }
+      if (cascadeCommit) blameCascade(firersByRoot.get(root) || [], mountsByRoot.get(root));
+      firersByRoot.set(root, currentFirers);
+      mountsByRoot.set(root, currentMountSet);
+      outsideAtCommit.set(root, outsideEvents);
+      const bits = laneBits();
+      const pending = bits && concurrent ? root.pendingLanes & (bits.sync | bits.def) : 0;
+      if (pending) cascadeNext.set(root, pending);
       state.lastCommitNames = Object.keys(currentCommitNames).sort();
       // Which components each commit rendered, so commits can be counted after
       // framework internals are filtered out (deduplicated by component set).
@@ -692,6 +1189,11 @@ export function installCrispyHook(): void {
       onCommit(root);
       return original.call(this, id, root, ...rest);
     };
+    const originalPost = existing.onPostCommitFiberRoot;
+    existing.onPostCommitFiberRoot = function (id: any, root: any, ...rest: any[]) {
+      onPostCommit(root);
+      return originalPost?.call(this, id, root, ...rest);
+    };
     const originalInject = existing.inject;
     existing.inject = function (renderer: any) {
       state.reactDetected = true;
@@ -715,7 +1217,9 @@ export function installCrispyHook(): void {
         onCommit(root);
       },
       onCommitFiberUnmount() {},
-      onPostCommitFiberRoot() {},
+      onPostCommitFiberRoot(_id: any, root: any) {
+        onPostCommit(root);
+      },
       onScheduleFiberRoot(_id: any, root: any) {
         if (root) roots.add(root);
       },

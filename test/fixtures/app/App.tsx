@@ -8,8 +8,14 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Cascade, CascadeRound8 } from './Cascade.js';
+import { Deps } from './Deps.js';
+import { Lab } from './Lab.js';
+import { Mutable } from './Mutable.js';
+import { Trap } from './Trap.js';
 
 // Replaced at build time: false = naive implementation, true = optimized one.
 declare const __FAST__: boolean;
@@ -132,6 +138,44 @@ function Derived({ n }: { n: number }) {
   return <i>{doubled}</i>;
 }
 
+// Memo probes (rendered with ?memo): one memo never helps (its prop changes on
+// every click), the other always skips.
+function CounterView({ n }: { n: number }) {
+  return <i>{n}</i>;
+}
+const UselessMemo = memo(CounterView);
+function LabelView({ text }: { text: string }) {
+  return <i>{text}</i>;
+}
+const UsefulMemo = memo(LabelView);
+
+// Store probe (rendered with ?store): a subscription through a custom hook,
+// like Redux/Zustand selectors or router location hooks.
+let storeValue = 0;
+const listeners = new Set<() => void>();
+const store = {
+  subscribe: (l: () => void) => {
+    listeners.add(l);
+    return () => listeners.delete(l);
+  },
+  get: () => storeValue,
+  bump: () => {
+    storeValue++;
+    for (const l of listeners) l();
+  },
+};
+function useCounterStore() {
+  return useSyncExternalStore(store.subscribe, store.get);
+}
+function StoreReader() {
+  const n = useCounterStore();
+  return (
+    <button id="store-bump" type="button" onClick={store.bump}>
+      store {n}
+    </button>
+  );
+}
+
 // Step probes (rendered with ?steps): a <select> and a pointer-driven slider.
 function Picker() {
   const [v, setV] = useState('a');
@@ -232,6 +276,19 @@ function App() {
         </>
       )}
       {location.search.includes('ctxvalue') && <CartShell tick={count} />}
+      {location.search.includes('store') && <StoreReader />}
+      {location.search.includes('lab') && <Lab />}
+      {location.search.includes('mutable') && <Mutable />}
+      {location.search.includes('deps') && <Deps />}
+      {location.search.includes('trap') && <Trap />}
+      {location.search.includes('cascade') && <Cascade />}
+      {location.search.includes('round8') && <CascadeRound8 />}
+      {location.search.includes('memo') && (
+        <>
+          <UselessMemo n={count} />
+          <UsefulMemo text="static" />
+        </>
+      )}
       {location.search.includes('steps') && (
         <>
           <Picker />
@@ -264,7 +321,29 @@ function App() {
   );
 }
 
-const mount = () => createRoot(document.getElementById('root') as HTMLElement).render(<App />);
+// ?auth: a login gate (token in localStorage), like apps that need a session.
+function Login() {
+  const [user, setUser] = useState('');
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (user === 'demo-user') {
+          localStorage.setItem('token', user);
+          location.reload();
+        }
+      }}
+    >
+      <input id="user" value={user} onChange={(e) => setUser(e.target.value)} />
+      <button id="login" type="submit">
+        sign in
+      </button>
+    </form>
+  );
+}
+const gated = location.search.includes('auth') && !localStorage.getItem('token');
+const mount = () =>
+  createRoot(document.getElementById('root') as HTMLElement).render(gated ? <Login /> : <App />);
 // ?lateboot: start rendering after async setup, like apps that start a mock service worker first.
 if (location.search.includes('lateboot')) setTimeout(mount, 400);
 else mount();

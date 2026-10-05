@@ -5,7 +5,7 @@ import { serializeReport } from '../src/report/aggregate.js';
 import { compareReports } from '../src/report/compare.js';
 import { hintFor } from '../src/report/hints.js';
 import type { CrispyReport } from '../src/types.js';
-import { buildFixture, serve } from './helpers.js';
+import { buildFixture, serve, writes } from './helpers.js';
 
 let servers: { url: string; close: () => Promise<void> }[] = [];
 let slowUrl = '';
@@ -535,6 +535,11 @@ describe('root-cause hints (R3-04, R3-05)', () => {
     expect(hintFor(ctx?.components.CartBadge, ctx, 'CartBadge')).toContain('`CartProvider`');
     // When the parent re-creates the element anyway, context is not blamed (R5-02).
     expect(c?.CartBadge?.recreatedContextFrom).toEqual({});
+    // ...but React.memo alone would not help it: it says so (council round 1).
+    expect(c?.CartBadge?.maskedContextFrom).toEqual({ CartProvider: 1 });
+    expect(hintFor(c?.CartBadge, phase, 'CartBadge')).toContain(
+      'React.memo alone will not skip it',
+    );
     expect(c?.Swatch?.memo).toBe(true);
     expect(hintFor(c?.Swatch, phase, 'Swatch')).toContain('already wrapped in React.memo');
     // App's count update started the cascade.
@@ -615,5 +620,443 @@ describe('select and drag steps (R5-07)', () => {
     expect(phases?.pick?.components.Picker?.updates.median).toBe(1);
     // pointer down + 5 moves + up, each a state update.
     expect(phases?.drag?.components.Slider?.updates.median).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('apps behind a login', () => {
+  it('signs in once with scripted steps and environment credentials', async () => {
+    process.env.CRISPY_TEST_USER = 'demo-user';
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 2,
+      settleMs: 150,
+      login: {
+        path: '/?auth',
+        steps: [
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: crispy reads ${NAME} from the environment
+          { action: 'fill', selector: '#user', value: '${CRISPY_TEST_USER}' },
+          { action: 'click', selector: '#login' },
+          { action: 'waitFor', selector: '#inc' },
+        ],
+      },
+      scenarios: [{ name: 'in', path: '/?auth', steps: [{ action: 'click', selector: '#inc' }] }],
+    });
+    const phases = (await profile(config)).scenarios.in?.phases;
+    // Every run starts signed in: the app, not the login form, renders.
+    expect(phases?.load?.components.App?.mounts.median).toBe(1);
+    expect(phases?.load?.components.Login).toBeUndefined();
+  });
+});
+
+describe('named state causes', () => {
+  it('names the state hook or store subscription behind a render', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'n',
+          path: '/?store',
+          steps: [
+            { action: 'phase', name: 'own' },
+            { action: 'click', selector: '#inc' },
+            { action: 'phase', name: 'store' },
+            { action: 'click', selector: '#store-bump' },
+          ],
+        },
+      ],
+    });
+    const phases = (await profile(config)).scenarios.n?.phases;
+    expect(phases?.own?.components.App?.stateChanges).toEqual({ '`count` (useState)': 1 });
+    expect(phases?.store?.components.StoreReader?.stateChanges).toEqual({
+      'store subscription (useSyncExternalStore) in `useCounterStore`': 1,
+    });
+  });
+});
+
+describe('useless React.memo', () => {
+  it('flags a memo only when it skipped nothing in the whole scenario (R6-08)', async () => {
+    const inc = { action: 'click' as const, selector: '#inc' };
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        { name: 'only-inc', path: '/?memo', steps: [inc, inc, inc] },
+        {
+          name: 'inc-then-theme',
+          path: '/?memo',
+          steps: [
+            inc,
+            inc,
+            inc,
+            // App re-renders with the same count: the memo skips CounterView here.
+            { action: 'phase', name: 'theme' },
+            { action: 'click', selector: '#theme-toggle' },
+          ],
+        },
+      ],
+    });
+    // Only the flow where the memo never helps: flagged.
+    const alone = await profile({ ...config, scenarios: config.scenarios.slice(0, 1) });
+    const useless = alone.scenarios['only-inc']?.phases.interaction;
+    expect(useless?.components.CounterView?.uselessMemo).toBe(true);
+    expect(hintFor(useless?.components.CounterView, useless, 'CounterView')).toContain(
+      'React.memo did not skip any render in these flows',
+    );
+    // With a flow where it skips renders anywhere in the report: never flagged (R7-04).
+    const report = await profile(config);
+    for (const s of Object.values(report.scenarios)) {
+      const c = s.phases.interaction?.components.CounterView;
+      expect(c?.memoSkips).toBeGreaterThan(0);
+      expect(c?.uselessMemo).toBeUndefined();
+    }
+    // The memo that always works skipped its renders, so it is not in the interaction at all.
+    expect(useless?.components.LabelView).toBeUndefined();
+  });
+});
+
+describe('Playwright Test integration', () => {
+  it('records renders in an existing test and fails with the fix', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { renders } = await import('../src/playwright.js');
+    const { launchBrowser } = await import('../src/profiler/run.js');
+    const browser = await launchBrowser(
+      parseConfig({ baseUrl: slowUrl, scenarios: [{ name: 'x' }] }),
+    );
+    const snapshotDir = mkdtempSync(join(tmpdir(), 'crispy-pw-'));
+    const flow = async (url: string) => {
+      const page = await browser.newPage();
+      try {
+        const r = await renders(page, { snapshotDir, ci: false, config: { settleMs: 150 } });
+        await page.goto(url);
+        await r.phase('select');
+        await page.click('#inc');
+        await r.toMatchSnapshot('list');
+      } finally {
+        await page.close();
+      }
+    };
+    try {
+      await flow(fastUrl); // writes __renders__/list.snap.json
+      await flow(fastUrl); // matches
+      await expect(flow(slowUrl)).rejects.toThrow(/Row[\s\S]*`onSelect` is a new function/);
+    } finally {
+      await browser.close();
+    }
+  });
+});
+
+describe('named state causes: ground truth (R6-01, R6-02)', () => {
+  it('names the right hook after multi-slot hooks and custom hooks', async () => {
+    const steps = ['a', 'b', 'c', 'd', 'e'].flatMap((x) => [
+      { action: 'phase' as const, name: x },
+      { action: 'click' as const, selector: `#lab-${x}` },
+    ]);
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'lab', path: '/?lab', steps }],
+    });
+    const p = (await profile(config)).scenarios.lab?.phases;
+    const names = (phase: string, c: string) =>
+      Object.keys(p?.[phase]?.components[c]?.stateChanges ?? {});
+    expect(names('a', 'StoreThenState')).toEqual(['`count` (useState)']);
+    expect(names('b', 'StateThenStore')).toEqual(['`v` (useSyncExternalStore)']);
+    expect(names('b', 'StoreHookOnly')).toEqual([
+      'store subscription (useSyncExternalStore) in `useMiniStore`',
+    ]);
+    expect(names('c', 'TransitionThenState')).toEqual(['`tab` (useState)']);
+    expect(names('d', 'StoreHookThenReducer')).toEqual(['`n` (useReducer)']);
+    expect(names('e', 'CustomThenState')).toEqual(['`label` (useState)']);
+  });
+});
+
+describe('effect cascades', () => {
+  it('counts state set by a useEffect right after a render, nothing else', async () => {
+    const ids = ['effect', 'async', 'layout', 'none', 'transition', 'deferred', 'timer', 'mount'];
+    const steps = ids.flatMap((x) => [
+      { action: 'phase' as const, name: x },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+    ]);
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'cascade', path: '/?cascade', steps }],
+    });
+    const p = (await profile(config)).scenarios.cascade?.phases;
+    const cascades = (phase: string) =>
+      Object.fromEntries(
+        Object.entries(p?.[phase]?.components ?? {})
+          .filter(([, c]) => c.effectCascades)
+          .map(([name, c]) => [name, c.effectCascades]),
+      );
+    expect(cascades('load')).toEqual({});
+    const doubled = { '`doubled` (useState)': 2 };
+    expect(cascades('effect')).toEqual({ EffectDerived: doubled });
+    expect(cascades('async')).toEqual({ TimerThenEffect: doubled });
+    const c = p?.effect?.components.EffectDerived;
+    expect(hintFor(c, p?.effect, 'EffectDerived')).toMatch(
+      /a useEffect here sets `doubled` \(useState\) right after rendering, 2 time/,
+    );
+    for (const id of ids.slice(2)) expect(cascades(id), id).toEqual({});
+  });
+});
+
+describe('effect cascades: attribution (red-team round 8)', () => {
+  it('blames the component whose effect ran, also across lists and stores', async () => {
+    const ids = ['prop', 'rows', 'store', 'copy'];
+    const steps = ids.flatMap((x) => [
+      { action: 'phase' as const, name: x },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+    ]);
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'r8', path: '/?round8', steps }],
+    });
+    const p = (await profile(config)).scenarios.r8?.phases;
+    const cascades = (phase: string) =>
+      Object.fromEntries(
+        Object.entries(p?.[phase]?.components ?? {})
+          .filter(([, c]) => c.effectCascades)
+          .map(([name, c]) => [name, [c.effectCascades, c.cascadeCommits]]),
+      );
+    expect(cascades('load')).toEqual({});
+    // R8-02: the child that calls the setter, not the parent that owns the state.
+    expect(cascades('prop')).toEqual({
+      Doubler: [{ '`total` (useState) in `ParentOfDoubler` (via a prop)': 2 }, 2],
+    });
+    // R8-01: a new row mounting does not hide the existing rows' cascades.
+    expect(cascades('rows')).toEqual({ ListRow: [{ '`label` (useState)': 5 }, 2] }); // 2 + 3 rows
+    // R8-03: the component that writes the store in its effect.
+    expect(cascades('store')).toEqual({
+      EffectStoreWriter: [{ 'a store read by `EffectStoreReader`': 2 }, 2],
+    });
+    // Council round 3: the copy has equal content, it is still the effect's commit.
+    // esbuild renames the memo's inner function (Copier2).
+    expect(Object.values(cascades('copy'))).toEqual([[{ '`shown` (useState)': 2 }, 2]]);
+    const hint = hintFor(p?.prop?.components.Doubler, p?.prop, 'Doubler');
+    expect(hint).toMatch(/call the parent's setter in the event handler/);
+  });
+});
+
+describe('crispy scan', () => {
+  it('finds safe interactions on its own and the effect cascade among them', async () => {
+    const { scan } = await import('../src/scan.js');
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'x' }],
+    });
+    const result = await scan(config, { path: '/?cascade', maxRoutes: 1, maxActions: 6, runs: 1 });
+    expect(result.skipped.map((s) => s.reason)).toEqual([]);
+    const names = result.scenarios.map((s) => s.name);
+    expect(names.length).toBe(6);
+    // Every scenario re-runs from scratch; the effect cascade is found without writing steps.
+    const derived = Object.values(result.report.scenarios).find(
+      (s) => s.phases.interaction?.components.EffectDerived?.effectCascades,
+    );
+    expect(derived).toBeDefined();
+    expect(result.causes.some((c) => c.text.includes('A useEffect in `EffectDerived`'))).toBe(true);
+  }, 180_000);
+});
+
+describe('crispy scan safety (red-team round 9)', () => {
+  it('never sends a write and never saves an interaction that tried', async () => {
+    const { scan } = await import('../src/scan.js');
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'x' }],
+    });
+    writes.length = 0;
+    const result = await scan(config, { path: '/?trap', maxRoutes: 2, maxActions: 30, runs: 1 });
+    expect(writes).toEqual([]);
+    const selectors = result.scenarios.flatMap((s) => s.steps.map((st) => JSON.stringify(st)));
+    for (const bad of ['Eliminar', 'Supprimer', '🗑', 'Bulk actions', 'Go', 'Sign-out', 'bye'])
+      expect(selectors.join('\n'), bad).not.toContain(bad);
+    // Clicked, blocked, reported, not saved.
+    expect(result.skipped.find((s) => s.name.includes('save-changes'))?.reason).toMatch(
+      /tried to send POST .*\/api\/save \(blocked, not saved\)/,
+    );
+    expect(result.scenarios.some((s) => s.name.includes('add-item'))).toBe(true);
+    // List rows that differ only by a number are one scenario, not three.
+    expect(result.scenarios.filter((s) => s.name.includes('member')).length).toBe(1);
+  }, 180_000);
+});
+
+describe('CPU per phase (timings)', () => {
+  it('reports main-thread ms per phase only with timings', async () => {
+    const steps = [{ action: 'click' as const, selector: '#inc' }];
+    const base = { baseUrl: slowUrl, runs: 1, settleMs: 150, scenarios: [{ name: 'c', steps }] };
+    const timed = (await profile(parseConfig({ ...base, timings: true }))).scenarios.c?.phases;
+    expect(timed?.load?.cost?.scriptMs.median).toBeGreaterThan(0);
+    expect(timed?.interaction?.cost?.taskMs.median).toBeGreaterThan(0);
+    // Root causes carry an estimated cost and say it.
+    const { rootCauses } = await import('../src/report/hints.js');
+    const causes = timed?.interaction ? rootCauses(timed.interaction) : [];
+    expect(causes.length).toBeGreaterThan(0);
+    for (const c of causes) expect(c.ms).toBeGreaterThanOrEqual(0);
+    expect(causes.some((c) => /≈ \d+ ms of JavaScript/.test(c.text))).toBe(true);
+    const plain = (await profile(parseConfig(base))).scenarios.c?.phases;
+    expect(plain?.interaction?.cost).toBeUndefined();
+  });
+});
+
+describe('memoized dependencies by name (council round 1)', () => {
+  it('names the dependency that changes', async () => {
+    const steps = [
+      { action: 'click' as const, selector: '#deps-add' },
+      { action: 'click' as const, selector: '#deps-add' },
+    ];
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'deps', path: '/?deps', steps }],
+    });
+    const p = (await profile(config)).scenarios.deps?.phases.interaction;
+    // esbuild renames the memo's inner function (AddButton2).
+    const button = Object.entries(p?.components ?? {}).find(([k]) =>
+      k.startsWith('AddButton'),
+    )?.[1];
+    expect(Object.keys(button?.staleMemo ?? {})).toEqual(['onAdd|Deps|`cart` (an array)']);
+  });
+});
+
+describe('readOnly configs (council round 1)', () => {
+  it('blocks writes when scanned interactions are replayed', async () => {
+    writes.length = 0;
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      readOnly: true,
+      scenarios: [
+        {
+          name: 'trap',
+          path: '/?trap',
+          steps: [{ action: 'click', selector: 'text=Save changes' }],
+        },
+      ],
+    });
+    await profile(config);
+    expect(writes).toEqual([]);
+  });
+
+  it('is read-only by default and lists what it blocked (decision D2)', async () => {
+    writes.length = 0;
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'save',
+          path: '/?trap',
+          steps: [{ action: 'click', selector: 'text=Save changes' }],
+        },
+      ],
+    });
+    const report = await profile(config);
+    expect(writes).toEqual([]);
+    expect(
+      report.scenarios.save?.warnings.some((w) => /read-only: blocked POST .*\/api\/save/.test(w)),
+    ).toBe(true);
+    // Opting out lets the write through.
+    await profile(parseConfig({ ...config, readOnly: false }));
+    expect(writes).toEqual(['POST /api/save']);
+  });
+
+  it('drops what the page sends over a WebSocket', async () => {
+    const blocked: string[] = [];
+    writes.length = 0;
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 300,
+      readOnly: true,
+      scenarios: [
+        {
+          name: 'live',
+          path: '/?trap',
+          steps: [{ action: 'click', selector: 'text=Send message' }],
+        },
+      ],
+    });
+    await profile(config, { onBlockedRequest: (_s, what) => blocked.push(what) });
+    expect(blocked.some((b) => b.startsWith('WebSocket send ws://') && b.endsWith('/live'))).toBe(
+      true,
+    );
+    expect(writes).toEqual([]);
+  });
+});
+
+describe('mutable reads (council round 1, expert)', () => {
+  it('never calls renders that show changing mutable data avoidable', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'm',
+          path: '/?mutable',
+          steps: [
+            { action: 'click', selector: '#mutable-next' },
+            { action: 'click', selector: '#mutable-next' },
+          ],
+        },
+      ],
+    });
+    const p = (await profile(config)).scenarios.m?.phases.interaction;
+    const pagination = p?.components.Pagination;
+    expect(pagination?.mutableReads).toBe(2);
+    expect(pagination?.wastedRenders.median).toBe(0);
+    expect(hintFor(pagination, p, 'Pagination')).toMatch(/do not wrap it in React.memo/i);
+    // Same instance, unchanged output in this flow: memo would still be unsafe (round 2).
+    const toolbar = p?.components.Toolbar;
+    expect(toolbar?.instanceProps).toEqual({ table: 2 });
+    expect(toolbar?.wastedRenders.median).toBe(0);
+    expect(hintFor(toolbar, p, 'Toolbar')).toContain('Do not wrap it in React.memo');
+    // A sibling with truly unchanged output is still a wasted render.
+    expect(p?.components.Static?.wastedRenders.median).toBe(2);
+  });
+});
+
+describe('expect step (council round 3)', () => {
+  it('passes when the UI updates and fails the scenario when it does not', async () => {
+    const steps = [
+      { action: 'click' as const, selector: '#inc' },
+      { action: 'expect' as const, selector: '#inc', text: 'count 1' },
+    ];
+    const ok = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'e', steps }],
+    });
+    expect((await profile(ok)).scenarios.e).toBeDefined();
+    const frozen = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      timeoutMs: 2000,
+      scenarios: [{ name: 'f', steps: [steps[0], { ...steps[1], text: 'count 2' }] }],
+    });
+    await expect(profile(frozen)).rejects.toThrow(
+      /expect failed: "#inc" should show text "count 2", found text "count 1"/,
+    );
   });
 });

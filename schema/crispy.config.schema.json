@@ -9,6 +9,331 @@
       "type": "string",
       "format": "uri"
     },
+    "login": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "default": "/login",
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "click"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "hover"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "fill"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector",
+                  "value"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "type"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "delayMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector",
+                  "value"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "press"
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "selector": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "key"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "waitFor"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "visible",
+                      "hidden",
+                      "attached",
+                      "detached"
+                    ]
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "select"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector",
+                  "value"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "drag"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "dx": {
+                    "type": "number"
+                  },
+                  "dy": {
+                    "type": "number"
+                  },
+                  "steps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "wait"
+                  },
+                  "ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60000
+                  }
+                },
+                "required": [
+                  "action",
+                  "ms"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "scroll"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "selector": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "y"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "goto"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "action",
+                  "path"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "expect"
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "action",
+                  "selector"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "phase"
+                  },
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-_]*$"
+                  }
+                },
+                "required": [
+                  "action",
+                  "name"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "steps"
+      ]
+    },
+    "storageState": {
+      "type": "string"
+    },
+    "webServer": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "timeoutMs": {
+          "default": 60000,
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 9007199254740991
+        },
+        "reuseExisting": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    },
     "runs": {
       "default": 3,
       "type": "integer",
@@ -78,6 +403,10 @@
       "default": false,
       "type": "boolean"
     },
+    "readOnly": {
+      "default": true,
+      "type": "boolean"
+    },
     "topComponents": {
       "default": 0,
       "type": "integer",
@@ -130,7 +459,10 @@
       "default": {
         "file": "crispy.snap.json",
         "tolerance": 0,
-        "failOnNewAvoidable": false
+        "failOnNewAvoidable": false,
+        "failOnMoreAvoidable": false,
+        "failOnMoreCommits": false,
+        "includeLibraries": false
       },
       "type": "object",
       "properties": {
@@ -145,6 +477,18 @@
           "maximum": 9007199254740991
         },
         "failOnNewAvoidable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "failOnMoreAvoidable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "failOnMoreCommits": {
+          "default": false,
+          "type": "boolean"
+        },
+        "includeLibraries": {
           "default": false,
           "type": "boolean"
         }
@@ -401,6 +745,31 @@
                   "required": [
                     "action",
                     "path"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "expect"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "selector"
                   ]
                 },
                 {

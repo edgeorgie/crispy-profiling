@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,9 +43,22 @@ export async function buildFixture(): Promise<Record<'slow' | 'fast', string>> {
   return out;
 }
 
+/** A port the OS just reported free (better than a random range other processes may use). */
+export async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((done) => probe.listen(0, done));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((done) => probe.close(() => done()));
+  return port;
+}
+
+/** Requests other than GET/HEAD that reached a fixture server (read-only checks). */
+export const writes: string[] = [];
+
 /** Minimal static server; returns its base URL and a close function. */
 export async function serve(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server: Server = createServer((req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') writes.push(`${req.method} ${req.url}`);
     // Slow API to reproduce data arriving well after the interaction.
     if (req.url?.startsWith('/api/slow')) {
       setTimeout(() => res.end('loaded'), 600);
@@ -61,11 +75,31 @@ export async function serve(dir: string): Promise<{ url: string; close: () => Pr
     res.setHeader('content-type', file.endsWith('.js') ? 'text/javascript' : 'text/html');
     res.end(readFileSync(join(dir, file)));
   });
+  // Minimal WebSocket endpoint: any frame the page sends counts as a write.
+  const sockets = new Set<Socket>();
+  server.on('upgrade', (req, socket: Socket) => {
+    sockets.add(socket);
+    const accept = createHash('sha1')
+      .update(`${req.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+      .digest('base64');
+    socket.write(
+      `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+    );
+    socket.on('data', (d: Buffer) => {
+      // Text or binary frames only (a close frame is not a write).
+      if ([1, 2].includes((d[0] ?? 0) & 0x0f)) writes.push(`WS ${req.url}`);
+    });
+    socket.on('error', () => {});
+  });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
-    close: () => new Promise((r) => server.close(() => r())),
+    close: () =>
+      new Promise((r) => {
+        for (const s of sockets) s.destroy();
+        server.close(() => r());
+      }),
   };
 }
 

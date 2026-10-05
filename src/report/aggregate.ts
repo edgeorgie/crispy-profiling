@@ -80,14 +80,30 @@ function aggregateComponent(
     callbackRenders: stat(pick((s) => s.callbackRenders ?? 0)),
     triggeredBy: medianCounts(samples, (s) => s.triggeredBy),
     recreatedContextFrom: medianCounts(samples, (s) => s.recreatedContextFrom),
+    stateChanges: medianCounts(samples, (s) => s.stateChanges),
     providerAt: Object.keys(medianCounts(samples, (s) => s.providerAt)).slice(0, 3),
     creators: medianCounts(samples, (s) => s.creators),
     staleMemo: medianCounts(samples, (s) => s.staleMemo),
     compiled: samples.some((s) => s?.compiled),
     memo: samples.some((s) => s?.memo),
+    memoSkips: 0,
     locations: Object.keys(medianCounts(samples, (s) => s.locations)).slice(0, 3),
     stable: renders.min === renders.max,
   };
+  const cascades = medianCounts(samples, (s) => s.effectCascades);
+  if (Object.keys(cascades).length) {
+    report.effectCascades = cascades;
+    report.cascadeCommits = medianOf(pick((s) => s.cascadeCommits ?? 0));
+    report.cascadeRenders = medianOf(pick((s) => s.cascadeRenders ?? 0));
+  }
+  const inCascades = medianOf(pick((s) => s.inEffectCascades ?? 0));
+  if (inCascades > 0) report.inEffectCascades = inCascades;
+  const masked = medianCounts(samples, (s) => s.maskedContextFrom);
+  if (Object.keys(masked).length) report.maskedContextFrom = masked;
+  const mutable = medianOf(pick((s) => s.mutableReads ?? 0));
+  if (mutable > 0) report.mutableReads = mutable;
+  const instances = medianCounts(samples, (s) => s.instanceProps);
+  if (Object.keys(instances).length) report.instanceProps = instances;
   if (timings) report.selfDurationMs = stat(pick((s) => s.selfDurationMs));
   return report;
 }
@@ -125,6 +141,12 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
     components: {},
   };
   report.components = Object.fromEntries(entries);
+  if (config.timings && runs.some((r) => r.cost?.[phase])) {
+    report.cost = {
+      scriptMs: stat(runs.map((r) => r.cost?.[phase]?.scriptMs ?? 0)),
+      taskMs: stat(runs.map((r) => r.cost?.[phase]?.taskMs ?? 0)),
+    };
+  }
   return report;
 }
 
@@ -377,6 +399,7 @@ export function stabilizeKeys(runs: RawRun[]): {
           phase,
           {
             ...p,
+            ...(p.memoSkips && { memoSkips: remap(p.memoSkips) }),
             components: Object.fromEntries(
               Object.entries(p.components).map(([k, v]) => [
                 rename[k] ?? k,
@@ -399,6 +422,8 @@ export function buildReport(
   let reactVersion: string | null = null;
   let profilingBuild = false;
 
+  const skips: Record<string, number> = {};
+  const updates: Record<string, number> = {};
   for (const { scenario, runs: rawRuns } of results) {
     const visible = config.includeInternals ? { runs: rawRuns, hidden: 0 } : hideInternals(rawRuns);
     const { runs, definedIn } = stabilizeKeys(visible.runs);
@@ -412,10 +437,37 @@ export function buildReport(
     const rank = (p: string) => (declared.includes(p) ? declared.indexOf(p) : declared.length);
     const order = [...phaseNames].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
     const phases: Record<string, PhaseReport> = {};
+    // Definition files of every component seen, internals included.
+    const allFiles: Record<string, string> = { ...definedIn };
+    for (const r of rawRuns)
+      for (const [k, f] of Object.entries(r.definitions ?? {})) allFiles[k] ??= f;
     for (const p of order) {
-      phases[p] = aggregatePhase(runs, p, config);
-      for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
+      const phase = aggregatePhase(runs, p, config);
+      phases[p] = phase;
+      for (const [k, c] of Object.entries(phase.components)) {
         if (definedIn[k]) c.definedIn = definedIn[k];
+      }
+      const referenced = new Set<string>();
+      for (const c of Object.values(phase.components)) {
+        for (const key of Object.keys(c.creators)) referenced.add(key.split('|')[1] as string);
+        for (const k of Object.keys(c.recreatedContextFrom)) referenced.add(k);
+        for (const k of Object.keys(c.triggeredBy)) referenced.add(k);
+      }
+      const library = [...referenced]
+        .filter((k) => allFiles[k] && LIBRARY_PATH.test(allFiles[k]))
+        .sort(cmp);
+      if (library.length) phase.library = library;
+    }
+
+    // React.memo verdicts look at every phase of every scenario: a memo that
+    // skips nothing in one flow may skip every render in another.
+    for (const p of order) {
+      const keys = new Set(runs.flatMap((r) => Object.keys(r.phases[p]?.memoSkips ?? {})));
+      for (const k of keys) {
+        skips[k] = (skips[k] ?? 0) + stat(runs.map((r) => r.phases[p]?.memoSkips?.[k] ?? 0)).median;
+      }
+      for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
+        updates[k] = (updates[k] ?? 0) + c.updates.median;
       }
     }
 
@@ -449,6 +501,15 @@ export function buildReport(
       };
     }
     scenarios[scenario.name] = report;
+  }
+
+  for (const s of Object.values(scenarios)) {
+    for (const p of Object.values(s.phases)) {
+      for (const [k, c] of Object.entries(p.components)) {
+        c.memoSkips = skips[k] ?? 0;
+        if (c.memo && !skips[k] && (updates[k] ?? 0) >= 3) c.uselessMemo = true;
+      }
+    }
   }
 
   return {
