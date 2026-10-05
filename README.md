@@ -40,7 +40,8 @@ npx crispy test      # records crispy.snap.json from the scanned scenarios → c
 `crispy scan` detects Next.js/Vite, the dev URL and your dev command, visits a few routes, tries
 their safe interactions (buttons, tabs, selects, text inputs, internal links — never anything named
 delete, pay, sign out, submit…, in several languages), and prints the top root causes with the fix.
-It is read-only: requests other than GET never leave the browser, and an interaction that tried to
+It is read-only: requests other than GET and messages the page sends over a WebSocket never leave
+the browser (hot-reload sockets excepted), and an interaction that tried to
 send one is reported and not saved (`--allow-writes` for apps with disposable data). Point it at a
 development or preview build, not production. It saves what it ran as
 `crispy.config.json`, so `crispy test` guards those flows from then on. Add `.crispy/` (reports) to `.gitignore`; commit `crispy.config.json` and `crispy.snap.json`. On shadcn-admin it found
@@ -169,7 +170,7 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 | `cpuThrottle` | `1` | Slow the CPU down (e.g. `4`) to check counts on a slow CI runner or low-end device. Counts should not change. |
 | `clock` | `false` | Control timers with a fake clock (`setTimeout`, `setInterval`, `requestAnimationFrame`, `Date`, `performance`) so polling/animated apps give deterministic counts. |
 | `timeoutMs` | `30000` | Max time for navigation, a step or settling. |
-| `readOnly` | `false` | Block every request other than GET in the browser while profiling, so replayed clicks never change data. `crispy scan` sets it in the configs it writes. |
+| `readOnly` | `false` | Block every request other than GET, and WebSocket messages the page sends (hot-reload sockets excepted), while profiling, so replayed clicks never change data. `crispy scan` sets it in the configs it writes. |
 | `timings` | `false` | Add main-thread CPU per phase (`cost`: ms of JavaScript and of all main-thread work, also in production builds), component self time and LCP/CLS/long tasks. Off by default: timings are not reproducible. |
 | `topComponents` | `0` | Keep only the N most-rendered components per phase (`0` = all). |
 | `viewport` | `1280×800` | Browser viewport. |

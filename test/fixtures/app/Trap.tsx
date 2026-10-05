@@ -2,6 +2,10 @@
 import { useState } from 'react';
 
 const post = (what: string) => fetch(`/api/${what}`, { method: 'POST' });
+const live = () => {
+  const ws = new WebSocket(`ws://${location.host}/live`);
+  ws.onopen = () => ws.send('hello');
+};
 
 export function Trap() {
   const [n, setN] = useState(0);
@@ -21,6 +25,9 @@ export function Trap() {
       </button>
       <button type="button" onClick={() => post('save')}>
         Save changes
+      </button>
+      <button type="button" onClick={live}>
+        Send message
       </button>
       <select aria-label="Bulk actions" onChange={() => post('bulk')}>
         <option value="">Choose</option>

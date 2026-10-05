@@ -142,7 +142,8 @@ export const ConfigSchema = z.object({
    */
   timings: z.boolean().default(false),
   /**
-   * Block every request other than GET/HEAD/OPTIONS in the browser (and close
+   * Block every request other than GET/HEAD/OPTIONS and every WebSocket message the
+   * page sends (hot-reload sockets excepted) in the browser (and close
    * popups), so replaying interactions never changes data. Set by `crispy scan`
    * for the scenarios it generates.
    */
