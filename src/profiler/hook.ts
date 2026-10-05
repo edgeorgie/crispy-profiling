@@ -680,6 +680,34 @@ export function installCrispyHook(): void {
     return fiber.tag === 15 || fiber.return?.tag === 14;
   }
 
+  /**
+   * Props that are the same object as before and look like a mutable instance:
+   * a plain object (not an array or element) with at least two methods.
+   */
+  function instanceProps(prev: any, next: any): string[] {
+    const pp = prev.memoizedProps;
+    const np = next.memoizedProps;
+    const out: string[] = [];
+    if (!pp || !np || typeof np !== 'object') return out;
+    for (const k in np) {
+      const v = np[k];
+      if (k === 'children' || v !== pp[k] || !v || typeof v !== 'object') continue;
+      if (Array.isArray(v) || v.$$typeof || v instanceof Date) continue;
+      let methods = 0;
+      try {
+        for (const m in v) if (typeof v[m] === 'function' && ++methods >= 2) break;
+        if (methods < 2) {
+          const proto = Object.getPrototypeOf(v);
+          if (proto && proto !== Object.prototype)
+            for (const m of Object.getOwnPropertyNames(proto))
+              if (m !== 'constructor' && typeof proto[m] === 'function' && ++methods >= 2) break;
+        }
+      } catch {}
+      if (methods >= 2) out.push(k);
+    }
+    return out;
+  }
+
   /** Whether a component's rendered output (its host subtree, a few levels deep) changed. */
   function outputChanged(fiber: any): boolean {
     const stack: [any, number][] = [];
@@ -765,6 +793,11 @@ export function installCrispyHook(): void {
     addDuration(e, next);
     const p = propChanges(prev, next);
     const s = stateChange(prev, next);
+    const instances = instanceProps(prev, next);
+    for (const k of instances) {
+      if (!e.instanceProps) e.instanceProps = {};
+      e.instanceProps[k] = (e.instanceProps[k] || 0) + 1;
+    }
     const raw = contextChange(prev, next);
     // A parent that creates a new element re-renders a non-memo child anyway: a
     // recreated context value is then not the reason, the parent is.
@@ -846,7 +879,9 @@ export function installCrispyHook(): void {
       // Same props, state and context, but different output: it reads data that
       // changes without changing its inputs (a mutable object like a table or form
       // instance, a ref, a global). Not avoidable: React.memo would show stale output.
-      if (outputChanged(next)) e.mutableReads = (e.mutableReads || 0) + 1;
+      // Same for a component handed a mutable instance (an object with methods, like
+      // a TanStack table or a form API): its output can change in flows not recorded.
+      if (instances.length || outputChanged(next)) e.mutableReads = (e.mutableReads || 0) + 1;
       else {
         e.wastedRenders++;
         e.avoidableRenders++;

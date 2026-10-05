@@ -972,7 +972,12 @@ describe('mutable reads (council round 1, expert)', () => {
     const pagination = p?.components.Pagination;
     expect(pagination?.mutableReads).toBe(2);
     expect(pagination?.wastedRenders.median).toBe(0);
-    expect(hintFor(pagination, p, 'Pagination')).toContain('do not wrap it in React.memo');
+    expect(hintFor(pagination, p, 'Pagination')).toMatch(/do not wrap it in React.memo/i);
+    // Same instance, unchanged output in this flow: memo would still be unsafe (round 2).
+    const toolbar = p?.components.Toolbar;
+    expect(toolbar?.instanceProps).toEqual({ table: 2 });
+    expect(toolbar?.wastedRenders.median).toBe(0);
+    expect(hintFor(toolbar, p, 'Toolbar')).toContain('Do not wrap it in React.memo');
     // A sibling with truly unchanged output is still a wasted render.
     expect(p?.components.Static?.wastedRenders.median).toBe(2);
   });

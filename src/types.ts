@@ -44,6 +44,8 @@ export interface RawComponentStats {
    * component reads mutable data (a table/form instance, a ref, a global). Not avoidable.
    */
   mutableReads?: number;
+  /** Props that were the same mutable instance (an object with methods), with counts. */
+  instanceProps?: Record<string, number>;
   /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
   stateChanges?: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), with counts. */
@@ -131,6 +133,8 @@ export interface ComponentReport {
   maskedContextFrom?: Record<string, number>;
   /** Renders with unchanged inputs but changed output (reads mutable data; not avoidable). */
   mutableReads?: number;
+  /** Props that were the same mutable instance (e.g. a TanStack `table`): never memo it. */
+  instanceProps?: Record<string, number>;
   /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
   stateChanges: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), most frequent first. */
