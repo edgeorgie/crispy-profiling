@@ -12,8 +12,8 @@ All notable changes to this project are documented here. The format follows
   (Vite, webpack, Next.js) still work.
 - Snapshot reports show one row per cause: regressions of components re-rendered by another
   regressed component (or by the same trigger), and the same fix across scenarios, are merged
-  ("❌ 142 render regression(s)
-  from 4 causes" on shadcn-admin, down from 142 rows). New components show `0 → N` instead of `— → N`.
+  ("❌ 142 render regression(s) from 4 causes" on shadcn-admin, down from 142 rows). New components
+  show `0 → N` instead of `— → N`.
 - Snapshots count renders from recreated callbacks as avoidable, like the report does, so putting an
   inline callback back can no longer show up as 🟢 improved. Existing snapshots may need `-u` once.
 
