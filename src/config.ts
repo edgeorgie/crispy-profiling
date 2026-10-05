@@ -79,6 +79,31 @@ export type CompareOptions = z.infer<typeof CompareOptionsSchema>;
 export const ConfigSchema = z.object({
   $schema: z.string().optional(),
   baseUrl: z.url(),
+  /**
+   * Start the app's dev server for you (like Playwright's webServer): crispy runs
+   * `command`, waits until `url` (default: baseUrl) answers, and stops it at the end.
+   * If something already answers there, it is reused.
+   */
+  /**
+   * Sign in once before profiling (never counted in any phase). Values like
+   * "${E2E_PASSWORD}" are read from the environment.
+   */
+  login: z
+    .object({
+      path: z.string().min(1).default('/login'),
+      steps: z.array(StepSchema).min(1),
+    })
+    .optional(),
+  /** Saved browser session (cookies + localStorage), e.g. written by `crispy login`. */
+  storageState: z.string().optional(),
+  webServer: z
+    .object({
+      command: z.string().min(1),
+      url: z.url().optional(),
+      timeoutMs: z.number().int().min(1000).default(120_000),
+      reuseExisting: z.boolean().default(true),
+    })
+    .optional(),
   runs: z.number().int().min(1).max(20).default(3),
   viewport: z
     .object({ width: z.number().int().min(200), height: z.number().int().min(200) })
@@ -203,10 +228,15 @@ export async function loadConfig(path = DEFAULT_CONFIG_FILE): Promise<CrispyConf
   return parseConfig(json);
 }
 
-export function exampleConfig(baseUrl = 'http://localhost:5173'): CrispyConfigInput {
+export function exampleConfig(
+  baseUrl = 'http://localhost:5173',
+  devCommand: string | null = null,
+): CrispyConfigInput {
   return {
     $schema: './node_modules/crispy-profiling/schema/crispy.config.schema.json',
     baseUrl,
+    // crispy starts the dev server itself (or reuses a running one).
+    ...(devCommand && { webServer: { command: devCommand } }),
     runs: 3,
     scenarios: [
       {

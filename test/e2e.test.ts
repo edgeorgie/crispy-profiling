@@ -617,3 +617,28 @@ describe('select and drag steps (R5-07)', () => {
     expect(phases?.drag?.components.Slider?.updates.median).toBeGreaterThanOrEqual(5);
   });
 });
+
+describe('apps behind a login', () => {
+  it('signs in once with scripted steps and environment credentials', async () => {
+    process.env.CRISPY_TEST_USER = 'demo-user';
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 2,
+      settleMs: 150,
+      login: {
+        path: '/?auth',
+        steps: [
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: crispy reads ${NAME} from the environment
+          { action: 'fill', selector: '#user', value: '${CRISPY_TEST_USER}' },
+          { action: 'click', selector: '#login' },
+          { action: 'waitFor', selector: '#inc' },
+        ],
+      },
+      scenarios: [{ name: 'in', path: '/?auth', steps: [{ action: 'click', selector: '#inc' }] }],
+    });
+    const phases = (await profile(config)).scenarios.in?.phases;
+    // Every run starts signed in: the app, not the login form, renders.
+    expect(phases?.load?.components.App?.mounts.median).toBe(1);
+    expect(phases?.load?.components.Login).toBeUndefined();
+  });
+});

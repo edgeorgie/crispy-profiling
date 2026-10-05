@@ -38,15 +38,17 @@ Chromium is required once: `npx crispy-profiling install`.
 
 ## Workflow
 
-1. **Start the dev server** (development build, so component names are readable). Confirm the
-   URL responds.
+1. **Dev server**: if `crispy.config.json` has `webServer`, crispy starts it; otherwise start the
+   development build yourself and confirm the URL responds. No config yet? `npx crispy init`
+   detects the framework, URL and dev command.
 2. **Describe the slow interaction as steps** (`click`, `fill`, `type`, `press`, `hover`,
    `select`, `drag`, `scroll`, `waitFor`, `wait`, `goto`, `phase`). Renders before the first step go to
    phase `load`; renders during steps go to `interaction` unless you name phases with
    `{ "action": "phase", "name": "..." }`.
 3. **Capture a baseline** before touching code: `crispy test` (records `crispy.snap.json` if it
    does not exist) or a report with `outFile: ".crispy/base.json"`.
-4. **Read the report** — components are already sorted by fixable renders
+4. **Read the report** — start with **Root causes — fix these first** at the top of each phase;
+   components are sorted by fixable renders
    (`avoidableRenders + callbackRenders`), then `renders`; read the **Why / how to fix** column.
 5. **Fix one cause at a time** using the table below.
 6. **Verify**: run `test_render_snapshots` again (🟢 improved, nothing 🔴), or re-profile to

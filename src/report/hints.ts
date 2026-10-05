@@ -142,3 +142,121 @@ export function hintFor(
   }
   return undefined;
 }
+
+export interface RootCause {
+  /** One-line, Markdown-ready explanation with the fix. */
+  text: string;
+  /** Avoidable or callback renders this cause is responsible for (for ranking). */
+  renders: number;
+}
+
+/**
+ * Groups a phase's avoidable renders by root cause, so a phase with thousands
+ * of renders reads as a handful of fixes: values recreated by one component,
+ * context values recreated by one provider, and state updates that re-render
+ * unchanged children — with the child where one React.memo stops most of them.
+ */
+export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
+  const comps = Object.entries(phase.components);
+  const libraryKey = (k: string) => {
+    const f = phase.components[k]?.definedIn;
+    return f !== undefined && LIBRARY_FILE.test(f);
+  };
+  const fixable = (c: ComponentReport) => c.avoidableRenders.median + c.callbackRenders.median;
+  const out: RootCause[] = [];
+
+  // 1. Props recreated by the same component.
+  const byCreator = new Map<string, { renders: number; affected: string[] }>();
+  for (const [name, c] of comps) {
+    const n = fixable(c);
+    if (!n) continue;
+    for (const key of Object.keys(c.creators)) {
+      const [prop, creator] = key.split('|') as [string, string];
+      if (prop === 'children' || libraryKey(creator)) continue;
+      const id = `${creator}|${prop}`;
+      const e = byCreator.get(id) ?? { renders: 0, affected: [] };
+      e.renders += n;
+      if (!e.affected.includes(name)) e.affected.push(name);
+      byCreator.set(id, e);
+    }
+  }
+  for (const [id, e] of byCreator) {
+    const [creator, prop] = id.split('|') as [string, string];
+    const stale = comps
+      .map(([, c]) => Object.keys(c.staleMemo).find((k) => k.startsWith(`${prop}|${creator}|`)))
+      .find(Boolean)
+      ?.split('|')[2];
+    const fix = stale
+      ? `it is memoized, but its dependency ${stale} changes every render: stabilize that dependency`
+      : 'memoize it there (useCallback / useMemo, or hoist a constant)';
+    out.push({
+      renders: e.renders,
+      text: `\`${creator}\` recreates \`${prop}\` → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
+    });
+  }
+
+  // 2. Context values recreated by the same provider owner.
+  const byProvider = new Map<string, { renders: number; affected: string[] }>();
+  for (const [name, c] of comps) {
+    for (const owner of Object.keys(c.recreatedContextFrom)) {
+      if (libraryKey(owner)) continue;
+      const e = byProvider.get(owner) ?? { renders: 0, affected: [] };
+      e.renders += fixable(c);
+      e.affected.push(name);
+      byProvider.set(owner, e);
+    }
+  }
+  for (const [owner, e] of byProvider) {
+    if (!e.renders) continue;
+    out.push({
+      renders: e.renders,
+      text: `\`${owner}\` recreates a context value → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}: memoize the provider value (useMemo).`,
+    });
+  }
+
+  // 3. State updates that re-render unchanged children, with the best React.memo boundary.
+  const ownerOf = (c: ComponentReport) => c.locations[0]?.match(/ \((.+)\)$/)?.[1];
+  for (const [trigger, t] of comps) {
+    if (!t.causes.state || libraryKey(trigger)) continue;
+    // Only renders with no other explanation (wasted): recreated props and
+    // context values are already listed above as their own root causes.
+    const wasted = (c: ComponentReport) =>
+      Math.min(c.triggeredBy[trigger] ?? 0, c.wastedRenders.median);
+    const hit = comps.filter(([, c]) => wasted(c) > 0);
+    const total = hit.reduce((a, [, c]) => a + wasted(c), 0);
+    if (total < 3) continue;
+    // Renders saved by memoizing a direct child: the child plus everything it owns below.
+    const below = (root: string): number => {
+      const seen = new Set<string>([root]);
+      let sum = 0;
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const [k, c] of hit) {
+          const o = ownerOf(c);
+          if (!seen.has(k) && o && seen.has(o)) {
+            seen.add(k);
+            grew = true;
+          }
+        }
+      }
+      for (const [k, c] of hit) if (seen.has(k)) sum += wasted(c);
+      return sum;
+    };
+    const boundary = hit
+      .filter(
+        ([k, c]) => ownerOf(c) === trigger && !libraryKey(k) && !c.memo && c.causes.parent > 0,
+      )
+      .map(([k]) => [k, below(k)] as const)
+      .sort((a, b) => b[1] - a[1])[0];
+    const memo =
+      boundary && boundary[1] > 1
+        ? ` Wrapping \`${boundary[0]}\` in React.memo would skip ${boundary[1]} of them (if its props are stable).`
+        : '';
+    out.push({
+      renders: total,
+      text: `\`${trigger}\` state updates re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
+    });
+  }
+
+  return out.sort((a, b) => b.renders - a.renders || (a.text < b.text ? -1 : 1)).slice(0, max);
+}

@@ -619,3 +619,80 @@ describe('library factory keys (R4-15)', async () => {
     ]);
   });
 });
+
+describe('zero-config setup', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { detectApp } = await import('../src/detect.js');
+  const { isUp, startWebServer } = await import('../src/profiler/webserver.js');
+
+  it('detects framework, port and dev command from package.json', () => {
+    const app = (pkg: object, lock?: string) => {
+      const dir = mkdtempSync(join(tmpdir(), 'crispy-detect-'));
+      writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
+      if (lock) writeFileSync(join(dir, lock), '');
+      return detectApp(dir);
+    };
+    expect(
+      app({ dependencies: { next: '16' }, scripts: { dev: 'next dev' } }, 'pnpm-lock.yaml'),
+    ).toEqual({
+      framework: 'next',
+      baseUrl: 'http://localhost:3000',
+      devCommand: 'pnpm run dev',
+    });
+    expect(app({ devDependencies: { vite: '8' }, scripts: { dev: 'vite --port 5180' } })).toEqual({
+      framework: 'vite',
+      baseUrl: 'http://localhost:5180',
+      devCommand: 'npm run dev',
+    });
+    expect(app({})).toEqual({
+      framework: 'unknown',
+      baseUrl: 'http://localhost:5173',
+      devCommand: null,
+    });
+  });
+
+  it('starts the dev server, waits for it and stops it', async () => {
+    const port = 47000 + Math.floor(Math.random() * 1000);
+    const url = `http://127.0.0.1:${port}`;
+    const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
+    const stop = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: true }, url);
+    expect(await isUp(url)).toBe(true);
+    await stop();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await isUp(url)).toBe(false);
+  });
+
+  it('explains a dev server that exits', async () => {
+    await expect(
+      startWebServer(
+        { command: 'node -e "process.exit(3)"', timeoutMs: 10_000, reuseExisting: false },
+        'http://127.0.0.1:47999',
+      ),
+    ).rejects.toThrow(/exited with code 3/);
+  });
+});
+
+describe('root causes (R5-05, R5-06)', async () => {
+  const { rootCauses } = await import('../src/report/hints.js');
+  it('groups avoidable renders by cause and finds the best React.memo boundary', () => {
+    const row = component(20, 20, 0);
+    row.callbackRenders = s(20);
+    row.creators = { 'onSelect|App': 20 };
+    const list = component(4, 4, 4);
+    list.triggeredBy = { App: 4 };
+    list.locations = ['src/App.tsx:10 (App)'];
+    const item = component(9, 9, 9);
+    item.triggeredBy = { App: 9 };
+    item.locations = ['src/List.tsx:5 (List)'];
+    const app = component(1, 1, 0);
+    app.causes.state = 1;
+    const causes = rootCauses(phase({ App: app, Row: row, List: list, Item: item }));
+    expect(causes.map((c) => c.renders)).toEqual([20, 13]);
+    expect(causes[0]?.text).toContain(
+      '`App` recreates `onSelect` → 20 avoidable render(s) in `Row`',
+    );
+    expect(causes[1]?.text).toContain('Wrapping `List` in React.memo would skip 13 of them');
+  });
+});

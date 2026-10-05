@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
-import type { Browser, Page } from 'playwright-core';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
 import { type CrispyConfig, phasesOf, type Scenario, type Step } from '../config.js';
 import { buildReport } from '../report/aggregate.js';
@@ -7,12 +8,15 @@ import type { CrispyReport, RawRun } from '../types.js';
 import { resolveDefinitions, trackScripts } from './definitions.js';
 import { crispyHookSource } from './hook.js';
 import { SourceMapResolver } from './sourcemaps.js';
+import { startWebServer } from './webserver.js';
 
 export interface RunOptions {
   /** Only run the scenarios with these names. */
   only?: string[];
   /** Called with human-readable progress messages. */
   log?: (msg: string) => void;
+  /** Directory where `webServer.command` runs (default: the current directory). */
+  cwd?: string;
 }
 
 const DEFAULT_PHASE_AFTER_LOAD = 'interaction';
@@ -38,6 +42,15 @@ const SEEDED_RANDOM = `(() => {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 })();`;
+
+/** `${NAME}` in typed values comes from the environment, so credentials stay out of the config. */
+const withEnv = (value: string) =>
+  value.replace(/\$\{(\w+)\}/g, (_, name: string) => {
+    const v = process.env[name];
+    if (v === undefined)
+      throw new Error(`Environment variable ${name} is not set (used in a step value).`);
+    return v;
+  });
 
 /** Drops Playwright's boxed "run npx playwright install" banner: crispy has its own command. */
 const withoutBanner = (message: string) =>
@@ -243,13 +256,13 @@ async function runStep(
     case 'hover':
       return page.hover(step.selector, opts);
     case 'fill':
-      return page.fill(step.selector, step.value, opts);
+      return page.fill(step.selector, withEnv(step.value), opts);
     case 'type': {
       // One key at a time, settling after each: concurrent features
       // (useDeferredValue, transitions) would otherwise skip a CPU-dependent
       // number of intermediate renders.
       const input = page.locator(step.selector);
-      for (const ch of step.value) {
+      for (const ch of withEnv(step.value)) {
         await input.pressSequentially(ch, { timeout: timeoutMs });
         if (step.delayMs) await page.waitForTimeout(step.delayMs);
         if (settleKey) await settleKey();
@@ -337,8 +350,9 @@ export async function runScenarioOnce(
   browser: Browser,
   config: CrispyConfig,
   scenario: Scenario,
+  storageState?: StorageState,
 ): Promise<RawRun> {
-  const context = await browser.newContext({ viewport: config.viewport });
+  const context = await browser.newContext({ viewport: config.viewport, storageState });
   try {
     const page = await context.newPage();
     const warnings: string[] = [];
@@ -443,6 +457,39 @@ export async function runScenarioOnce(
   }
 }
 
+type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
+
+/**
+ * Signs in once before profiling, so apps behind a login can be profiled:
+ * either a saved session file (`storageState`, e.g. from `crispy login`) or
+ * scripted `login` steps. Login renders are never part of any phase.
+ */
+async function authenticate(
+  browser: Browser,
+  config: CrispyConfig,
+  cwd: string | undefined,
+  log: (msg: string) => void,
+): Promise<StorageState | undefined> {
+  const file = config.storageState ? resolve(cwd ?? process.cwd(), config.storageState) : undefined;
+  if (file && !existsSync(file)) {
+    throw new Error(`Session file not found: ${file}. Create it with "crispy login".`);
+  }
+  if (!config.login) return file ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+  log('[crispy] signing in');
+  const context = await browser.newContext({ viewport: config.viewport, storageState: file });
+  try {
+    const page = await context.newPage();
+    await gotoApp(page, new URL(config.login.path, config.baseUrl).toString(), config.timeoutMs);
+    for (const step of config.login.steps) {
+      await runStep(page, step, config.baseUrl, config.timeoutMs, false);
+    }
+    await page.waitForLoadState('networkidle', { timeout: config.timeoutMs }).catch(() => {});
+    return await context.storageState();
+  } finally {
+    await context.close();
+  }
+}
+
 export async function profile(
   config: CrispyConfig,
   options: RunOptions = {},
@@ -453,19 +500,30 @@ export async function profile(
     : config.scenarios;
   if (scenarios.length === 0) throw new Error(`No scenarios match: ${options.only?.join(', ')}`);
 
-  const browser = await launchBrowser(config);
+  const stopServer = config.webServer
+    ? await startWebServer({ ...config.webServer, cwd: options.cwd }, config.baseUrl, log)
+    : async () => {};
+  let browser: Browser;
   try {
+    browser = await launchBrowser(config);
+  } catch (err) {
+    await stopServer();
+    throw err;
+  }
+  try {
+    const auth = await authenticate(browser, config, options.cwd, log);
     const results: { scenario: Scenario; runs: RawRun[] }[] = [];
     for (const scenario of scenarios) {
       const runs: RawRun[] = [];
       for (let i = 0; i < config.runs; i++) {
         log(`[crispy] ${scenario.name}: run ${i + 1}/${config.runs}`);
-        runs.push(await runScenarioOnce(browser, config, scenario));
+        runs.push(await runScenarioOnce(browser, config, scenario, auth));
       }
       results.push({ scenario, runs });
     }
     return buildReport(results, config);
   } finally {
     await browser.close();
+    await stopServer();
   }
 }

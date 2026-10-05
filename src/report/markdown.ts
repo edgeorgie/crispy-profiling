@@ -1,5 +1,5 @@
 import type { CompareResult, CrispyReport } from '../types.js';
-import { hintFor } from './hints.js';
+import { hintFor, rootCauses } from './hints.js';
 
 const esc = (s: string) => s.replace(/\|/g, '\\|');
 
@@ -16,6 +16,17 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
       lines.push(
         `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted), ${p.totalCallbackRenders.median} from recreated callbacks`,
         '',
+      );
+      const causes = rootCauses(p);
+      if (causes.length) {
+        lines.push(
+          '**Root causes — fix these first:**',
+          '',
+          ...causes.map((c, i) => `${i + 1}. ${c.text}`),
+          '',
+        );
+      }
+      lines.push(
         '| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Rendered at | Why / how to fix |',
         '| --- | ---: | ---: | ---: | --- | --- | --- |',
       );

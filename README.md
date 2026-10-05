@@ -33,9 +33,8 @@ validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are no
 ```bash
 npm i -D crispy-profiling
 npx crispy install                                   # downloads the matching Chromium (once)
-npx crispy init --base-url http://localhost:5173     # creates crispy.config.json: edit the steps
-npm run dev &                                        # your app, development build
-npx crispy test                                      # records crispy.snap.json → commit it
+npx crispy init      # detects Next.js/Vite, the dev URL and your dev command → crispy.config.json
+npx crispy test      # starts your dev server, records crispy.snap.json → commit it
 ```
 
 From then on, `npx crispy test` (locally, in CI or from an AI agent) fails when a component starts
@@ -55,6 +54,10 @@ For a one-off look at a flow, `npx crispy run` prints every component with its c
 | Status    |       1 |         1 |        0 | 0/0/0/1/0/0  | `src/App.tsx:178 (App)` | `style` is recreated with equal data in `App`: hoist it out of the component or wrap it in useMemo… |
 | App       |       1 |         0 |        0 | 0/1/0/0/0/0  | `src/main.tsx:12`       | state updates here cause 23 avoidable render(s) below (`Row`, `Header`, `Status`)… |
 ```
+
+Every phase starts with **Root causes — fix these first**: the few components that recreate a
+value, recreate a context value or update state that re-renders unchanged children, ranked by the
+avoidable renders they cause, with the child where one `React.memo` would stop most of a cascade.
 
 _"Rendered at" and `definedIn` are mapped back to your original source files and lines through the
 source maps your dev server or bundler serves (Vite, webpack, Turbopack); without source maps they
@@ -141,6 +144,9 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
 | `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
+| `webServer` | — | `{ "command": "npm run dev" }`: crispy starts your dev server, waits for `baseUrl` (or `url`) and stops it afterwards; a server already running there is reused. `crispy init` fills it in. |
+| `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment. |
+| `storageState` | — | A saved session file (cookies + localStorage), e.g. from `crispy login` for SSO/OAuth logins. Keep it out of git. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
 | `snapshot` | `crispy.snap.json`, `0`, `false` | `file` (relative to the config file), `tolerance` and `failOnNewAvoidable` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
@@ -195,8 +201,9 @@ Profile the **development** build: production builds minify component names.
 ## CLI
 
 ```text
-crispy init [--base-url <url>]          Create crispy.config.json
+crispy init [--base-url <url>]          Create crispy.config.json (detects framework, URL, dev command)
 crispy install [--with-deps]            Download the Chromium build crispy uses
+crispy login [-c file] [--path /login]  Sign in by hand in a browser window and save the session
 crispy run [-c file] [-o file] [-s scenario...] [--markdown file] [--no-fail]
 crispy test [-c file] [-u|--update] [--ci] [-s scenario...] [--markdown file]
 crispy compare <base.json> <head.json> [--threshold 10] [--min-delta 1] [--markdown file] [--json file] [--no-fail]
@@ -240,15 +247,20 @@ to a fix (`React.memo`, `useCallback`, `useMemo`, context splitting, state coloc
 ## CI (GitHub Action)
 
 ```yaml
-- run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
-- uses: edgeorgie/crispy-profiling@v0   # runs `crispy test --ci` against crispy.snap.json
-  with:
-    config: crispy.config.json
+permissions:
+  contents: read
+  pull-requests: write   # lets crispy comment on the PR
+steps:
+  - uses: actions/checkout@v7
+  - uses: actions/setup-node@v7
+    with: { node-version: 22 }
+  - run: npm ci
+  - uses: edgeorgie/crispy-profiling@v0   # starts your dev server (webServer) and runs `crispy test --ci`
 ```
 
 The step fails when any component renders more than the committed snapshot allows (or a budget is
-exceeded), and the job summary lists each regression with its cause, where it is rendered and the
-suggested fix. `command: run` (with an optional `baseline` report) is available for budget-only or
+exceeded). The job summary — and one PR comment, updated on every push — lists each regression with
+its cause, where it is rendered and the suggested fix (`comment: false` to disable). `command: run` (with an optional `baseline` report) is available for budget-only or
 baseline-comparison setups. Full workflow: [`examples/github-workflow.yml`](examples/github-workflow.yml).
 
 ## Programmatic API

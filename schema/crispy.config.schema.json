@@ -9,6 +9,32 @@
       "type": "string",
       "format": "uri"
     },
+    "webServer": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "timeoutMs": {
+          "default": 120000,
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 9007199254740991
+        },
+        "reuseExisting": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    },
     "runs": {
       "default": 3,
       "type": "integer",

@@ -3,10 +3,11 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { DEFAULT_CONFIG_FILE, exampleConfig, loadConfig } from './config.js';
-import { profile } from './profiler/run.js';
+import { detectApp } from './detect.js';
+import { launchBrowser, profile } from './profiler/run.js';
 import { serializeReport } from './report/aggregate.js';
 import { compareReports } from './report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from './report/markdown.js';
@@ -19,6 +20,7 @@ const HELP = `crispy ${VERSION} — deterministic React render profiling
 Usage:
   crispy init [--base-url <url>]            Create ${DEFAULT_CONFIG_FILE}
   crispy install [--with-deps]              Download the Chromium build crispy uses
+  crispy login [-c <config>] [--path /login] Sign in by hand in a browser window; saves the session
   crispy run [options]                      Run scenarios and write a report
       -c, --config <file>      Config file (default: ${DEFAULT_CONFIG_FILE})
       -o, --out <file>         JSON report path (default: .crispy/report.json)
@@ -90,13 +92,50 @@ async function main(argv: string[]): Promise<number> {
         log(`${DEFAULT_CONFIG_FILE} already exists, not overwriting.`);
         return 2;
       }
+      const app = detectApp(process.cwd());
+      const baseUrl = values['base-url'] ?? app.baseUrl;
       await write(
         DEFAULT_CONFIG_FILE,
-        `${JSON.stringify(exampleConfig(values['base-url']), null, 2)}\n`,
+        `${JSON.stringify(exampleConfig(baseUrl, app.devCommand), null, 2)}\n`,
       );
+      const found = app.framework === 'unknown' ? '' : ` (${app.framework} app at ${baseUrl})`;
       log(
-        `Created ${DEFAULT_CONFIG_FILE}. Edit the scenario steps, start your dev server, then run ` +
-          `"crispy test" to record crispy.snap.json (commit it) or "crispy run" for a one-off report.`,
+        `Created ${DEFAULT_CONFIG_FILE}${found}. ` +
+          (app.devCommand
+            ? `crispy will start your dev server with "${app.devCommand}". `
+            : 'Start your dev server first. ') +
+          `Edit the scenario steps, then run "npx crispy test" to record crispy.snap.json (commit it).`,
+      );
+      return 0;
+    }
+    case 'login': {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          config: { type: 'string', short: 'c', default: DEFAULT_CONFIG_FILE },
+          path: { type: 'string', default: '/' },
+          out: { type: 'string' },
+        },
+      });
+      const config = await loadConfig(values.config);
+      const out = resolve(
+        dirname(resolve(values.config)),
+        values.out ?? config.storageState ?? 'crispy.auth.json',
+      );
+      const browser = await launchBrowser({
+        ...config,
+        browser: { ...config.browser, headless: false },
+      });
+      const context = await browser.newContext({ viewport: config.viewport });
+      const page = await context.newPage();
+      await page.goto(new URL(values.path, config.baseUrl).toString());
+      log('[crispy] sign in in the browser window, then close the window to save the session.');
+      await page.waitForEvent('close', { timeout: 0 });
+      await context.storageState({ path: out });
+      await browser.close();
+      log(
+        `[crispy] session saved to ${out}. Add "storageState": "${relative(dirname(resolve(values.config)), out)}" to your config, ` +
+          'and keep the file out of git (it contains your cookies).',
       );
       return 0;
     }
@@ -121,7 +160,11 @@ async function main(argv: string[]): Promise<number> {
         },
       });
       const config = await loadConfig(values.config);
-      const report = await profile(config, { only: values.scenario, log });
+      const report = await profile(config, {
+        only: values.scenario,
+        log,
+        cwd: dirname(resolve(values.config)),
+      });
       await write(values.out, serializeReport(report));
       log(`[crispy] report written to ${values.out}`);
       const md = reportToMarkdown(report);

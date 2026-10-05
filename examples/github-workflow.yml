@@ -1,7 +1,8 @@
 # Copy to .github/workflows/react-renders.yml in your app.
-# On every PR: start the app, check render counts against the committed
-# crispy.snap.json and fail if any component renders more. The job summary lists
-# each regression with the cause, where it is rendered and the suggested fix.
+# On every PR: start the app (webServer in crispy.config.json), check render
+# counts against the committed crispy.snap.json and fail if any component renders
+# more. The job summary and a PR comment list each regression with the cause,
+# where it is rendered and the suggested fix.
 #
 # First time: run `npx crispy test` locally and commit crispy.snap.json.
 # Intended changes: run `npx crispy test -u` and commit the updated file.
@@ -9,6 +10,10 @@ name: React renders
 
 on:
   pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # the PR comment
 
 jobs:
   renders:
@@ -20,10 +25,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Start the app (development build)
-        run: |
-          npm run dev -- --port 5173 &
-          npx -y wait-on http://localhost:5173
       - uses: edgeorgie/crispy-profiling@v0
         with:
           config: crispy.config.json
