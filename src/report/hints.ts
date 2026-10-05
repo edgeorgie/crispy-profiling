@@ -337,10 +337,21 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       : '';
     const fix = stale
       ? `${depFix(`\`${stale[0]}\``, stale[2] ?? '', isCallback(stale[0] ?? ''))}${realChange(stale[2] ?? '') ? '' : wrap}`
-      : `memoize them there (useCallback / useMemo, or hoist constants)${wrap}`;
+      : `${
+          e.props.every(isCallback)
+            ? 'wrap them in useCallback there'
+            : e.props.some(isCallback)
+              ? 'wrap the functions in useCallback and the objects in useMemo there (or hoist constants out of the component)'
+              : 'hoist them out of the component if they are constant, else wrap them in useMemo there'
+        }${wrap}`;
+    // Where the values are passed: the first affected component rendered by the creator.
+    const at = e.affected
+      .flatMap((k) => phase.components[k]?.locations ?? [])
+      .find((l) => l.endsWith(`(${creator})`))
+      ?.replace(/ \(.*\)$/, '');
     out.push({
       renders: e.renders,
-      text: `\`${creator}\` recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
+      text: `\`${creator}\`${at ? ` (${at})` : ''} recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
     });
   }
 

@@ -17,6 +17,17 @@ import { cmp } from '../util/cmp.js';
 import { VERSION } from '../version.js';
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
+/** The CLI wording of the shared Markdown, rewritten as the MCP calls an agent makes. */
+const forAgents = (md: string) =>
+  md
+    .replace(
+      /`crispy test (?:--update|-u)`/g,
+      '`test_render_snapshots` with update=true (after the user approves, with confirm="accept-render-changes")',
+    )
+    .replace(/with `-u`/g, 'with update=true')
+    .replace(/`crispy test`/g, '`test_render_snapshots`')
+    .replace(/`crispy run`/g, '`profile_url`');
+
 const fail = (err: unknown) => ({ ...text(`Error: ${(err as Error).message}`), isError: true });
 
 async function readReport(path: string): Promise<CrispyReport> {
@@ -205,7 +216,7 @@ export function createServer(): McpServer {
           baseDir: dirname(resolve(configPath)),
         });
         return text(
-          `${outcome.markdown}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
+          `${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
         );
       } catch (err) {
         return fail(err);
