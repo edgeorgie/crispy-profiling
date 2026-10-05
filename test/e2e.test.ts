@@ -671,20 +671,39 @@ describe('named state causes', () => {
 });
 
 describe('useless React.memo', () => {
-  it('flags a memo that never skips a render because its props really change', async () => {
+  it('flags a memo only when it skipped nothing in the whole scenario (R6-08)', async () => {
+    const inc = { action: 'click' as const, selector: '#inc' };
     const config = parseConfig({
       baseUrl: slowUrl,
       runs: 1,
       settleMs: 150,
-      scenarios: [{ name: 'm', path: '/?memo', steps: [{ action: 'click', selector: '#inc' }] }],
+      scenarios: [
+        { name: 'only-inc', path: '/?memo', steps: [inc, inc, inc] },
+        {
+          name: 'inc-then-theme',
+          path: '/?memo',
+          steps: [
+            inc,
+            inc,
+            inc,
+            // App re-renders with the same count: the memo skips CounterView here.
+            { action: 'phase', name: 'theme' },
+            { action: 'click', selector: '#theme-toggle' },
+          ],
+        },
+      ],
     });
-    const phase = (await profile(config)).scenarios.m?.phases.interaction;
-    const useless = phase?.components.CounterView;
-    expect(useless?.memo).toBe(true);
-    expect(useless?.memoSkips).toBe(0);
-    expect(hintFor(useless, phase, 'CounterView')).toContain('React.memo never skipped a render');
-    // The memo that works skipped its render, so it is not in the interaction at all.
-    expect(phase?.components.LabelView).toBeUndefined();
+    const report = await profile(config);
+    const useless = report.scenarios['only-inc']?.phases.interaction;
+    expect(useless?.components.CounterView?.uselessMemo).toBe(true);
+    expect(hintFor(useless?.components.CounterView, useless, 'CounterView')).toContain(
+      'React.memo did not skip any render in these flows',
+    );
+    const helped = report.scenarios['inc-then-theme']?.phases.interaction?.components.CounterView;
+    expect(helped?.memoSkips).toBeGreaterThan(0);
+    expect(helped?.uselessMemo).toBeUndefined();
+    // The memo that always works skipped its renders, so it is not in the interaction at all.
+    expect(useless?.components.LabelView).toBeUndefined();
   });
 });
 

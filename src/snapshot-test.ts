@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import type { CrispyConfig } from './config.js';
 import { profile } from './profiler/run.js';
+import { rootCauses } from './report/hints.js';
 import {
   compareSnapshot,
   keepRanges,
@@ -69,6 +70,29 @@ function budgetsMarkdown(report: CrispyReport): string {
  * `crispy test`: profiles every scenario and checks the counts against the
  * committed render snapshot (like Jest snapshots, but for re-renders).
  */
+/**
+ * What the recorded snapshot already tells you: the top avoidable-render root
+ * causes across all scenarios, so the first run is useful on its own.
+ */
+function insight(report: CrispyReport, max = 5): string {
+  const all = Object.values(report.scenarios).flatMap((s) =>
+    Object.entries(s.phases).flatMap(([phase, p]) =>
+      rootCauses(p).map((c) => ({ ...c, where: `${s.name} / ${phase}` })),
+    ),
+  );
+  if (!all.length) return '\nNo avoidable re-renders found in these flows. 🎉\n';
+  const top = all.sort((a, b) => b.renders - a.renders).slice(0, max);
+  return [
+    '',
+    `**Already worth fixing** (avoidable renders recorded in this snapshot):`,
+    '',
+    ...top.map((c, i) => `${i + 1}. _${c.where}_ — ${c.text}`),
+    '',
+    'Fix one, then run `crispy test` again: it shows 🟢 improved and `-u` locks it in.',
+    '',
+  ].join('\n');
+}
+
 export async function runSnapshotTest(
   config: CrispyConfig,
   options: SnapshotTestOptions = {},
@@ -112,7 +136,7 @@ export async function runSnapshotTest(
       written: true,
       result,
       report,
-      markdown: `${header}\n${extra}`,
+      markdown: `${header}\n${insight(report)}${extra}`,
     };
   }
 

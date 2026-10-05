@@ -119,8 +119,13 @@ export interface ComponentReport {
   compiled: boolean;
   /** Wrapped in React.memo. */
   memo: boolean;
-  /** Renders React.memo skipped (median); 0 for a memo component means it never helped. */
+  /** Renders React.memo skipped in this scenario, across all phases. */
   memoSkips: number;
+  /**
+   * Wrapped in React.memo, updated at least 3 times in this scenario and never
+   * skipped a render: its props change every time, so the memo only adds cost.
+   */
+  uselessMemo?: true;
   /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */
   locations: string[];
   /** File where the component function is defined, when known (part of its identity). */

@@ -111,9 +111,6 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
         ] as [string, ComponentReport],
     )
     .sort(byPriority);
-  for (const [n, c] of entries) {
-    c.memoSkips = stat(runs.map((r) => r.phases[phase]?.memoSkips?.[n] ?? 0)).median;
-  }
 
   const totals = (f: (s: RawComponentStats) => number) =>
     stat(
@@ -438,6 +435,26 @@ export function buildReport(
         .filter((k) => allFiles[k] && LIBRARY_PATH.test(allFiles[k]))
         .sort(cmp);
       if (library.length) phase.library = library;
+    }
+
+    // React.memo verdicts look at the whole scenario: a memo that skips nothing in
+    // one phase may skip every render in another.
+    const skips: Record<string, number> = {};
+    const updates: Record<string, number> = {};
+    for (const p of order) {
+      const keys = new Set(runs.flatMap((r) => Object.keys(r.phases[p]?.memoSkips ?? {})));
+      for (const k of keys) {
+        skips[k] = (skips[k] ?? 0) + stat(runs.map((r) => r.phases[p]?.memoSkips?.[k] ?? 0)).median;
+      }
+      for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
+        updates[k] = (updates[k] ?? 0) + c.updates.median;
+      }
+    }
+    for (const p of order) {
+      for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
+        c.memoSkips = skips[k] ?? 0;
+        if (c.memo && !skips[k] && (updates[k] ?? 0) >= 3) c.uselessMemo = true;
+      }
     }
 
     const report: ScenarioReport = {

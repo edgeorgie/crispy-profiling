@@ -128,9 +128,9 @@ export function hintFor(
   }
 
   // React.memo that never skipped a render while props really changed: pure cost.
-  if (c.memo && !library && c.memoSkips === 0 && c.updates.median > 0 && c.causes.props > 0) {
+  if (c.uselessMemo && !library && c.updates.median > 0 && c.causes.props > 0) {
     const changed = top(c.changedProps);
-    return `React.memo never skipped a render here${where}: ${changed.length ? `${code(changed)} really change on every update` : 'its props really change on every update'}, so the comparison only adds cost. Remove React.memo, or keep it only if you are about to make those props stable.`;
+    return `React.memo did not skip any render in these flows${where}: ${changed.length ? code(changed) : 'its props'} changed on every update, so the comparison only adds cost here. Consider removing it, unless other flows rely on it or you are about to make those props stable.`;
   }
 
   const trigger = top(c.triggeredBy, 1)[0];
