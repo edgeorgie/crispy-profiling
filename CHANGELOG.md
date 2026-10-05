@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-05
+
 ### Breaking
 - `readOnly` is on by default in `run`, `test` and the MCP tools, not only in `crispy scan` (the
   Playwright integration is unchanged: there your own test drives the page): replayed clicks never send POST/PUT/DELETE requests or
