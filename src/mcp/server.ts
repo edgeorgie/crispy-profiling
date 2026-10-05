@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -169,8 +170,9 @@ export function createServer(): McpServer {
         'Runs the crispy.config.json scenarios and compares render counts with the committed ' +
         'snapshot (crispy.snap.json), like snapshot tests for re-renders. Regressions include the ' +
         'unstable prop, where the component is rendered and a suggested fix. Read-only by default: ' +
-        'it never creates or edits the snapshot. To accept new counts, the USER must approve; then ' +
-        'pass update=true together with confirm="accept-render-changes".',
+        'it never edits an existing snapshot. With no snapshot yet, update=true records the first one ' +
+        '(it only stores the current counts). To accept changed counts later, the USER must approve; ' +
+        'then pass update=true together with confirm="accept-render-changes".',
       inputSchema: {
         configPath: z.string().default('crispy.config.json'),
         update: z.boolean().default(false),
@@ -185,7 +187,12 @@ export function createServer(): McpServer {
     },
     async ({ configPath, update, confirm, scenarios }) => {
       try {
-        if (update && confirm !== 'accept-render-changes') {
+        // Recording the first snapshot accepts nothing: it only stores today's counts.
+        const first = async () => {
+          const c = await loadConfig(configPath).catch(() => null);
+          return !!c && !existsSync(resolve(dirname(resolve(configPath)), c.snapshot.file));
+        };
+        if (update && confirm !== 'accept-render-changes' && !(await first())) {
           throw new Error(
             'update=true changes the committed snapshot. Ask the user to approve the new counts, then pass confirm="accept-render-changes".',
           );
