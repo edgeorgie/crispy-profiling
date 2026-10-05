@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format follows
 - Snapshots leave out components defined in `node_modules` (icons, Radix parts…): about half the
   size on shadcn-admin, and fewer noisy rows. Old entries are ignored; `snapshot.includeLibraries`
   keeps them.
+- Without `crispy install`, crispy uses a Chrome or Chromium already installed in the usual place
+  (macOS, Windows, Linux), and `crispy install` says so instead of failing when the download is
+  blocked. The install error suggests `browser.executablePath` (saved in the config) over an env var.
 - A root cause under 10 renders is optional only if it is also under 20% of the phase's renders.
 - Root causes say where the values are created (`src/App.tsx:36`) and give the fix for their kind
   (useCallback for functions, hoist or useMemo for objects) instead of a generic "useCallback / useMemo".

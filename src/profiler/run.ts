@@ -99,7 +99,37 @@ function resolveExecutable(config: CrispyConfig): string | undefined {
   if (config.browser.executablePath) return config.browser.executablePath;
   const fromEnv = process.env.CRISPY_CHROMIUM_PATH;
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  return undefined;
+  if (config.browser.channel) return undefined;
+  // No `crispy install` yet: use a Chrome or Chromium already on this machine.
+  try {
+    if (existsSync(chromium.executablePath())) return undefined;
+  } catch {}
+  return systemChrome();
+}
+
+/** A Chrome or Chromium installed in the usual place for this OS, if any. */
+export function systemChrome(): string | undefined {
+  const local = process.env.LOCALAPPDATA ?? '';
+  const candidates =
+    process.platform === 'darwin'
+      ? [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        ]
+      : process.platform === 'win32'
+        ? [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            `${local}\\Google\\Chrome\\Application\\chrome.exe`,
+          ]
+        : [
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/snap/bin/chromium',
+          ];
+  return candidates.find((p) => existsSync(p));
 }
 
 /** Math.random with a fixed seed (mulberry32): same sequence in every run and document. */

@@ -36,7 +36,7 @@ validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are no
 
 ```bash
 npm i -D crispy-profiling
-npx crispy install   # downloads Chromium once (or set CRISPY_CHROMIUM_PATH to a Chrome you have)
+npx crispy install   # downloads Chromium once (if that fails, an installed Chrome/Chromium is used)
 npx crispy scan      # zero config: starts your dev server, finds interactions, profiles them
 npx crispy test      # records crispy.snap.json from the scanned scenarios → commit it
 ```
@@ -306,6 +306,8 @@ jobs:
       - run: npm ci
       - uses: edgeorgie/crispy-profiling@v0   # starts your dev server (webServer) and runs `crispy test --ci`
 ```
+
+The action installs Chromium and its system libraries itself: no browser setup in the workflow.
 
 The step fails when any component renders more than the committed snapshot allows (or a budget is
 exceeded). The job summary — and one PR comment, updated on every push — lists each regression with

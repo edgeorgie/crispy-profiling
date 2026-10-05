@@ -13,7 +13,7 @@ import {
   parseConfig,
 } from './config.js';
 import { detectApp } from './detect.js';
-import { launchBrowser, profile } from './profiler/run.js';
+import { launchBrowser, profile, systemChrome } from './profiler/run.js';
 import { startWebServer } from './profiler/webserver.js';
 import { serializeReport } from './report/aggregate.js';
 import { compareReports } from './report/compare.js';
@@ -314,8 +314,16 @@ async function main(argv: string[]): Promise<number> {
                 ? '[crispy] Could not download Chromium: the network blocked it (proxy or firewall).'
                 : `[crispy] Could not download Chromium: ${lastError(errors)} (details: npx crispy install --verbose)`,
             );
+            const found = systemChrome();
+            if (found) {
+              log(
+                `[crispy] No problem: crispy will use the browser already installed at ${found}.`,
+              );
+              done(0);
+              return;
+            }
             log(
-              '[crispy] Use a Chrome or Chromium you already have instead: set CRISPY_CHROMIUM_PATH=/path/to/chrome, or "browser": { "channel": "chrome" } in crispy.config.json. Behind a proxy, HTTPS_PROXY also works for the download.',
+              '[crispy] Use a Chrome or Chromium you already have instead: add "browser": { "executablePath": "/path/to/chrome" } to crispy.config.json (or set CRISPY_CHROMIUM_PATH). Behind a proxy, HTTPS_PROXY also works for the download.',
             );
           }
           // Runtime errors exit 2 (1 is reserved for regressions and budgets).
