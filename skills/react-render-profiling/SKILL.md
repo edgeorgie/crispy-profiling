@@ -70,6 +70,8 @@ from `crispy-profiling/playwright` to the relevant test over writing a new scena
    `.crispy/head.json` and run `compare_reports`. Keep the change only if the target component
    improved and nothing regressed. Report the before/after numbers. A 🔁 renamed or ⚠️ new row is
    not a failure.
+   🟢 only proves fewer renders: also check that the UI you touched still updates (run the app's
+   tests or look at the screen). A component that drops to 0 renders after a React.memo is suspect.
 
 ## Reading the numbers
 

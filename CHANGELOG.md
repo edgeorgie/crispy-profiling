@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Every 🟢 improvement (snapshot and `compare`) now says that fewer renders is not proof the UI still
+  updates; the README and the skill say the same.
 - Hints no longer suggest React.memo for a component that gets new `children` JSX on most renders
   (the memo would compare and render anyway). Root causes under 10 renders, or under 2% of the
   phase's renders, are marked "Optional (low impact)" (`minor` in the API).

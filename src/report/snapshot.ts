@@ -2,6 +2,7 @@ import type { ComponentReport, CrispyReport, Stat } from '../types.js';
 import { cmp } from '../util/cmp.js';
 import { LIBRARY_FILE } from '../util/paths.js';
 import { hintFor } from './hints.js';
+import { GREEN_CAVEAT } from './markdown.js';
 
 /**
  * Render snapshot: the expected render counts of every scenario, committed to the
@@ -659,6 +660,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   lines.push('');
   if (result.improvements.length) {
     lines.push(`Improvements found: run \`crispy test --update\` to lock them into \`${file}\`.`);
+    lines.push(GREEN_CAVEAT);
   }
   if (result.changes.some((c) => c.uncovered)) {
     lines.push(
