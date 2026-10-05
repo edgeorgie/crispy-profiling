@@ -338,6 +338,9 @@ What crispy adds: **deterministic counts** (same code → same report), **snapsh
 
 ## Known limitations
 
+- **🟢 means fewer renders, not a working UI.** A React.memo on a component that reads mutable data
+  (a table or form instance) removes renders *and* updates. After a fix, check that the affected
+  screens still change when they should.
 - **Development builds only.** Production builds strip component names and the debug information
   crispy uses for causes and locations.
 - **Render counts are not milliseconds.** crispy finds avoidable renders deterministically; whether

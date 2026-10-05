@@ -1,6 +1,10 @@
 import type { CompareResult, ComponentReport, CrispyReport } from '../types.js';
 import { hintFor, rootCauses } from './hints.js';
 
+/** Shown with every 🟢: fewer renders is not proof that the UI still works. */
+export const GREEN_CAVEAT =
+  '🟢 means fewer renders, not that the screen still updates: before accepting it, check that the affected UI still changes when it should (a React.memo on a component that reads mutable data can freeze it).';
+
 const CAUSE_NAMES = {
   props: 'props changed',
   state: 'own state',
@@ -107,5 +111,6 @@ export function compareToMarkdown(result: CompareResult, top = 20): string {
       `| ${icon[d.status]} ${d.status} | ${esc(d.scenario)} / ${esc(d.phase)} | ${esc(d.component)} | ${d.baseRenders} → ${d.headRenders} | ${d.delta > 0 ? '+' : ''}${d.delta}${pct} | ${d.baseAvoidable} → ${d.headAvoidable} |`,
     );
   }
+  if (interesting.some((d) => d.status === 'improved')) lines.push('', GREEN_CAVEAT);
   return `${lines.join('\n')}\n`;
 }
