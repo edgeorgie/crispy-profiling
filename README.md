@@ -33,9 +33,19 @@ validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are no
 ```bash
 npm i -D crispy-profiling
 npx crispy install                                   # downloads the matching Chromium (once)
-npx crispy init      # detects Next.js/Vite, the dev URL and your dev command → crispy.config.json
-npx crispy test      # starts your dev server, records crispy.snap.json → commit it
+npx crispy scan      # zero config: starts your dev server, finds interactions, profiles them
+npx crispy test      # records crispy.snap.json from the scanned scenarios → commit it
 ```
+
+`crispy scan` detects Next.js/Vite, the dev URL and your dev command, visits a few routes, tries
+their safe interactions (buttons, tabs, selects, text inputs, internal links — never anything named
+delete, pay, sign out, submit…, in several languages), and prints the top root causes with the fix.
+It is read-only: requests other than GET never leave the browser, and an interaction that tried to
+send one is reported and not saved (`--allow-writes` for apps with disposable data). Point it at a
+development or preview build, not production. It saves what it ran as
+`crispy.config.json`, so `crispy test` guards those flows from then on. On shadcn-admin it found
+the first root causes in 2.5 minutes without a single line of config. Prefer writing the steps
+yourself? `npx crispy init` creates a config to edit.
 
 From then on, `npx crispy test` (locally, in CI or from an AI agent) fails when a component starts
 re-rendering, and tells you why and how to fix it:
@@ -224,6 +234,7 @@ Profile the **development** build: production builds minify component names.
 ## CLI
 
 ```text
+crispy scan [url] [--routes 3] [--actions 5] [--allow-writes]  Zero config: find, profile and save interactions
 crispy init [--base-url <url>]          Create crispy.config.json (detects framework, URL, dev command)
 crispy install [--with-deps]            Download the Chromium build crispy uses
 crispy login [-c file] [--path /login]  Sign in by hand in a browser window and save the session

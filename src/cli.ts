@@ -5,13 +5,20 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { DEFAULT_CONFIG_FILE, exampleConfig, loadConfig } from './config.js';
+import {
+  type CrispyConfigInput,
+  DEFAULT_CONFIG_FILE,
+  exampleConfig,
+  loadConfig,
+  parseConfig,
+} from './config.js';
 import { detectApp } from './detect.js';
 import { launchBrowser, profile } from './profiler/run.js';
 import { startWebServer } from './profiler/webserver.js';
 import { serializeReport } from './report/aggregate.js';
 import { compareReports } from './report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from './report/markdown.js';
+import { scan, scanConfig } from './scan.js';
 import { runSnapshotTest } from './snapshot-test.js';
 import type { CrispyReport } from './types.js';
 import { isCI } from './util/ci.js';
@@ -20,6 +27,10 @@ import { VERSION } from './version.js';
 const HELP = `crispy ${VERSION} — deterministic React render profiling
 
 Usage:
+  crispy scan [url] [options]               Zero config: find interactions, profile them, save them
+          --routes <n>         Routes to visit (default 3)
+          --actions <n>        Interactions per route (default 5)
+          --allow-writes       Let interactions send POST/PUT/DELETE (blocked by default)
   crispy init [--base-url <url>]            Create ${DEFAULT_CONFIG_FILE}
   crispy install [--with-deps]              Download the Chromium build crispy uses
   crispy login [-c <config>] [--path /login] Sign in by hand in a browser window; saves the session
@@ -92,6 +103,108 @@ async function main(argv: string[]): Promise<number> {
             : 'Start your dev server first. ') +
           `Edit the scenario steps, then run "npx crispy test" to record crispy.snap.json (commit it).`,
       );
+      return 0;
+    }
+    case 'scan': {
+      const { values, positionals } = parseArgs({
+        args: rest,
+        allowPositionals: true,
+        options: {
+          routes: { type: 'string', default: '3' },
+          actions: { type: 'string', default: '5' },
+          'allow-writes': { type: 'boolean', default: false },
+        },
+      });
+      const maxRoutes = Number(values.routes);
+      const maxActions = Number(values.actions);
+      if (
+        !Number.isInteger(maxRoutes) ||
+        !Number.isInteger(maxActions) ||
+        maxRoutes < 1 ||
+        maxActions < 1
+      ) {
+        log('--routes and --actions must be positive integers');
+        return 2;
+      }
+      // Base settings: the URL given, else the existing config, else what init would detect.
+      const [url] = positionals;
+      const hasConfig = existsSync(DEFAULT_CONFIG_FILE);
+      let base: CrispyConfigInput;
+      let path = '/';
+      // Session, login and timing settings of an existing config apply to any URL.
+      const existing = hasConfig
+        ? (({ scenarios: _, ...rest }) => rest)(
+            JSON.parse(await readFile(DEFAULT_CONFIG_FILE, 'utf8')),
+          )
+        : null;
+      if (url) {
+        let u: URL;
+        try {
+          u = new URL(/^https?:\/\//.test(url) ? url : `http://${url}`);
+        } catch {
+          log(`Not a URL: ${url} (e.g. http://localhost:5173/)`);
+          return 2;
+        }
+        base = { ...(existing ?? {}), baseUrl: u.origin, scenarios: [] };
+        if (existing && existing.baseUrl !== u.origin)
+          delete (base as { webServer?: unknown }).webServer;
+        path = `${u.pathname}${u.search}${u.hash}`;
+      } else if (existing) {
+        base = existing;
+      } else {
+        const app = detectApp(process.cwd());
+        base = {
+          baseUrl: app.baseUrl,
+          ...(app.devCommand && { webServer: { command: app.devCommand } }),
+          scenarios: [],
+        };
+      }
+      const config = parseConfig({ ...base, scenarios: [{ name: 'scan' }] });
+      const result = await scan(config, {
+        path,
+        maxRoutes,
+        maxActions,
+        allowWrites: values['allow-writes'],
+        log,
+        cwd: process.cwd(),
+      });
+      await write('.crispy/scan.json', serializeReport(result.report));
+      const target = hasConfig ? 'crispy.scan.json' : DEFAULT_CONFIG_FILE;
+      const { scenarios: _ignored, ...settings } = base as CrispyConfigInput & {
+        scenarios?: unknown;
+      };
+      await write(
+        target,
+        `${JSON.stringify(scanConfig(settings as CrispyConfigInput, result.scenarios), null, 2)}\n`,
+      );
+      const lines = [
+        `crispy scan: ${result.scenarios.length} interaction(s) profiled${result.skipped.length ? `, ${result.skipped.length} skipped` : ''}.`,
+        '',
+      ];
+      if (result.causes.length) {
+        lines.push('Top root causes (most avoidable renders first):');
+        for (const [i, c] of result.causes.slice(0, 8).entries()) {
+          lines.push(`${i + 1}. [${c.where}] ${c.text}`);
+        }
+      } else {
+        const total = Object.values(result.report.scenarios).reduce((sum, sc) => {
+          const p = sc.phases.interaction;
+          return sum + (p ? p.totalAvoidableRenders.median + p.totalCallbackRenders.median : 0);
+        }, 0);
+        lines.push(
+          total
+            ? `${total} avoidable render(s) in total, spread thin: no single cause is worth fixing yet.`
+            : 'No avoidable renders in these interactions.',
+        );
+      }
+      lines.push(
+        '',
+        hasConfig
+          ? `Scenarios saved to crispy.scan.json (your ${DEFAULT_CONFIG_FILE} was not touched): copy the ones you want into it.`
+          : `Scenarios saved to ${DEFAULT_CONFIG_FILE}. Next: "npx crispy test" records crispy.snap.json; commit both and CI fails on new re-renders.`,
+        'Full report: .crispy/scan.json',
+      );
+      process.stdout.write(`${lines.join('\n')}\n`);
       return 0;
     }
     case 'login': {

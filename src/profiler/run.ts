@@ -17,6 +17,34 @@ export interface RunOptions {
   log?: (msg: string) => void;
   /** Directory where `webServer.command` runs (default: the current directory). */
   cwd?: string;
+  /** Skip a scenario that fails (e.g. a selector that no longer matches) instead of stopping. */
+  onScenarioError?: (scenario: string, err: Error) => void;
+  /**
+   * Read-only mode (used by `crispy scan`): requests other than GET/HEAD/OPTIONS are
+   * aborted before they leave the browser and popups are closed. Each blocked request
+   * is reported, e.g. "POST /api/items".
+   */
+  onBlockedRequest?: (scenario: string, what: string) => void;
+}
+
+/** Aborts writes and closes popups in a context (read-only profiling). */
+export async function guardContext(
+  context: BrowserContext,
+  onBlocked: (what: string) => void,
+): Promise<void> {
+  await context.route('**/*', (route) => {
+    const req = route.request();
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method())) return route.fallback();
+    const u = new URL(req.url());
+    onBlocked(`${req.method()} ${u.origin}${u.pathname}`);
+    return route.abort('blockedbyclient');
+  });
+  context.on('page', (popup) => {
+    if (context.pages().length > 1) {
+      onBlocked(`window.open ${popup.url()}`);
+      popup.close().catch(() => {});
+    }
+  });
 }
 
 const DEFAULT_PHASE_AFTER_LOAD = 'interaction';
@@ -33,7 +61,7 @@ function resolveExecutable(config: CrispyConfig): string | undefined {
 }
 
 /** Math.random with a fixed seed (mulberry32): same sequence in every run and document. */
-const SEEDED_RANDOM = `(() => {
+export const SEEDED_RANDOM = `(() => {
   let s = 0x2f6b9c1d;
   Math.random = function random() {
     s = (s + 0x6d2b79f5) | 0;
@@ -63,7 +91,7 @@ const withoutBanner = (message: string) =>
     .trim();
 
 /** Turns "connection refused" into an actionable message. */
-async function gotoApp(page: Page, url: string, timeout: number): Promise<void> {
+export async function gotoApp(page: Page, url: string, timeout: number): Promise<void> {
   try {
     await page.goto(url, { waitUntil: 'load', timeout });
   } catch (err) {
@@ -507,9 +535,11 @@ export async function runScenarioOnce(
   config: CrispyConfig,
   scenario: Scenario,
   storageState?: StorageState,
+  onBlocked?: (what: string) => void,
 ): Promise<RawRun> {
   const context = await browser.newContext({ viewport: config.viewport, storageState });
   try {
+    if (onBlocked) await guardContext(context, onBlocked);
     const page = await context.newPage();
     const profiler = await PageProfiler.attach(page, config);
     const url = new URL(scenario.path, config.baseUrl).toString();
@@ -549,7 +579,7 @@ type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
  * either a saved session file (`storageState`, e.g. from `crispy login`) or
  * scripted `login` steps. Login renders are never part of any phase.
  */
-async function authenticate(
+export async function authenticate(
   browser: Browser,
   config: CrispyConfig,
   cwd: string | undefined,
@@ -607,9 +637,24 @@ export async function profile(
     const results: { scenario: Scenario; runs: RawRun[] }[] = [];
     for (const scenario of scenarios) {
       const runs: RawRun[] = [];
-      for (let i = 0; i < config.runs; i++) {
-        log(`[crispy] ${scenario.name}: run ${i + 1}/${config.runs}`);
-        runs.push(await runScenarioOnce(browser, config, scenario, auth));
+      try {
+        for (let i = 0; i < config.runs; i++) {
+          log(`[crispy] ${scenario.name}: run ${i + 1}/${config.runs}`);
+          const blocked = options.onBlockedRequest;
+          runs.push(
+            await runScenarioOnce(
+              browser,
+              config,
+              scenario,
+              auth,
+              blocked && ((what) => blocked(scenario.name, what)),
+            ),
+          );
+        }
+      } catch (err) {
+        if (!options.onScenarioError) throw err;
+        options.onScenarioError(scenario.name, err as Error);
+        continue;
       }
       results.push({ scenario, runs });
     }
