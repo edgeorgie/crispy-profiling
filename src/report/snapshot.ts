@@ -371,6 +371,10 @@ export function compareSnapshot(
         const e = exp.components[from];
         delete exp.components[from];
         if (e) exp.components[to] = e;
+        // Wrapping a component in React.memo often renames it (`X` → `XImpl`). On a
+        // mutable-instance reader that is the change that freezes the UI.
+        const now = reportPhase?.components[to];
+        const memoOnInstance = !!now?.memo && Object.keys(now.instanceProps ?? {}).length > 0;
         changes.push({
           scenario,
           phase,
@@ -380,6 +384,7 @@ export function compareSnapshot(
           actual: e?.renders ?? null,
           status: 'renamed',
           renamedFrom: from,
+          ...((e?.mutable || memoOnInstance) && { suspect: true as const }),
         });
       }
 

@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows
 - MCP `test_render_snapshots` speaks MCP: it points at `update=true` and the tool names instead of
   `crispy test -u`.
 - `crispy scan` adds `.crispy/` (reports) to `.gitignore` in a git project.
+- A renamed component (React.memo often renames `X` to `XImpl`) that reads a mutable instance is
+  shown as "⚠️ check the UI" too.
 - Fewer renders on a component that reads a mutable instance (a TanStack table, a form API) or
   mutable data is shown as "⚠️ check the UI" instead of 🟢 in snapshots and `compare`: a React.memo
   there freezes the UI. Snapshots mark such components `"mutable": true`.

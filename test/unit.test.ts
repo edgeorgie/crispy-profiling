@@ -329,6 +329,28 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     ).toBe(true);
   });
 
+  it('flags a renamed mutable-instance reader, the usual trace of a new React.memo (council round 3)', async () => {
+    const { snapshotToMarkdown } = await import('../src/report/snapshot.js');
+    const before = make(4, 0);
+    const item = before.scenarios.home?.phases.interaction?.components.Item;
+    if (item) {
+      item.instanceProps = { table: 4 };
+      item.definedIn = 'src/Bulk.tsx';
+    }
+    const snap = toSnapshot(before);
+    const after = make(4, 0);
+    const p = after.scenarios.home?.phases.interaction;
+    const moved = p?.components.Item;
+    if (p && moved) {
+      moved.definedIn = 'src/Bulk.tsx';
+      p.components.ItemImpl = { ...moved, memo: true };
+      delete p.components.Item;
+    }
+    const r = compareSnapshot(snap, after);
+    expect(r.changes.map((c) => [c.status, c.suspect])).toEqual([['renamed', true]]);
+    expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('⚠️ check the UI');
+  });
+
   it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
     const flaky = make(10, 0);
     const item = flaky.scenarios.home?.phases.interaction?.components.Item;
