@@ -33,9 +33,8 @@ validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are no
 ```bash
 npm i -D crispy-profiling
 npx crispy install                                   # downloads the matching Chromium (once)
-npx crispy init --base-url http://localhost:5173     # creates crispy.config.json: edit the steps
-npm run dev &                                        # your app, development build
-npx crispy test                                      # records crispy.snap.json → commit it
+npx crispy init      # detects Next.js/Vite, the dev URL and your dev command → crispy.config.json
+npx crispy test      # starts your dev server, records crispy.snap.json → commit it
 ```
 
 From then on, `npx crispy test` (locally, in CI or from an AI agent) fails when a component starts
@@ -141,6 +140,7 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
 | `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
+| `webServer` | — | `{ "command": "npm run dev" }`: crispy starts your dev server, waits for `baseUrl` (or `url`) and stops it afterwards; a server already running there is reused. `crispy init` fills it in. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
 | `snapshot` | `crispy.snap.json`, `0`, `false` | `file` (relative to the config file), `tolerance` and `failOnNewAvoidable` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |

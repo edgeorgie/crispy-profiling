@@ -38,8 +38,9 @@ Chromium is required once: `npx crispy-profiling install`.
 
 ## Workflow
 
-1. **Start the dev server** (development build, so component names are readable). Confirm the
-   URL responds.
+1. **Dev server**: if `crispy.config.json` has `webServer`, crispy starts it; otherwise start the
+   development build yourself and confirm the URL responds. No config yet? `npx crispy init`
+   detects the framework, URL and dev command.
 2. **Describe the slow interaction as steps** (`click`, `fill`, `type`, `press`, `hover`,
    `select`, `drag`, `scroll`, `waitFor`, `wait`, `goto`, `phase`). Renders before the first step go to
    phase `load`; renders during steps go to `interaction` unless you name phases with
