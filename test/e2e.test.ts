@@ -929,3 +929,24 @@ describe('memoized dependencies by name (council round 1)', () => {
     expect(Object.keys(button?.staleMemo ?? {})).toEqual(['onAdd|Deps|`cart` (an array)']);
   });
 });
+
+describe('readOnly configs (council round 1)', () => {
+  it('blocks writes when scanned interactions are replayed', async () => {
+    writes.length = 0;
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      readOnly: true,
+      scenarios: [
+        {
+          name: 'trap',
+          path: '/?trap',
+          steps: [{ action: 'click', selector: 'text=Save changes' }],
+        },
+      ],
+    });
+    await profile(config);
+    expect(writes).toEqual([]);
+  });
+});

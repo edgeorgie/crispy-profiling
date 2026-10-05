@@ -694,7 +694,11 @@ export async function profile(
       try {
         for (let i = 0; i < config.runs; i++) {
           log(`[crispy] ${scenario.name}: run ${i + 1}/${config.runs}`);
-          const blocked = options.onBlockedRequest;
+          const blocked =
+            options.onBlockedRequest ??
+            (config.readOnly
+              ? (_name: string, what: string) => log(`[crispy] read-only: blocked ${what}`)
+              : undefined);
           runs.push(
             await runScenarioOnce(
               browser,
