@@ -41,10 +41,18 @@ Chromium is required once: `npx crispy-profiling install`.
 If the project already has Playwright tests, prefer adding `renders(page)` + `toMatchSnapshot()`
 from `crispy-profiling/playwright` to the relevant test over writing a new scenario.
 
+## First run (no `crispy.config.json` yet)
+
+1. `npx crispy-profiling install` once (or set `CRISPY_CHROMIUM_PATH` to an existing Chrome).
+2. `npx crispy-profiling scan` (MCP: `scan_app`): it starts the dev server, profiles safe
+   interactions and saves `crispy.config.json`. If it reports another app on the port, stop that
+   app or give this one its own port before trusting any number.
+3. Fix the top root cause, then `npx crispy-profiling test` to record the snapshot.
+
 ## Workflow
 
 1. **Dev server**: if `crispy.config.json` has `webServer`, crispy starts it; otherwise start the
-   development build yourself and confirm the URL responds. No config yet? `npx crispy init`
+   development build yourself and confirm the URL responds. No config yet? `npx crispy-profiling scan` (or `npx crispy-profiling init` to write steps by hand)
    detects the framework, URL and dev command.
 2. **Describe the slow interaction as steps** (`click`, `fill`, `type`, `press`, `hover`,
    `select`, `drag`, `scroll`, `waitFor`, `wait`, `goto`, `phase`). Renders before the first step go to
@@ -100,11 +108,11 @@ Rules:
 
 ## Render snapshots (prevent regressions)
 
-If the project has a `crispy.snap.json`, run `test_render_snapshots` (or `npx crispy test`) after any
+If the project has a `crispy.snap.json`, run `test_render_snapshots` (or `npx crispy-profiling test`) after any
 change to React components. A failure lists the regressed component, the unstable prop, where it is
 rendered and a suggested fix — apply it and run again. The MCP tool is read-only: only after the
 user confirms the new counts are intended, pass `update: true` with
-`confirm: "accept-render-changes"` (CLI: `crispy test -u`). **Never accept a snapshot change on
+`confirm: "accept-render-changes"` (CLI: `npx crispy-profiling test -u`). **Never accept a snapshot change on
 your own to make the test pass** — that hides the regression the test exists to catch; show the
 user the diff and ask. If there is no snapshot yet, `crispy test` creates one: tell the user to
 commit it.
@@ -127,4 +135,4 @@ Add budgets per scenario and phase in `crispy.config.json`; `crispy run` exits 1
 }
 ```
 
-For CI, see `examples/github-workflow.yml` in the repository.
+For CI, see the "CI (GitHub Action)" section of the README: https://github.com/edgeorgie/crispy-profiling#ci-github-action
