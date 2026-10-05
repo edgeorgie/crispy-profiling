@@ -62,10 +62,13 @@ const realChange = (deps: string) =>
   !/\((an object|an array|a function)\)/.test(deps);
 
 /** How to fix a useCallback/useMemo whose dependencies change. */
-function depFix(what: string, deps: string): string {
-  return realChange(deps)
-    ? `${what} is memoized, but its dependency ${deps} really changes (a new value, not just a new object): that render is expected. To avoid it, read the value when the callback runs (a state updater like \`setX(x => …)\`, or a ref) instead of listing it as a dependency`
-    : `${what} is memoized, but its dependency ${deps} is recreated on every render: memoize it where it is created, or read it inside the callback (a state updater like \`setX(x => …)\`, or a ref) instead of listing it`;
+function depFix(what: string, deps: string, callback = true): string {
+  if (!realChange(deps)) {
+    return `${what} is memoized, but its dependency ${deps} is recreated on every render: memoize it where it is created, or read it inside the callback (a state updater like \`setX(x => …)\`, or a ref) instead of listing it`;
+  }
+  return callback
+    ? `${what} is memoized, but its dependency ${deps} really changed (a new value, not just a new object): read that value when the callback runs (a state updater like \`setX(x => …)\`, or a ref) instead of listing it as a dependency`
+    : `${what} is recomputed because its dependency ${deps} really changed: these renders are expected, the data depends on it. If typing feels slow, render the expensive part from \`useDeferredValue\` of that value`;
 }
 
 /** First entry of a "prop|Creator[|extra]" count map for `prop`. */
@@ -80,7 +83,7 @@ function propFix(c: ComponentReport, prop: string, owner: string | null): string
   const inCreator = creator ? ` in \`${creator}\`` : '';
   const stale = lookup(c.staleMemo, prop);
   if (stale?.[1]) {
-    return depFix(`\`${prop}\`${inCreator}`, stale[1]);
+    return depFix(`\`${prop}\`${inCreator}`, stale[1], !!c.callbackProps[prop]);
   }
   if (c.unstableProps[prop]) {
     return `\`${prop}\` is recreated with equal data${inCreator}: hoist it out of the component or wrap it in useMemo`;
@@ -301,12 +304,16 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       )
       .find(Boolean)
       ?.split('|');
+    // Derived data recomputed from a value that really changed: necessary, not a cause.
+    const isCallback = (prop: string) =>
+      e.affected.some((k) => phase.components[k]?.callbackProps[prop]);
+    if (stale && realChange(stale[2] ?? '') && !isCallback(stale[0] ?? '')) continue;
     const notMemo = e.affected.filter((k) => !phase.components[k]?.memo && !libraryKey(k));
     const wrap = notMemo.length
       ? `, then wrap ${code(notMemo.slice(0, 2))} in React.memo (stable props alone do not skip renders)`
       : '';
     const fix = stale
-      ? `${depFix(`\`${stale[0]}\``, stale[2] ?? '')}${realChange(stale[2] ?? '') ? '' : wrap}`
+      ? `${depFix(`\`${stale[0]}\``, stale[2] ?? '', isCallback(stale[0] ?? ''))}${realChange(stale[2] ?? '') ? '' : wrap}`
       : `memoize them there (useCallback / useMemo, or hoist constants)${wrap}`;
     out.push({
       renders: e.renders,

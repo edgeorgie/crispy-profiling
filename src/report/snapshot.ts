@@ -72,6 +72,15 @@ const inOrder = (names: Iterable<string>, order: string[]) => {
   return [...new Set(names)].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
 };
 
+/** Renders that could be avoided: unchanged inputs plus recreated callbacks. */
+function fixableStat(c: ComponentReport): Stat {
+  return {
+    median: c.avoidableRenders.median + c.callbackRenders.median,
+    min: c.avoidableRenders.min + c.callbackRenders.min,
+    max: c.avoidableRenders.max + c.callbackRenders.max,
+  };
+}
+
 export function toSnapshot(report: CrispyReport): RenderSnapshot {
   const scenarios: RenderSnapshot['scenarios'] = {};
   for (const name of Object.keys(report.scenarios).sort(cmp)) {
@@ -86,7 +95,8 @@ export function toSnapshot(report: CrispyReport): RenderSnapshot {
         const r = p.components[c] as ComponentReport;
         components[c] = {
           renders: toCount(r.renders),
-          avoidable: toCount(r.avoidableRenders),
+          // Avoidable = unchanged inputs + recreated callbacks (as in the report header).
+          avoidable: toCount(fixableStat(r)),
           ...(r.definedIn && { file: r.definedIn }),
         };
       }
@@ -394,7 +404,7 @@ export function compareSnapshot(
           base,
           'avoidable',
           e.avoidable,
-          full?.avoidableRenders ?? zero,
+          full ? fixableStat(full) : zero,
           hintFor(full, reportPhase, component),
           tolerance,
           !rendersUp && !failOnMoreAvoidable,

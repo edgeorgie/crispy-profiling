@@ -88,7 +88,7 @@ function insight(report: CrispyReport, max = 5): string {
     '',
     ...top.map((c, i) => `${i + 1}. _${c.where}_ — ${c.text}`),
     '',
-    'Fix one, then run `crispy test` again: it shows 🟢 improved and `-u` locks it in.',
+    'Fix one, then run `crispy test` again: it shows 🟢 improved. Locking that in with `-u` is a person’s decision (agents: ask first).',
     '',
   ].join('\n');
 }
