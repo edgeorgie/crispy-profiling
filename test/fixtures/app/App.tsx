@@ -14,6 +14,7 @@ import { createRoot } from 'react-dom/client';
 import { Cascade, CascadeRound8 } from './Cascade.js';
 import { Deps } from './Deps.js';
 import { Lab } from './Lab.js';
+import { Mutable } from './Mutable.js';
 import { Trap } from './Trap.js';
 
 // Replaced at build time: false = naive implementation, true = optimized one.
@@ -277,6 +278,7 @@ function App() {
       {location.search.includes('ctxvalue') && <CartShell tick={count} />}
       {location.search.includes('store') && <StoreReader />}
       {location.search.includes('lab') && <Lab />}
+      {location.search.includes('mutable') && <Mutable />}
       {location.search.includes('deps') && <Deps />}
       {location.search.includes('trap') && <Trap />}
       {location.search.includes('cascade') && <Cascade />}

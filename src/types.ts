@@ -39,6 +39,11 @@ export interface RawComponentStats {
   recreatedContextFrom: Record<string, number>;
   /** Same, when the parent re-rendered the component anyway (React.memo alone would not help). */
   maskedContextFrom?: Record<string, number>;
+  /**
+   * Renders with unchanged props, state and context whose output still changed: the
+   * component reads mutable data (a table/form instance, a ref, a global). Not avoidable.
+   */
+  mutableReads?: number;
   /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
   stateChanges?: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), with counts. */
@@ -124,6 +129,8 @@ export interface ComponentReport {
   recreatedContextFrom: Record<string, number>;
   /** Provider owners recreating a context value it reads while its parent re-renders it anyway. */
   maskedContextFrom?: Record<string, number>;
+  /** Renders with unchanged inputs but changed output (reads mutable data; not avoidable). */
+  mutableReads?: number;
   /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
   stateChanges: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), most frequent first. */
