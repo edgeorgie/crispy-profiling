@@ -433,7 +433,7 @@ export function installCrispyHook(): void {
    * before the first or after the last custom hook map to exact list slots;
    * inside custom hooks it names the hook only when there is one candidate.
    */
-  function changedStateName(prev: any, next: any): string | null {
+  function changedStateName(prev: any, next: any, level: Change = 3): string | null {
     if (next.tag === 1) return 'class state (this.state)';
     let a = prev.memoizedState;
     let b = next.memoizedState;
@@ -443,7 +443,7 @@ export function installCrispyHook(): void {
     for (let i = 0; a && b; i++, a = a.next, b = b.next) {
       count = i + 1;
       if (index >= 0 || isEffect(a.memoizedState) || isMemoHook(b)) continue;
-      if (classify(a.memoizedState, b.memoizedState) === 3) index = i;
+      if (classify(a.memoizedState, b.memoizedState) === level) index = i;
     }
     if (index < 0) return null;
 
@@ -823,6 +823,10 @@ export function installCrispyHook(): void {
       if (cascadeCommit) cascadeOwners.push({ fiber: next, key: keyOf(next), what });
       return true;
     }
+    // An effect that copies a prop into state (`setShown(items)`) often sets a value
+    // with equal content: still an extra commit caused by that effect.
+    if (s === 1 && cascadeCommit)
+      cascadeOwners.push({ fiber: next, key: keyOf(next), what: changedStateName(prev, next, 1) });
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
     // The parent re-renders this component anyway, but it also reads a context value
     // recreated with equal content: React.memo alone would not skip it.

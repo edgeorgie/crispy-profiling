@@ -80,11 +80,22 @@ function insight(report: CrispyReport, max = 5): string {
       rootCauses(p).map((c) => ({ ...c, where: `${s.name} / ${phase}` })),
     ),
   );
-  if (!all.length) return '\nNo avoidable re-renders found in these flows. 🎉\n';
-  const top = all.sort(byCost).slice(0, max);
+  if (!all.length) {
+    const avoidable = Object.values(report.scenarios)
+      .flatMap((s) => Object.values(s.phases))
+      .reduce((n, p) => n + p.totalAvoidableRenders.median + p.totalCallbackRenders.median, 0);
+    return avoidable
+      ? `\n${avoidable} avoidable render(s) recorded, but no single cause stands out: \`crispy run\` shows the hint for each component.\n`
+      : '\nNo avoidable re-renders found in these flows. 🎉\n';
+  }
+  // Real causes first; low-impact ones only when there is nothing else.
+  const major = all.filter((c) => !c.minor);
+  const top = (major.length ? major : all).sort(byCost).slice(0, max);
   return [
     '',
-    `**Already worth fixing** (avoidable renders recorded in this snapshot):`,
+    major.length
+      ? `**Already worth fixing** (avoidable renders recorded in this snapshot):`
+      : `**Small wins only** (low impact; fix them if the rest is done):`,
     '',
     ...top.map((c, i) => `${i + 1}. _${c.where}_ — ${c.text}`),
     '',

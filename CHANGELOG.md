@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- A useEffect that copies a prop into state with equal content (`setShown(items)`) is now reported
+  as an effect cascade instead of a recreated prop.
+- The first `crispy test` no longer says "No avoidable re-renders 🎉" when the snapshot it wrote has
+  avoidable renders without a single standout cause.
+
 ### Changed
 - Every 🟢 improvement (snapshot and `compare`) now says that fewer renders is not proof the UI still
   updates; the README and the skill say the same.

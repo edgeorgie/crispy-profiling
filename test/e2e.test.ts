@@ -811,7 +811,7 @@ describe('effect cascades', () => {
 
 describe('effect cascades: attribution (red-team round 8)', () => {
   it('blames the component whose effect ran, also across lists and stores', async () => {
-    const ids = ['prop', 'rows', 'store'];
+    const ids = ['prop', 'rows', 'store', 'copy'];
     const steps = ids.flatMap((x) => [
       { action: 'phase' as const, name: x },
       { action: 'click' as const, selector: `#cascade-${x}` },
@@ -841,6 +841,9 @@ describe('effect cascades: attribution (red-team round 8)', () => {
     expect(cascades('store')).toEqual({
       EffectStoreWriter: [{ 'a store read by `EffectStoreReader`': 2 }, 2],
     });
+    // Council round 3: the copy has equal content, it is still the effect's commit.
+    // esbuild renames the memo's inner function (Copier2).
+    expect(Object.values(cascades('copy'))).toEqual([[{ '`shown` (useState)': 2 }, 2]]);
     const hint = hintFor(p?.prop?.components.Doubler, p?.prop, 'Doubler');
     expect(hint).toMatch(/call the parent's setter in the event handler/);
   });

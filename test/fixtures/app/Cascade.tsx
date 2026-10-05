@@ -1,5 +1,6 @@
 // Effect cascades (setState right after a render, in an effect). Rendered with ?cascade.
 import {
+  memo,
   useDeferredValue,
   useEffect,
   useLayoutEffect,
@@ -187,9 +188,28 @@ function EffectStoreReader() {
   return <span>{v}</span>;
 }
 
+// Council round 3: an effect copies a prop into state, and the copy has equal content.
+const Copier = memo(function Copier({ items }: { items: number[] }) {
+  const [shown, setShown] = useState<number[]>(items);
+  useEffect(() => setShown(items), [items]);
+  return <span>{shown.length}</span>;
+});
+function CopyParent() {
+  const [n, setN] = useState(0);
+  return (
+    <div>
+      <button id="cascade-copy" type="button" onClick={() => setN(n + 1)}>
+        {n}
+      </button>
+      <Copier items={[1, 2, 3]} />
+    </div>
+  );
+}
+
 export function CascadeRound8() {
   return (
     <>
+      <CopyParent />
       <ParentOfDoubler />
       <RowList />
       <EffectStoreWriter />
