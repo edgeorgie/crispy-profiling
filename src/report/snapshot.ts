@@ -50,6 +50,11 @@ export interface SnapshotChange {
   renamedFrom?: string;
   /** New component that already renders avoidably (reported, not failing). */
   warning?: true;
+  /**
+   * More avoidable renders, but not more renders: the same renders now have a
+   * clear, fixable cause (often uncovered by a previous fix). Reported, not failing.
+   */
+  uncovered?: true;
 }
 
 export interface SnapshotResult {
@@ -264,6 +269,7 @@ export function compareSnapshot(
   /** When only some scenarios ran, don't report the others as removed. */
   partial = false,
   failOnNewAvoidable = false,
+  failOnMoreAvoidable = false,
 ): SnapshotResult {
   const current = toSnapshot(report);
   const changes: SnapshotChange[] = [];
@@ -281,11 +287,17 @@ export function compareSnapshot(
     actual: Stat,
     hint?: string,
     slack = tolerance,
+    uncovered = false,
   ) => {
     const flaky = Array.isArray(expected) || actual.min !== actual.max;
     const entry = { ...base, metric, expected, actual: toCount(actual), ...(flaky && { flaky }) };
     if (actual.min > hi(expected) + slack) {
-      changes.push({ ...entry, status: 'regressed', ...(hint && { hint }) });
+      changes.push({
+        ...entry,
+        status: 'regressed',
+        ...(uncovered && { uncovered: true }),
+        ...(hint && { hint }),
+      });
     } else if (actual.max < lo(expected)) {
       changes.push({ ...entry, status: 'improved' });
     }
@@ -375,12 +387,17 @@ export function compareSnapshot(
           full?.renders ?? zero,
           hintFor(full, reportPhase, component),
         );
+        // Same or fewer renders, more of them avoidable: the cause changed (e.g. a
+        // fix removed the real input change and left a recreated prop), not the cost.
+        const rendersUp = (full?.renders ?? zero).min > hi(e.renders) + tolerance;
         check(
           base,
           'avoidable',
           e.avoidable,
           full?.avoidableRenders ?? zero,
           hintFor(full, reportPhase, component),
+          tolerance,
+          !rendersUp && !failOnMoreAvoidable,
         );
       }
     }
@@ -400,7 +417,7 @@ export function compareSnapshot(
     }
   }
 
-  const regressions = changes.filter((c) => c.status === 'regressed');
+  const regressions = changes.filter((c) => c.status === 'regressed' && !c.uncovered);
   return {
     passed: regressions.length === 0,
     changes,
@@ -521,12 +538,17 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   for (const c of sorted) {
     const values = `${fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
     lines.push(
-      `| ${c.warning ? '⚠️ new' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
+      `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
     );
   }
   lines.push('');
   if (result.improvements.length) {
     lines.push(`Improvements found: run \`crispy test --update\` to lock them into \`${file}\`.`);
+  }
+  if (result.changes.some((c) => c.uncovered)) {
+    lines.push(
+      '🟡 now avoidable: same number of renders (not a regression), but they now have a clear fix — often uncovered by a previous fix. They do not fail the test.',
+    );
   }
   if (result.regressions.length) {
     lines.push(

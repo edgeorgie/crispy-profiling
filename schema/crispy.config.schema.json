@@ -434,7 +434,8 @@
       "default": {
         "file": "crispy.snap.json",
         "tolerance": 0,
-        "failOnNewAvoidable": false
+        "failOnNewAvoidable": false,
+        "failOnMoreAvoidable": false
       },
       "type": "object",
       "properties": {
@@ -449,6 +450,10 @@
           "maximum": 9007199254740991
         },
         "failOnNewAvoidable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "failOnMoreAvoidable": {
           "default": false,
           "type": "boolean"
         }

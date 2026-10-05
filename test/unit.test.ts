@@ -255,6 +255,18 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(r.improvements.map((c) => c.metric)).toEqual(['avoidable']);
   });
 
+  it('reports the same renders becoming avoidable as 🟡, not a regression (council round 1)', () => {
+    const r = compareSnapshot(toSnapshot(make(25, 0)), make(25, 25));
+    expect(r.passed).toBe(true);
+    expect(r.changes.map((c) => [c.metric, c.uncovered])).toEqual([['avoidable', true]]);
+    // More renders that are also more avoidable is still a regression.
+    expect(compareSnapshot(toSnapshot(make(10, 0)), make(25, 25)).passed).toBe(false);
+    // Strict mode fails on it.
+    expect(
+      compareSnapshot(toSnapshot(make(25, 0)), make(25, 25), 0, false, false, true).passed,
+    ).toBe(false);
+  });
+
   it('fails when commits grow (R2-11)', () => {
     const r = compareSnapshot(toSnapshot(make(10, 0, 2)), make(10, 0, 50));
     expect(r.regressions.map((c) => [c.metric, c.expected, c.actual])).toEqual([
