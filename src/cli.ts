@@ -30,6 +30,7 @@ Usage:
   crispy scan [url] [options]               Zero config: find interactions, profile them, save them
           --routes <n>         Routes to visit (default 3)
           --actions <n>        Interactions per route (default 5)
+          --allow-writes       Let interactions send POST/PUT/DELETE (blocked by default)
   crispy init [--base-url <url>]            Create ${DEFAULT_CONFIG_FILE}
   crispy install [--with-deps]              Download the Chromium build crispy uses
   crispy login [-c <config>] [--path /login] Sign in by hand in a browser window; saves the session
@@ -111,11 +112,17 @@ async function main(argv: string[]): Promise<number> {
         options: {
           routes: { type: 'string', default: '3' },
           actions: { type: 'string', default: '5' },
+          'allow-writes': { type: 'boolean', default: false },
         },
       });
       const maxRoutes = Number(values.routes);
       const maxActions = Number(values.actions);
-      if (!Number.isInteger(maxRoutes) || !Number.isInteger(maxActions) || maxRoutes < 1) {
+      if (
+        !Number.isInteger(maxRoutes) ||
+        !Number.isInteger(maxActions) ||
+        maxRoutes < 1 ||
+        maxActions < 1
+      ) {
         log('--routes and --actions must be positive integers');
         return 2;
       }
@@ -124,13 +131,26 @@ async function main(argv: string[]): Promise<number> {
       const hasConfig = existsSync(DEFAULT_CONFIG_FILE);
       let base: CrispyConfigInput;
       let path = '/';
+      // Session, login and timing settings of an existing config apply to any URL.
+      const existing = hasConfig
+        ? (({ scenarios: _, ...rest }) => rest)(
+            JSON.parse(await readFile(DEFAULT_CONFIG_FILE, 'utf8')),
+          )
+        : null;
       if (url) {
-        const u = new URL(url);
-        base = { baseUrl: u.origin, scenarios: [] };
-        path = `${u.pathname}${u.search}`;
-      } else if (hasConfig) {
-        const { scenarios: _, ...rest } = JSON.parse(await readFile(DEFAULT_CONFIG_FILE, 'utf8'));
-        base = rest;
+        let u: URL;
+        try {
+          u = new URL(/^https?:\/\//.test(url) ? url : `http://${url}`);
+        } catch {
+          log(`Not a URL: ${url} (e.g. http://localhost:5173/)`);
+          return 2;
+        }
+        base = { ...(existing ?? {}), baseUrl: u.origin, scenarios: [] };
+        if (existing && existing.baseUrl !== u.origin)
+          delete (base as { webServer?: unknown }).webServer;
+        path = `${u.pathname}${u.search}${u.hash}`;
+      } else if (existing) {
+        base = existing;
       } else {
         const app = detectApp(process.cwd());
         base = {
@@ -140,7 +160,14 @@ async function main(argv: string[]): Promise<number> {
         };
       }
       const config = parseConfig({ ...base, scenarios: [{ name: 'scan' }] });
-      const result = await scan(config, { path, maxRoutes, maxActions, log, cwd: process.cwd() });
+      const result = await scan(config, {
+        path,
+        maxRoutes,
+        maxActions,
+        allowWrites: values['allow-writes'],
+        log,
+        cwd: process.cwd(),
+      });
       await write('.crispy/scan.json', serializeReport(result.report));
       const target = hasConfig ? 'crispy.scan.json' : DEFAULT_CONFIG_FILE;
       const { scenarios: _ignored, ...settings } = base as CrispyConfigInput & {

@@ -1,6 +1,13 @@
 import type { Browser } from 'playwright-core';
 import type { CrispyConfig, CrispyConfigInput, Scenario, Step } from './config.js';
-import { authenticate, gotoApp, launchBrowser, PageProfiler, profile } from './profiler/run.js';
+import {
+  authenticate,
+  gotoApp,
+  guardContext,
+  launchBrowser,
+  PageProfiler,
+  profile,
+} from './profiler/run.js';
 import { startWebServer } from './profiler/webserver.js';
 import { type RootCause, rootCauses } from './report/hints.js';
 import type { CrispyReport } from './types.js';
@@ -15,6 +22,11 @@ export interface ScanOptions {
   maxActions?: number;
   /** Runs per scenario (default 2). */
   runs?: number;
+  /**
+   * Let interactions send requests other than GET (default: blocked, and the
+   * scenarios that tried are not saved). Only for apps with disposable data.
+   */
+  allowWrites?: boolean;
   log?: (msg: string) => void;
   cwd?: string;
 }
@@ -31,10 +43,12 @@ export interface ScanResult {
 
 /**
  * Names that suggest an action with effects outside the page (data loss,
- * payments, signing out, sending): never clicked by the scan.
+ * payments, signing out, sending), in a few languages: never clicked or
+ * visited by the scan. A second line of defense: during the scan every request
+ * other than GET is blocked anyway (see `allowWrites`). Flags: "iu".
  */
 export const RISKY =
-  '\\b(delete|remove|destroy|erase|log ?out|sign ?out|pay|buy|purchase|checkout|order|submit|send|publish|deploy|reset|discard|unsubscribe|archive|ban|block|clear|revoke|cancel subscription)\\b';
+  '(^|[^\\p{L}])(delete|remove|destroy|erase|wipe|trash|log[ -]?out|sign[ -]?out|pay|buy|purchase|checkout|order|submit|send|publish|deploy|reset|discard|unsubscribe|archive|ban|block|clear|revoke|cancel subscription|eliminar|borrar|quitar|cerrar sesi[oó]n|pagar|comprar|enviar|supprimer|effacer|d[ée]connexion|payer|acheter|envoyer|l[öo]schen|entfernen|abmelden|kaufen|senden|excluir|apagar|remover|sair|elimina|cancella|esci|削除|删除|удалить|выйти)($|[^\\p{L}])';
 
 interface Found {
   actions: {
@@ -51,7 +65,13 @@ interface Found {
 
 /** Runs in the page: safe interactive elements and same-origin links, in DOM order. */
 function discoverInPage(risky: string): Found {
-  const isRisky = (s: string) => new RegExp(risky, 'i').test(s);
+  const riskyRe = new RegExp(risky, 'iu');
+  const isRisky = (s: string) => riskyRe.test(s);
+  // Icon-only or emoji-only names say nothing about what the action does.
+  const meaningful = (s: string) => /[\p{L}\p{N}]/u.test(s);
+  const multiline = (s: string | null) => s !== null && /[\r\n\t]/.test(s);
+  const route = (u: URL) =>
+    `${u.pathname.length > 1 ? u.pathname.replace(/\/+$/, '') : u.pathname}${u.hash.startsWith('#/') ? u.hash : ''}`;
   const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
   const visible = (el: Element) => {
     const r = el.getBoundingClientRect();
@@ -70,10 +90,10 @@ function discoverInPage(risky: string): Found {
     const h = el as HTMLButtonElement;
     if (!visible(el) || h.disabled || el.getAttribute('aria-disabled') === 'true') continue;
     if (el.closest('a[href]')) continue; // navigation: visited as a route instead
-    if (h.type === 'submit' && el.closest('form')) continue;
+    if (h.type === 'submit' && (h.form || el.closest('form'))) continue;
     const role = el.tagName === 'INPUT' ? 'checkbox' : el.getAttribute('role') || 'button';
     const name = norm(el.getAttribute('aria-label') || (el as HTMLElement).innerText || h.title);
-    if (!name || name.length > 40 || isRisky(name)) continue;
+    if (!name || name.length > 40 || !meaningful(name) || isRisky(name)) continue;
     const key = `${role}|${name}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -93,6 +113,7 @@ function discoverInPage(risky: string): Found {
     const aria = el.getAttribute('aria-label');
     const placeholder = el.getAttribute('placeholder');
     const field = el.getAttribute('name');
+    if (multiline(aria) || multiline(placeholder) || multiline(field)) continue;
     const tag = el.tagName.toLowerCase();
     const css = aria
       ? `${tag}[aria-label=${quote(aria)}]`
@@ -110,10 +131,14 @@ function discoverInPage(risky: string): Found {
   for (const el of Array.from(document.querySelectorAll('select'))) {
     const h = el as HTMLSelectElement;
     if (!visible(el) || h.disabled || h.multiple) continue;
+    // Bulk-action menus ("Delete selected") are not navigation: skip the whole select.
+    const options = Array.from(h.options);
+    if (options.some((o) => isRisky(o.text) || isRisky(o.value))) continue;
     // The first option that is not the current one and has a value.
-    const option = Array.from(h.options).find((o) => !o.disabled && o.value && !o.selected);
+    const option = options.find((o) => !o.disabled && o.value && !o.selected);
     const aria = el.getAttribute('aria-label');
     const field = el.getAttribute('name') || el.id;
+    if (multiline(aria) || multiline(field)) continue;
     const css = aria
       ? `select[aria-label=${quote(aria)}]`
       : field
@@ -140,18 +165,19 @@ function discoverInPage(risky: string): Found {
       continue;
     }
     if (url.origin !== location.origin || anchor.hasAttribute('download')) continue;
-    if (anchor.target === '_blank' || isRisky(url.pathname) || isRisky(norm(anchor.innerText)))
-      continue;
+    const name = norm(anchor.getAttribute('aria-label') || anchor.innerText || anchor.title);
+    if (anchor.target === '_blank' || isRisky(url.pathname) || isRisky(name)) continue;
     if (/\.[a-z0-9]{2,4}$/i.test(url.pathname)) continue; // files, not routes
-    if (!links.includes(url.pathname)) links.push(url.pathname);
+    const target = route(url);
+    if (!links.includes(target)) links.push(target);
     // Client-side navigation is an interaction too (route transitions re-render a lot).
-    const name = norm(anchor.getAttribute('aria-label') || anchor.innerText);
     const key = `link|${name}`;
     if (
       visible(a) &&
       name &&
       name.length <= 40 &&
-      url.pathname !== location.pathname &&
+      meaningful(name) &&
+      target !== route(new URL(location.href)) &&
       !seen.has(key)
     ) {
       seen.add(key);
@@ -186,15 +212,19 @@ const slug = (s: string) =>
     .slice(0, 24)
     .replace(/-+$/, '');
 
-const routeName = (path: string) => slug(path.split('?')[0] ?? '') || 'home';
+const routeName = (path: string) => slug(path.split(/[?#]/)[0] ?? '') || 'home';
 
 /** Visits up to `maxRoutes` routes and turns their safe interactions into scenarios. */
 async function discover(
   browser: Browser,
   config: CrispyConfig,
-  options: Required<Pick<ScanOptions, 'path' | 'maxRoutes' | 'maxActions'>>,
+  options: Required<Pick<ScanOptions, 'path' | 'maxRoutes' | 'maxActions' | 'allowWrites'>>,
   log: (msg: string) => void,
-): Promise<Scenario[]> {
+): Promise<{ scenarios: Scenario[]; loadWrites: Set<string> }> {
+  const origin = new URL(config.baseUrl).origin;
+  // Writes the pages send on their own while loading (analytics, sessions): not
+  // caused by an interaction, so they do not disqualify one.
+  const loadWrites = new Set<string>();
   const auth = await authenticate(browser, config, undefined, log);
   const queue = [options.path];
   const visited = new Set<string>();
@@ -208,6 +238,7 @@ async function discover(
     visited.add(path);
     const context = await browser.newContext({ viewport: config.viewport, storageState: auth });
     try {
+      if (!options.allowWrites) await guardContext(context, (what) => loadWrites.add(what));
       const page = await context.newPage();
       // Same page setup and settling as profiling (hook, seeded random, network):
       // apps that boot asynchronously (e.g. a mock service worker first) render late.
@@ -218,7 +249,12 @@ async function discover(
       await profiler.settle('discovery');
       // A redirect (e.g. to /login) is the route that really renders.
       const at = new URL(page.url());
-      const landed = `${at.pathname}${at.search}`;
+      if (at.origin !== origin) {
+        log(`[crispy] ${path} redirects to ${at.origin}: skipped (only ${origin} is scanned).`);
+        continue;
+      }
+      const trimmed = at.pathname.length > 1 ? at.pathname.replace(/\/+$/, '') : at.pathname;
+      const landed = `${trimmed}${at.search}${at.hash.startsWith('#/') ? at.hash : ''}`;
       if (landed !== path && visited.has(landed)) continue;
       visited.add(landed);
       // As source: bundlers with keepNames add a `__name` helper the page does not have.
@@ -239,12 +275,16 @@ async function discover(
       for (const action of found.actions) {
         if (taken >= options.maxActions) break;
         if (scanned.has(action.selector)) continue;
-        if ((await page.locator(action.selector).count()) === 0) continue;
+        const count = await page
+          .locator(action.selector)
+          .count()
+          .catch(() => 0);
+        if (count === 0) continue;
         scanned.add(action.selector);
         taken++;
-        let name = `${routeName(landed)}-${slug(action.name) || action.kind}`;
-        for (let n = 2; names.has(name); n++)
-          name = `${routeName(landed)}-${slug(action.name)}-${n}`;
+        const base = `${routeName(landed)}-${slug(action.name) || action.kind}`;
+        let name = base;
+        for (let n = 2; names.has(name); n++) name = `${base}-${n}`;
         names.add(name);
         const act: Step =
           action.kind === 'click'
@@ -276,7 +316,7 @@ async function discover(
       await context.close();
     }
   }
-  return scenarios;
+  return { scenarios, loadWrites };
 }
 
 /**
@@ -290,7 +330,14 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
     path: options.path ?? '/',
     maxRoutes: options.maxRoutes ?? 3,
     maxActions: options.maxActions ?? 5,
+    allowWrites: options.allowWrites ?? false,
   };
+  const host = new URL(config.baseUrl).hostname;
+  if (!/^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$|\.(local|localhost|test)$/.test(host)) {
+    log(
+      `[crispy] ⚠️ ${host} is not a local address. scan clicks through the app: point it at a development or preview build, never at production.`,
+    );
+  }
   let stopServer = async () => {};
   if (config.webServer) {
     const server = await startWebServer(
@@ -304,8 +351,9 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
   try {
     const browser = await launchBrowser(config);
     let scenarios: Scenario[];
+    let loadWrites: Set<string>;
     try {
-      scenarios = await discover(browser, config, settings, log);
+      ({ scenarios, loadWrites } = await discover(browser, config, settings, log));
     } finally {
       await browser.close();
     }
@@ -315,6 +363,7 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
       );
     }
     const skipped: ScanResult['skipped'] = [];
+    const wrote = new Map<string, string>();
     const report = await profile(
       {
         ...config,
@@ -331,9 +380,28 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
           skipped.push({ name, reason: err.message.split('\n')[0] ?? String(err) });
           log(`[crispy] skipped ${name}: ${err.message.split('\n')[0]}`);
         },
+        // Read-only: writes never leave the browser, and those scenarios are not saved.
+        ...(!settings.allowWrites && {
+          onBlockedRequest: (name: string, what: string) => {
+            if (!loadWrites.has(what) && !wrote.has(name)) wrote.set(name, what);
+          },
+        }),
       },
     );
+    for (const [name, what] of wrote) {
+      skipped.push({ name, reason: `tried to send ${what} (blocked, not saved)` });
+      log(`[crispy] not saved: ${name} tried to send ${what} (blocked)`);
+      delete report.scenarios[name];
+    }
     const ran = scenarios.filter((s) => report.scenarios[s.name]);
+    if (!ran.length) {
+      throw new Error(
+        `None of the ${scenarios.length} interaction(s) found could be profiled:\n${skipped
+          .slice(0, 5)
+          .map((s) => `  - ${s.name}: ${s.reason}`)
+          .join('\n')}\nWrite the steps by hand with "crispy init".`,
+      );
+    }
     // Load phases repeat per route: keep the first scenario's.
     const causes: ScanResult['causes'] = [];
     const seenText = new Set<string>();

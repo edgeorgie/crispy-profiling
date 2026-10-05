@@ -5,7 +5,7 @@ import { serializeReport } from '../src/report/aggregate.js';
 import { compareReports } from '../src/report/compare.js';
 import { hintFor } from '../src/report/hints.js';
 import type { CrispyReport } from '../src/types.js';
-import { buildFixture, serve } from './helpers.js';
+import { buildFixture, serve, writes } from './helpers.js';
 
 let servers: { url: string; close: () => Promise<void> }[] = [];
 let slowUrl = '';
@@ -860,5 +860,28 @@ describe('crispy scan', () => {
     );
     expect(derived).toBeDefined();
     expect(result.causes.some((c) => c.text.includes('A useEffect in `EffectDerived`'))).toBe(true);
+  }, 180_000);
+});
+
+describe('crispy scan safety (red-team round 9)', () => {
+  it('never sends a write and never saves an interaction that tried', async () => {
+    const { scan } = await import('../src/scan.js');
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'x' }],
+    });
+    writes.length = 0;
+    const result = await scan(config, { path: '/?trap', maxRoutes: 2, maxActions: 30, runs: 1 });
+    expect(writes).toEqual([]);
+    const selectors = result.scenarios.flatMap((s) => s.steps.map((st) => JSON.stringify(st)));
+    for (const bad of ['Eliminar', 'Supprimer', '🗑', 'Bulk actions', 'Go', 'Sign-out', 'bye'])
+      expect(selectors.join('\n'), bad).not.toContain(bad);
+    // Clicked, blocked, reported, not saved.
+    expect(result.skipped.find((s) => s.name.includes('save-changes'))?.reason).toMatch(
+      /tried to send POST .*\/api\/save \(blocked, not saved\)/,
+    );
+    expect(result.scenarios.some((s) => s.name.includes('add-item'))).toBe(true);
   }, 180_000);
 });

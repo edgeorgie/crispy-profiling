@@ -13,6 +13,7 @@ import {
 import { createRoot } from 'react-dom/client';
 import { Cascade, CascadeRound8 } from './Cascade.js';
 import { Lab } from './Lab.js';
+import { Trap } from './Trap.js';
 
 // Replaced at build time: false = naive implementation, true = optimized one.
 declare const __FAST__: boolean;
@@ -275,6 +276,7 @@ function App() {
       {location.search.includes('ctxvalue') && <CartShell tick={count} />}
       {location.search.includes('store') && <StoreReader />}
       {location.search.includes('lab') && <Lab />}
+      {location.search.includes('trap') && <Trap />}
       {location.search.includes('cascade') && <Cascade />}
       {location.search.includes('round8') && <CascadeRound8 />}
       {location.search.includes('memo') && (

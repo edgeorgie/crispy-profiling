@@ -891,7 +891,7 @@ describe('dev server URL fallback is safe (R7-02, R7-03)', async () => {
 describe('scan safety', async () => {
   const { RISKY } = await import('../src/scan.js');
   it('never clicks actions with effects outside the page', () => {
-    const risky = new RegExp(RISKY, 'i');
+    const risky = new RegExp(RISKY, 'iu');
     for (const name of [
       'Delete',
       'Remove item',
@@ -902,9 +902,26 @@ describe('scan safety', async () => {
       'Send message',
       'Reset password',
       'Clear all',
+      'Sign-out',
+      'Eliminar',
+      'Supprimer',
+      'Löschen',
+      'Cerrar sesión',
+      'Delete account',
     ])
       expect(risky.test(name), name).toBe(true);
-    for (const name of ['Add item', 'Settings', 'Next page', 'Filter', 'Toggle theme', 'Open menu'])
+    for (const name of [
+      'Add item',
+      'Settings',
+      'Next page',
+      'Filter',
+      'Toggle theme',
+      'Open menu',
+      'Log',
+      'Account',
+      'Blocks',
+      'Orders list',
+    ])
       expect(risky.test(name), name).toBe(false);
   });
 });

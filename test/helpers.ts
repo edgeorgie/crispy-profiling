@@ -42,9 +42,13 @@ export async function buildFixture(): Promise<Record<'slow' | 'fast', string>> {
   return out;
 }
 
+/** Requests other than GET/HEAD that reached a fixture server (read-only checks). */
+export const writes: string[] = [];
+
 /** Minimal static server; returns its base URL and a close function. */
 export async function serve(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server: Server = createServer((req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') writes.push(`${req.method} ${req.url}`);
     // Slow API to reproduce data arriving well after the interaction.
     if (req.url?.startsWith('/api/slow')) {
       setTimeout(() => res.end('loaded'), 600);

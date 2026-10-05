@@ -19,6 +19,32 @@ export interface RunOptions {
   cwd?: string;
   /** Skip a scenario that fails (e.g. a selector that no longer matches) instead of stopping. */
   onScenarioError?: (scenario: string, err: Error) => void;
+  /**
+   * Read-only mode (used by `crispy scan`): requests other than GET/HEAD/OPTIONS are
+   * aborted before they leave the browser and popups are closed. Each blocked request
+   * is reported, e.g. "POST /api/items".
+   */
+  onBlockedRequest?: (scenario: string, what: string) => void;
+}
+
+/** Aborts writes and closes popups in a context (read-only profiling). */
+export async function guardContext(
+  context: BrowserContext,
+  onBlocked: (what: string) => void,
+): Promise<void> {
+  await context.route('**/*', (route) => {
+    const req = route.request();
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method())) return route.fallback();
+    const u = new URL(req.url());
+    onBlocked(`${req.method()} ${u.origin}${u.pathname}`);
+    return route.abort('blockedbyclient');
+  });
+  context.on('page', (popup) => {
+    if (context.pages().length > 1) {
+      onBlocked(`window.open ${popup.url()}`);
+      popup.close().catch(() => {});
+    }
+  });
 }
 
 const DEFAULT_PHASE_AFTER_LOAD = 'interaction';
@@ -509,9 +535,11 @@ export async function runScenarioOnce(
   config: CrispyConfig,
   scenario: Scenario,
   storageState?: StorageState,
+  onBlocked?: (what: string) => void,
 ): Promise<RawRun> {
   const context = await browser.newContext({ viewport: config.viewport, storageState });
   try {
+    if (onBlocked) await guardContext(context, onBlocked);
     const page = await context.newPage();
     const profiler = await PageProfiler.attach(page, config);
     const url = new URL(scenario.path, config.baseUrl).toString();
@@ -612,7 +640,16 @@ export async function profile(
       try {
         for (let i = 0; i < config.runs; i++) {
           log(`[crispy] ${scenario.name}: run ${i + 1}/${config.runs}`);
-          runs.push(await runScenarioOnce(browser, config, scenario, auth));
+          const blocked = options.onBlockedRequest;
+          runs.push(
+            await runScenarioOnce(
+              browser,
+              config,
+              scenario,
+              auth,
+              blocked && ((what) => blocked(scenario.name, what)),
+            ),
+          );
         }
       } catch (err) {
         if (!options.onScenarioError) throw err;

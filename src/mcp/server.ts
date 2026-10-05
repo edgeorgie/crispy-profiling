@@ -82,8 +82,8 @@ export function createServer(): McpServer {
         'so they can be saved and guarded with test_render_snapshots.',
       inputSchema: {
         url: z.url().describe('Start page, e.g. http://localhost:5173/'),
-        maxRoutes: z.number().int().min(1).max(10).default(3),
-        maxActions: z.number().int().min(1).max(20).default(5).describe('Interactions per route'),
+        maxRoutes: z.number().int().min(1).max(10).default(2),
+        maxActions: z.number().int().min(1).max(20).default(4).describe('Interactions per route'),
       },
     },
     async ({ url, maxRoutes, maxActions }) => {
@@ -94,6 +94,8 @@ export function createServer(): McpServer {
           path: `${u.pathname}${u.search}`,
           maxRoutes,
           maxActions,
+          // One run each keeps an exploratory scan fast; test_render_snapshots re-runs them.
+          runs: 1,
         });
         const causes = result.causes.length
           ? result.causes
@@ -106,7 +108,7 @@ export function createServer(): McpServer {
           : '';
         return text(
           `${result.scenarios.length} interaction(s) profiled.\n\nTop root causes:\n${causes}${skipped}\n\n` +
-            `Scenarios (save under "scenarios" in crispy.config.json):\n${JSON.stringify(result.scenarios, null, 2)}`,
+            `Scenarios (save under "scenarios" in crispy.config.json):\n${JSON.stringify(result.scenarios)}`,
         );
       } catch (err) {
         return fail(err);

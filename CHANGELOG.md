@@ -10,7 +10,8 @@ All notable changes to this project are documented here. The format follows
 - `crispy scan` (and the `scan_app` MCP tool): zero-config start. Detects the app and its dev
   server, visits a few routes, profiles their safe interactions (buttons, tabs, text inputs; never
   delete, pay, sign out, submit…), prints the top root causes and saves the scenarios that worked as
-  `crispy.config.json` for `crispy test`.
+  `crispy.config.json` for `crispy test`. Read-only by default: writes are blocked in the browser and
+  interactions that tried one are not saved.
 - `page.evaluate` survives page reloads (Vite reloading after optimizing dependencies).
 - Effect cascades: `effectCascades` names the state a `useEffect` sets right after a render (its
   own, a parent's through a setter prop, or a store), blamed on the component whose effect ran,
