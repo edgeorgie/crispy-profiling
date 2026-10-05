@@ -673,3 +673,26 @@ describe('zero-config setup', async () => {
     ).rejects.toThrow(/exited with code 3/);
   });
 });
+
+describe('root causes (R5-05, R5-06)', async () => {
+  const { rootCauses } = await import('../src/report/hints.js');
+  it('groups avoidable renders by cause and finds the best React.memo boundary', () => {
+    const row = component(20, 20, 0);
+    row.callbackRenders = s(20);
+    row.creators = { 'onSelect|App': 20 };
+    const list = component(4, 4, 4);
+    list.triggeredBy = { App: 4 };
+    list.locations = ['src/App.tsx:10 (App)'];
+    const item = component(9, 9, 9);
+    item.triggeredBy = { App: 9 };
+    item.locations = ['src/List.tsx:5 (List)'];
+    const app = component(1, 1, 0);
+    app.causes.state = 1;
+    const causes = rootCauses(phase({ App: app, Row: row, List: list, Item: item }));
+    expect(causes.map((c) => c.renders)).toEqual([20, 13]);
+    expect(causes[0]?.text).toContain(
+      '`App` recreates `onSelect` → 20 avoidable render(s) in `Row`',
+    );
+    expect(causes[1]?.text).toContain('Wrapping `List` in React.memo would skip 13 of them');
+  });
+});

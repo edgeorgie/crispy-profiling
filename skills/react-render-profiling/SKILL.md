@@ -47,7 +47,8 @@ Chromium is required once: `npx crispy-profiling install`.
    `{ "action": "phase", "name": "..." }`.
 3. **Capture a baseline** before touching code: `crispy test` (records `crispy.snap.json` if it
    does not exist) or a report with `outFile: ".crispy/base.json"`.
-4. **Read the report** — components are already sorted by fixable renders
+4. **Read the report** — start with **Root causes — fix these first** at the top of each phase;
+   components are sorted by fixable renders
    (`avoidableRenders + callbackRenders`), then `renders`; read the **Why / how to fix** column.
 5. **Fix one cause at a time** using the table below.
 6. **Verify**: run `test_render_snapshots` again (🟢 improved, nothing 🔴), or re-profile to

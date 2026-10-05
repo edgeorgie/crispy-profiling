@@ -55,6 +55,10 @@ For a one-off look at a flow, `npx crispy run` prints every component with its c
 | App       |       1 |         0 |        0 | 0/1/0/0/0/0  | `src/main.tsx:12`       | state updates here cause 23 avoidable render(s) below (`Row`, `Header`, `Status`)… |
 ```
 
+Every phase starts with **Root causes — fix these first**: the few components that recreate a
+value, recreate a context value or update state that re-renders unchanged children, ranked by the
+avoidable renders they cause, with the child where one `React.memo` would stop most of a cascade.
+
 _"Rendered at" and `definedIn` are mapped back to your original source files and lines through the
 source maps your dev server or bundler serves (Vite, webpack, Turbopack); without source maps they
 refer to the code the browser runs._
