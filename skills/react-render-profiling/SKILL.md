@@ -108,6 +108,9 @@ Rules:
 - Do not memoize everything. Fix the components with the most `avoidableRenders` /
   `callbackRenders` and the triggers of large cascades; leave cheap leaf components alone.
   `selfDurationMs` only exists with `"timings": true` (off by default: not reproducible).
+- To tell the user how much faster an interaction got in ms, profile before and after with
+  `profile_url` and `timings: true` (or `"timings": true` in the config): each phase header then shows
+  its JavaScript ms. Run it a few times; ms vary between runs, render counts do not.
 - A component missing from a phase did not render in it (0 renders).
 - Production builds minify names; profile the development build.
 
