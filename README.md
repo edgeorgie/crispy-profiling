@@ -108,7 +108,7 @@ slack), and every metric is checked independently, so an improvement never hides
 Counts that varied between runs are stored as `[min, max]` ranges and only fail outside them
 (`-u` keeps the known range instead of narrowing it). Decreases pass and suggest `-u`. New UI
 passes and is reported (record it with `-u`); if it already renders avoidably it is flagged ⚠️
-(set `snapshot.failOnNewAvoidable` to fail instead). A known component that starts re-rendering
+(set `snapshot.failOnNewAvoidable` to fail instead). When the number of renders stays the same but more of them become avoidable — typical right after a fix uncovers the next cause — the row shows 🟡 now avoidable with the fix and does not fail (`snapshot.failOnMoreAvoidable` to fail). A known component that starts re-rendering
 in a phase still fails. A rename, even combined with a move to another file, with the same counts
 is reported as 🔁 renamed, not as a regression.
 `crispy test` never edits the committed file on its own; the
@@ -179,7 +179,7 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 | `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment (`"$${NAME}"` types a literal `${NAME}`). |
 | `storageState` | — | A saved session file (cookies + localStorage), e.g. from `crispy login` for SSO/OAuth logins. Keep it out of git. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
-| `snapshot` | `crispy.snap.json`, `0`, `false` | `file` (relative to the config file), `tolerance` and `failOnNewAvoidable` used by `crispy test`. |
+| `snapshot` | `crispy.snap.json`, `0`, `false`, `false` | `file` (relative to the config file), `tolerance`, `failOnNewAvoidable` and `failOnMoreAvoidable` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
 **Steps:** `click`, `hover`, `fill`, `type`, `press`, `select` (a `<select>` option), `drag`

@@ -175,8 +175,18 @@ export const ConfigSchema = z.object({
        * avoidably. Off by default: new UI is reported with a warning instead.
        */
       failOnNewAvoidable: z.boolean().default(false),
+      /**
+       * Fail when the same number of renders becomes more avoidable (e.g. a fix
+       * uncovered a recreated prop). Off by default: reported as 🟡 instead.
+       */
+      failOnMoreAvoidable: z.boolean().default(false),
     })
-    .default({ file: 'crispy.snap.json', tolerance: 0, failOnNewAvoidable: false }),
+    .default({
+      file: 'crispy.snap.json',
+      tolerance: 0,
+      failOnNewAvoidable: false,
+      failOnMoreAvoidable: false,
+    }),
   scenarios: z.array(ScenarioSchema).min(1),
 });
 export type CrispyConfig = z.infer<typeof ConfigSchema>;

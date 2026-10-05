@@ -10,6 +10,9 @@ All notable changes to this project are documented here. The format follows
 - `mutableReads`: renders with unchanged props, state and context whose output still changed (the
   component reads a mutable object such as a TanStack table instance). They are not counted as
   avoidable and never get React.memo advice, which would show stale data.
+- `crispy test` reports "🟡 now avoidable" instead of a regression when a component renders as often
+  as before but more of those renders are avoidable (a fix uncovered the next cause); it does not
+  fail unless `snapshot.failOnMoreAvoidable` is set.
 - With `timings: true`, every phase reports its main-thread CPU in ms (`cost.scriptMs` for
   JavaScript, `cost.taskMs` for all main-thread work), measured through the DevTools protocol. Unlike
   component self time it includes reconciliation, effects and styles, and it works in production builds.
