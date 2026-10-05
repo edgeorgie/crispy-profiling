@@ -546,3 +546,25 @@ describe('first-run errors (R4-19)', () => {
     await expect(profile(config)).rejects.toThrow(/Is the dev server running\?/);
   });
 });
+
+describe('empty phases (R5-01)', () => {
+  it('records a phase with no renders, so renders there later fail the snapshot', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'quiet',
+          steps: [
+            { action: 'phase', name: 'idle' },
+            { action: 'wait', ms: 50 },
+          ],
+        },
+      ],
+    });
+    const idle = (await profile(config)).scenarios.quiet?.phases.idle;
+    expect(idle?.commits.median).toBe(0);
+    expect(idle?.components).toEqual({});
+  });
+});

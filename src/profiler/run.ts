@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import type { Browser, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
-import type { CrispyConfig, Scenario, Step } from '../config.js';
+import { type CrispyConfig, phasesOf, type Scenario, type Step } from '../config.js';
 import { buildReport } from '../report/aggregate.js';
 import type { CrispyReport, RawRun } from '../types.js';
 import { resolveDefinitions, trackScripts } from './definitions.js';
@@ -365,6 +365,11 @@ export async function runScenarioOnce(
     }
     delete raw.hookErrors;
     raw.definitions = definitions;
+    // Every declared phase is reported, even with no renders: an empty phase is
+    // part of the snapshot, so renders appearing there later are a regression.
+    for (const phase of phasesOf(scenario)) {
+      raw.phases[phase] ??= { commits: 0, components: {} };
+    }
     await rewriteLocations(raw as RawRun, sourceMaps);
     return { ...raw, warnings } as RawRun;
   } finally {
