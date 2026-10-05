@@ -283,6 +283,33 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     ]);
   });
 
+  it('reports one cause once, however many rows it regresses (council round 2)', async () => {
+    const { snapshotToMarkdown } = await import('../src/report/snapshot.js');
+    const tree = (renders: number) => {
+      const parent = component(renders, renders, 0);
+      parent.causes.state = renders;
+      const child = component(renders, renders, renders - 1);
+      child.avoidableRenders = s(renders - 1);
+      child.triggeredBy = { Parent: renders };
+      const grand = component(renders, renders, renders - 1);
+      grand.avoidableRenders = s(renders - 1);
+      grand.triggeredBy = { Child: renders };
+      return report({ interaction: phase({ Parent: parent, Child: child, Grand: grand }) });
+    };
+    const r = compareSnapshot(toSnapshot(tree(1)), tree(10));
+    expect(r.regressions.length).toBe(5);
+    expect(r.regressions.filter((c) => c.component !== 'Parent').map((c) => c.rootCause)).toEqual([
+      'Parent',
+      'Parent',
+      'Parent',
+      'Parent',
+    ]);
+    const md = snapshotToMarkdown(r, 'crispy.snap.json');
+    expect(md).toContain('❌ 5 render regression(s) from 1 cause');
+    expect(md.split('\n').filter((l) => l.startsWith('| ❌'))).toHaveLength(1);
+    expect(md).toContain('Parent, which re-renders Child, Grand');
+  });
+
   it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
     const flaky = make(10, 0);
     const item = flaky.scenarios.home?.phases.interaction?.components.Item;

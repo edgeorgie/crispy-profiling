@@ -55,6 +55,11 @@ export interface SnapshotChange {
    * clear, fixable cause (often uncovered by a previous fix). Reported, not failing.
    */
   uncovered?: true;
+  /**
+   * For a regressed component re-rendered by another regressed component's state
+   * update: that component (the root of the cascade). Fix the root first.
+   */
+  rootCause?: string;
 }
 
 export interface SnapshotResult {
@@ -427,6 +432,7 @@ export function compareSnapshot(
     }
   }
 
+  linkRootCauses(changes, report);
   const regressions = changes.filter((c) => c.status === 'regressed' && !c.uncovered);
   return {
     passed: regressions.length === 0,
@@ -524,12 +530,75 @@ const ICON: Record<SnapshotStatus, string> = {
   removed: '➖',
 };
 
+/**
+ * Marks regressions caused by another regressed component in the same phase: each
+ * one follows its main trigger (the component whose state update re-rendered it)
+ * up to the highest regressed ancestor, so one cause is reported once.
+ */
+function linkRootCauses(changes: SnapshotChange[], report: CrispyReport): void {
+  const regressed = new Map<string, Set<string>>();
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component) continue;
+    const key = `${c.scenario}\0${c.phase}`;
+    regressed.set(key, (regressed.get(key) ?? new Set()).add(c.component));
+  }
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component) continue;
+    const phase = report.scenarios[c.scenario]?.phases[c.phase];
+    const names = regressed.get(`${c.scenario}\0${c.phase}`);
+    if (!phase || !names) continue;
+    let root = c.component;
+    const seen = new Set([root]);
+    for (;;) {
+      const by = Object.entries(phase.components[root]?.triggeredBy ?? {})
+        .filter(([k]) => k !== root)
+        .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]))[0]?.[0];
+      if (!by || !names.has(by) || seen.has(by)) break;
+      seen.add(by);
+      root = by;
+    }
+    if (root !== c.component) c.rootCause = root;
+  }
+}
+
+/** One Markdown row per cause: regressions with the same root and fix are merged. */
+function groupRegressions(changes: SnapshotChange[]): SnapshotChange[][] {
+  const hintOf = new Map<string, string | undefined>();
+  for (const c of changes) {
+    if (c.component && !c.rootCause)
+      hintOf.set(`${c.scenario}\0${c.phase}\0${c.component}`, c.hint);
+  }
+  const groups = new Map<string, SnapshotChange[]>();
+  for (const c of changes) {
+    const root = c.rootCause ?? c.component ?? '';
+    const hint = c.rootCause ? hintOf.get(`${c.scenario}\0${c.phase}\0${root}`) : c.hint;
+    // Without a hint there is no shared cause to merge on.
+    const key =
+      hint || c.rootCause
+        ? `${root}\0${hint}`
+        : `${c.scenario}\0${c.phase}\0${c.component}\0${c.metric}`;
+    groups.set(key, [...(groups.get(key) ?? []), c]);
+  }
+  return [...groups.values()];
+}
+
+const list = (items: string[], max = 3) =>
+  items.length > max
+    ? `${items.slice(0, max).join(', ')} and ${items.length - max} more`
+    : items.join(', ');
+
+/** " from 1 cause" when regressions share causes. */
+function causes(regressions: SnapshotChange[]): string {
+  const n = groupRegressions(regressions).length;
+  return n < regressions.length ? ` from ${n} cause${n === 1 ? '' : 's'}` : '';
+}
+
 export function snapshotToMarkdown(result: SnapshotResult, file: string): string {
   const lines = [
     `## 🥓 crispy render snapshots: ${
       result.passed
         ? '✅ no render regressions'
-        : `❌ ${result.regressions.length} render regression(s)`
+        : `❌ ${result.regressions.length} render regression(s)${causes(result.regressions)}`
     }`,
     '',
   ];
@@ -545,12 +614,30 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   const sorted = [...result.changes].sort(
     (a, b) => order.indexOf(a.status) - order.indexOf(b.status),
   );
-  for (const c of sorted) {
-    const values = `${fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
+  const valuesOf = (c: SnapshotChange) =>
+    `${c.expected === null && c.actual !== null ? '0' : fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
+  const row = (c: SnapshotChange) =>
+    `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${valuesOf(c)} | ${c.hint ?? ''} |`;
+  const blocking = new Set(result.regressions);
+  for (const group of groupRegressions(sorted.filter((c) => blocking.has(c)))) {
+    const lead = group.find((c) => !c.rootCause) ?? group[0];
+    if (!lead) continue;
+    if (group.length === 1) {
+      lines.push(row(lead));
+      continue;
+    }
+    const root = lead.rootCause ?? lead.component ?? '—';
+    const unique = (xs: string[]) => [...new Set(xs)];
+    const where = list(unique(group.map((c) => `${c.scenario} / ${c.phase}`)));
+    const others = unique(group.map((c) => c.component ?? '—')).filter((k) => k !== root);
+    const component = others.length ? `${root}, which re-renders ${list(others)}` : root;
+    const metrics = unique(group.map((c) => c.metric)).join(', ');
+    const hint = group.find((c) => c.component === root && c.hint)?.hint ?? lead.hint ?? '';
     lines.push(
-      `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${values} | ${c.hint ?? ''} |`,
+      `| ❌ regressed | ${where} | ${component} | ${metrics} | ${valuesOf(lead)} (${lead.metric}); ${group.length - 1} more from this cause | ${hint} |`,
     );
   }
+  for (const c of sorted) if (!blocking.has(c)) lines.push(row(c));
   lines.push('');
   if (result.improvements.length) {
     lines.push(`Improvements found: run \`crispy test --update\` to lock them into \`${file}\`.`);

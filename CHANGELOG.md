@@ -10,6 +10,9 @@ All notable changes to this project are documented here. The format follows
 - Read-only mode (`crispy scan`, `readOnly`) also drops messages the page sends over a WebSocket
   (chat, realtime mutations) and reports them like blocked requests. Dev-server hot-reload sockets
   (Vite, webpack, Next.js) still work.
+- Snapshot reports show one row per cause: regressions of components re-rendered by another
+  regressed component, and the same fix across scenarios, are merged ("❌ 78 render regression(s)
+  from 2 causes"). New components show `0 → N` instead of `— → N`.
 - Snapshots count renders from recreated callbacks as avoidable, like the report does, so putting an
   inline callback back can no longer show up as 🟢 improved. Existing snapshots may need `-u` once.
 
