@@ -32,7 +32,7 @@ Usage:
           --actions <n>        Interactions per route (default 5)
           --allow-writes       Let interactions send POST/PUT/DELETE (blocked by default)
   crispy init [--base-url <url>]            Create ${DEFAULT_CONFIG_FILE}
-  crispy install [--with-deps]              Download the Chromium build crispy uses
+  crispy install [--with-deps] [--verbose]  Download the Chromium build crispy uses
   crispy login [-c <config>] [--path /login] Sign in by hand in a browser window; saves the session
   crispy run [options]                      Run scenarios and write a report
       -c, --config <file>      Config file (default: ${DEFAULT_CONFIG_FILE})
@@ -262,6 +262,14 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case 'install': {
+      /** The most telling line of Playwright's output, without its stack trace. */
+      const lastError = (out: string) =>
+        out
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l && !/^at\s|^\|/.test(l))
+          .reverse()
+          .find((l) => /error|fail/i.test(l)) ?? 'unknown error';
       // Use the exact playwright-core crispy depends on, so browser revisions match.
       const require = createRequire(import.meta.url);
       const cliPath = join(dirname(require.resolve('playwright-core/package.json')), 'cli.js');
@@ -270,23 +278,30 @@ async function main(argv: string[]): Promise<number> {
         log(`[crispy] CRISPY_CHROMIUM_PATH is set (${own}): nothing to download.`);
         return 0;
       }
-      // Capture the output to explain a blocked download (corporate proxies) in one line.
-      const child = spawn(process.execPath, [cliPath, 'install', ...rest, 'chromium'], {
-        stdio: ['inherit', 'inherit', 'pipe'],
+      // Capture Playwright's output (repeated progress lines, stack traces): one line
+      // while it downloads, and a short explanation if it fails. --verbose shows it all.
+      const verbose = rest.includes('--verbose');
+      const args = rest.filter((a) => a !== '--verbose');
+      log('[crispy] Downloading Chromium for crispy (about 150 MB, once)…');
+      const child = spawn(process.execPath, [cliPath, 'install', ...args, 'chromium'], {
+        stdio: ['inherit', verbose ? 'inherit' : 'pipe', 'pipe'],
       });
       let errors = '';
-      child.stderr?.on('data', (d) => {
+      const keep = (d: unknown) => {
         errors += String(d);
-      });
+      };
+      child.stdout?.on('data', keep);
+      child.stderr?.on('data', keep);
       return new Promise<number>((done) =>
         child.on('exit', (code) => {
+          if (!code) log('[crispy] Chromium is ready.');
           if (code) {
             const blocked =
               /\b(403|407|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|certificate)\b/i.test(errors);
             log(
               blocked
                 ? '[crispy] Could not download Chromium: the network blocked it (proxy or firewall).'
-                : `[crispy] Could not download Chromium:\n${errors.trim().split('\n').slice(-5).join('\n')}`,
+                : `[crispy] Could not download Chromium: ${lastError(errors)} (details: npx crispy install --verbose)`,
             );
             log(
               '[crispy] Use a Chrome or Chromium you already have instead: set CRISPY_CHROMIUM_PATH=/path/to/chrome, or "browser": { "channel": "chrome" } in crispy.config.json. Behind a proxy, HTTPS_PROXY also works for the download.',
