@@ -27,7 +27,7 @@ export async function isUp(url: string): Promise<boolean> {
  * The package name of the app a dev server serves, when it exposes its
  * package.json (Vite does; Next.js does not): null when unknown.
  */
-async function servedPackageName(url: string): Promise<string | null> {
+export async function servedPackageName(url: string): Promise<string | null> {
   try {
     const res = await fetch(new URL('/package.json', url), { signal: AbortSignal.timeout(2000) });
     if (!res.ok || !/json/.test(res.headers.get('content-type') ?? '')) return null;
@@ -38,7 +38,7 @@ async function servedPackageName(url: string): Promise<string | null> {
   }
 }
 
-function localPackageName(cwd: string | undefined): string | null {
+export function localPackageName(cwd: string | undefined): string | null {
   try {
     const name = JSON.parse(readFileSync(join(cwd ?? process.cwd(), 'package.json'), 'utf8')).name;
     return typeof name === 'string' ? name : null;

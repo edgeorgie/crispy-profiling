@@ -32,7 +32,7 @@ export interface RunOptions {
 /** Adds a hint when a scenario failed against a server crispy did not start. */
 function explainReused(err: unknown, url: string | undefined): Error {
   const e = err instanceof Error ? err : new Error(String(err));
-  if (url && /failed|Timeout/i.test(e.message)) {
+  if (url && /failed|Timeout|React was not detected|never rendered/i.test(e.message)) {
     e.message += `\nNote: crispy reused a server it did not start at ${url}. If another app is running there, stop it or give this app its own port.`;
   }
   return e;
