@@ -116,7 +116,11 @@ export async function runSnapshotTest(
         written: false,
         result: null,
         report,
-        markdown: `## 🥓 crispy render snapshots: ❌ missing\n\nNo snapshot at \`${shown}\`. Run \`crispy test\` locally (or \`crispy test -u\`) and commit the file.\n${extra}`,
+        markdown: `## 🥓 crispy render snapshots: ❌ missing\n\nNo snapshot at \`${shown}\`. ${
+          options.ci
+            ? 'Run `crispy test` locally (or `crispy test -u`) and commit the file.'
+            : 'Record it with `crispy test` (MCP: `test_render_snapshots` with `update: true`; a first snapshot only records the current counts) and commit the file.'
+        }\n${insight(report)}${extra}`,
       };
     }
     let next = previous ? keepRanges(toSnapshot(report), previous) : toSnapshot(report);
