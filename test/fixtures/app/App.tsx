@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Cascade, CascadeRound8 } from './Cascade.js';
+import { Deps } from './Deps.js';
 import { Lab } from './Lab.js';
 import { Trap } from './Trap.js';
 
@@ -276,6 +277,7 @@ function App() {
       {location.search.includes('ctxvalue') && <CartShell tick={count} />}
       {location.search.includes('store') && <StoreReader />}
       {location.search.includes('lab') && <Lab />}
+      {location.search.includes('deps') && <Deps />}
       {location.search.includes('trap') && <Trap />}
       {location.search.includes('cascade') && <Cascade />}
       {location.search.includes('round8') && <CascadeRound8 />}

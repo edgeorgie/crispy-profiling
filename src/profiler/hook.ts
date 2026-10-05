@@ -589,20 +589,87 @@ export function installCrispyHook(): void {
    * dependencies that changed, e.g. "#2 (an object)" (1-based), or "" when the
    * hook has no dependency list. null when the value is not memoized there.
    */
+  // Dependency-list names of each useCallback/useMemo in a component's source, in
+  // order ([["cart"], ["query", "page"]]), cached per function. Rough parsing:
+  // used only when the count matches the component's memo hooks.
+  const memoDepNames = new WeakMap<object, string[][]>();
+  function depNamesOf(fn: any): string[][] {
+    if (!fn || typeof fn !== 'function') return [];
+    let cached = memoDepNames.get(fn);
+    if (cached) return cached;
+    cached = [];
+    try {
+      const src = Function.prototype.toString.call(fn);
+      const re = /\b(useCallback|useMemo)["']?\]?\)?\s*\(/g;
+      for (let m = re.exec(src); m; m = re.exec(src)) {
+        // Find the matching ")" of the call, then the last top-level [...] inside it.
+        let depth = 0;
+        let end = -1;
+        let lastOpen = -1;
+        let lastClose = -1;
+        let quote = '';
+        for (let i = m.index + m[0].length - 1; i < src.length; i++) {
+          const ch = src[i] as string;
+          if (quote) {
+            if (ch === '\\') i++;
+            else if (ch === quote) quote = '';
+            continue;
+          }
+          if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+          else if (ch === '(' || ch === '{' || ch === '[') {
+            if (depth === 1 && ch === '[') lastOpen = i;
+            depth++;
+          } else if (ch === ')' || ch === '}' || ch === ']') {
+            depth--;
+            if (depth === 1 && ch === ']') lastClose = i;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        const names =
+          end > 0 &&
+          lastOpen > 0 &&
+          lastClose > lastOpen &&
+          !/\S/.test(src.slice(lastClose + 1, end).replace(/,/g, ''))
+            ? src
+                .slice(lastOpen + 1, lastClose)
+                .split(',')
+                .map((x) => x.trim())
+                .filter(Boolean)
+            : [];
+        cached.push(names);
+      }
+    } catch {}
+    memoDepNames.set(fn, cached);
+    return cached;
+  }
+
   function changedMemoDeps(owner: any, value: any): string | null {
     let h = owner.memoizedState;
     let old = owner.alternate ? owner.alternate.memoizedState : null;
+    let memoCount = 0;
+    for (let a = h; a && typeof a === 'object' && 'next' in a; a = a.next)
+      if (isMemoHook(a)) memoCount++;
+    let memoIndex = 0;
     for (let i = 0; h && typeof h === 'object' && 'next' in h && i < 200; i++) {
       if (isMemoHook(h) && h.memoizedState[0] === value) {
         const deps = h.memoizedState[1];
         const prevDeps = old && isMemoHook(old) ? old.memoizedState[1] : null;
         if (!deps || !prevDeps) return '';
+        const fn = owner.type && (owner.type.render || owner.type);
+        const all = depNamesOf(fn);
+        const names = all.length === memoCount ? all[memoIndex] || [] : [];
+        const named = names.length === deps.length && names.every((n) => /^[\w$.]+$/.test(n));
         const out: string[] = [];
         for (let d = 0; d < deps.length; d++) {
-          if (!Object.is(deps[d], prevDeps[d])) out.push(`#${d + 1} (${kindOf(deps[d])})`);
+          if (!Object.is(deps[d], prevDeps[d]))
+            out.push(`${named ? `\`${names[d]}\`` : `#${d + 1}`} (${kindOf(deps[d])})`);
         }
         return out.join(', ');
       }
+      if (isMemoHook(h)) memoIndex++;
       h = h.next;
       old = old ? old.next : null;
     }

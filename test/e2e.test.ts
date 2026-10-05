@@ -903,3 +903,24 @@ describe('CPU per phase (timings)', () => {
     expect(plain?.interaction?.cost).toBeUndefined();
   });
 });
+
+describe('memoized dependencies by name (council round 1)', () => {
+  it('names the dependency that changes', async () => {
+    const steps = [
+      { action: 'click' as const, selector: '#deps-add' },
+      { action: 'click' as const, selector: '#deps-add' },
+    ];
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'deps', path: '/?deps', steps }],
+    });
+    const p = (await profile(config)).scenarios.deps?.phases.interaction;
+    // esbuild renames the memo's inner function (AddButton2).
+    const button = Object.entries(p?.components ?? {}).find(([k]) =>
+      k.startsWith('AddButton'),
+    )?.[1];
+    expect(Object.keys(button?.staleMemo ?? {})).toEqual(['onAdd|Deps|`cart` (an array)']);
+  });
+});
