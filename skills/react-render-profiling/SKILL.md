@@ -84,7 +84,8 @@ there, and fix the trigger before touching the children it re-renders.
 | `stable: false` (⚠️) | Counts differ between runs (timers, network, randomness) | Add `waitFor` steps or mock the nondeterminism before trusting deltas |
 
 Rules:
-- `React.memo` only helps if every prop is stable; check `changedProps` first.
+- `React.memo` only helps if every prop is stable; check `changedProps` first. If a memo component has
+  `memoSkips: 0` and its props really change, remove the memo instead of adding more.
 - Do not memoize everything. Fix the components with the most `avoidableRenders` /
   `callbackRenders` and the triggers of large cascades; leave cheap leaf components alone.
   `selfDurationMs` only exists with `"timings": true` (off by default: not reproducible).

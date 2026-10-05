@@ -700,9 +700,37 @@ export function installCrispyHook(): void {
     return (flags & PERFORMED_WORK) === PERFORMED_WORK;
   }
 
-  function updateSubtree(next: any, prev: any, trigger: string | null): void {
+  /** React.memo saved a render: the parent rendered, this memo component did not. */
+  function memoSkip(fiber: any): void {
+    try {
+      const p = phaseData();
+      if (!p.memoSkips) p.memoSkips = {};
+      const k = keyOf(fiber);
+      p.memoSkips[k] = (p.memoSkips[k] || 0) + 1;
+    } catch (err) {
+      noteError(err);
+    }
+  }
+
+  function updateSubtree(
+    next: any,
+    prev: any,
+    trigger: string | null,
+    parentRendered = false,
+  ): void {
     let below = trigger;
-    if (COMPONENT_TAGS[next.tag] && didRender(next)) {
+    const isComponent = COMPONENT_TAGS[next.tag];
+    const rendered = isComponent && didRender(next);
+    if (parentRendered) {
+      if (next.tag === 15 && !rendered) memoSkip(next);
+      else if (
+        next.tag === 14 &&
+        next.child &&
+        (next.child === prev.child || !didRender(next.child))
+      )
+        memoSkip(next.child);
+    }
+    if (rendered) {
       try {
         if (recordUpdate(prev, next, trigger)) below = keyOf(next);
       } catch (err) {
@@ -710,9 +738,11 @@ export function installCrispyHook(): void {
       }
     }
     if (next.child === prev.child) return; // whole subtree bailed out
+    // Host elements pass their parent component's "rendered" down.
+    const passDown = isComponent ? rendered : parentRendered;
     let child = next.child;
     while (child) {
-      if (child.alternate) updateSubtree(child, child.alternate, below);
+      if (child.alternate) updateSubtree(child, child.alternate, below, passDown);
       else mountSubtree(child);
       child = child.sibling;
     }

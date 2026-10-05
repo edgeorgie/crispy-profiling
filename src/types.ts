@@ -64,6 +64,8 @@ export interface RawPhase {
   components: Record<string, RawComponentStats>;
   /** Component keys rendered by each commit ("\n"-joined, sorted) -> number of commits. */
   commitKeys?: Record<string, number>;
+  /** Component key -> times React.memo skipped its render while its parent rendered. */
+  memoSkips?: Record<string, number>;
 }
 
 export interface RawRun {
@@ -117,6 +119,8 @@ export interface ComponentReport {
   compiled: boolean;
   /** Wrapped in React.memo. */
   memo: boolean;
+  /** Renders React.memo skipped (median); 0 for a memo component means it never helped. */
+  memoSkips: number;
   /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */
   locations: string[];
   /** File where the component function is defined, when known (part of its identity). */

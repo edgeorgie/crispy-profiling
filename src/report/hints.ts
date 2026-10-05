@@ -125,6 +125,12 @@ export function hintFor(
     return `receives new \`children\` elements on every render${where}: that is how JSX works, and React.memo will not help. If it is expensive, stop ${owner ? `\`${owner}\`` : 'the parent'} from re-rendering, or pass the children from a component that does not re-render.`;
   }
 
+  // React.memo that never skipped a render while props really changed: pure cost.
+  if (c.memo && !library && c.memoSkips === 0 && c.updates.median > 0 && c.causes.props > 0) {
+    const changed = top(c.changedProps);
+    return `React.memo never skipped a render here${where}: ${changed.length ? `${code(changed)} really change on every update` : 'its props really change on every update'}, so the comparison only adds cost. Remove React.memo, or keep it only if you are about to make those props stable.`;
+  }
+
   const trigger = top(c.triggeredBy, 1)[0];
   if (c.causes.parent > 0) {
     const because = trigger ? `\`${trigger}\` updates its state` : 'its parent re-renders';

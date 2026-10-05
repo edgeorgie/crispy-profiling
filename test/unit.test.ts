@@ -28,6 +28,7 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     staleMemo: {},
     compiled: false,
     memo: false,
+    memoSkips: 0,
     locations: [],
     stable: true,
   };

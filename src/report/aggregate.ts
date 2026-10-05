@@ -86,6 +86,7 @@ function aggregateComponent(
     staleMemo: medianCounts(samples, (s) => s.staleMemo),
     compiled: samples.some((s) => s?.compiled),
     memo: samples.some((s) => s?.memo),
+    memoSkips: 0,
     locations: Object.keys(medianCounts(samples, (s) => s.locations)).slice(0, 3),
     stable: renders.min === renders.max,
   };
@@ -110,6 +111,9 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
         ] as [string, ComponentReport],
     )
     .sort(byPriority);
+  for (const [n, c] of entries) {
+    c.memoSkips = stat(runs.map((r) => r.phases[phase]?.memoSkips?.[n] ?? 0)).median;
+  }
 
   const totals = (f: (s: RawComponentStats) => number) =>
     stat(
@@ -378,6 +382,7 @@ export function stabilizeKeys(runs: RawRun[]): {
           phase,
           {
             ...p,
+            ...(p.memoSkips && { memoSkips: remap(p.memoSkips) }),
             components: Object.fromEntries(
               Object.entries(p.components).map(([k, v]) => [
                 rename[k] ?? k,

@@ -669,3 +669,21 @@ describe('named state causes', () => {
     });
   });
 });
+
+describe('useless React.memo', () => {
+  it('flags a memo that never skips a render because its props really change', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'm', path: '/?memo', steps: [{ action: 'click', selector: '#inc' }] }],
+    });
+    const phase = (await profile(config)).scenarios.m?.phases.interaction;
+    const useless = phase?.components.CounterView;
+    expect(useless?.memo).toBe(true);
+    expect(useless?.memoSkips).toBe(0);
+    expect(hintFor(useless, phase, 'CounterView')).toContain('React.memo never skipped a render');
+    // The memo that works skipped its render, so it is not in the interaction at all.
+    expect(phase?.components.LabelView).toBeUndefined();
+  });
+});
