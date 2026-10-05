@@ -181,12 +181,18 @@ export const ConfigSchema = z.object({
        * uncovered a recreated prop). Off by default: reported as 🟡 instead.
        */
       failOnMoreAvoidable: z.boolean().default(false),
+      /**
+       * Fail when a phase commits more often than in the snapshot. Off by default:
+       * commit counts vary with load timing, so they are reported (ℹ️) instead.
+       */
+      failOnMoreCommits: z.boolean().default(false),
     })
     .default({
       file: 'crispy.snap.json',
       tolerance: 0,
       failOnNewAvoidable: false,
       failOnMoreAvoidable: false,
+      failOnMoreCommits: false,
     }),
   scenarios: z.array(ScenarioSchema).min(1),
 });

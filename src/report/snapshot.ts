@@ -60,6 +60,8 @@ export interface SnapshotChange {
    * clear, fixable cause (often uncovered by a previous fix). Reported, not failing.
    */
   uncovered?: true;
+  /** More commits, reported but not failing (`snapshot.failOnMoreCommits` makes it fail). */
+  info?: true;
   /** Fewer renders on a `mutable` component: check that the UI still updates. */
   suspect?: true;
   /**
@@ -296,6 +298,8 @@ export function compareSnapshot(
   partial = false,
   failOnNewAvoidable = false,
   failOnMoreAvoidable = false,
+  /** Commit counts vary with load timing: by default more commits are reported, not failed. */
+  failOnMoreCommits = false,
 ): SnapshotResult {
   const current = toSnapshot(report);
   const changes: SnapshotChange[] = [];
@@ -357,6 +361,7 @@ export function compareSnapshot(
       // One extra commit (a framework scheduling detail) is tolerated in phases that
       // already commit; component counts still catch every extra render.
       const commitSlack = hi(exp.commits) > 0 ? Math.max(tolerance, 1) : tolerance;
+      const beforeCommits = changes.length;
       check(
         { scenario, phase },
         'commits',
@@ -365,6 +370,8 @@ export function compareSnapshot(
         undefined,
         commitSlack,
       );
+      if (!failOnMoreCommits)
+        for (const c of changes.slice(beforeCommits)) if (c.status === 'regressed') c.info = true;
 
       const renames = detectRenames(exp, actualPhases[phase] ?? { commits: 0, components: {} });
       for (const [from, to] of renames) {
@@ -452,7 +459,7 @@ export function compareSnapshot(
   }
 
   linkRootCauses(changes, report);
-  const regressions = changes.filter((c) => c.status === 'regressed' && !c.uncovered);
+  const regressions = changes.filter((c) => c.status === 'regressed' && !c.uncovered && !c.info);
   return {
     passed: regressions.length === 0,
     changes,
@@ -653,7 +660,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   const valuesOf = (c: SnapshotChange) =>
     `${c.expected === null && c.actual !== null ? '0' : fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
   const row = (c: SnapshotChange) =>
-    `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : c.suspect ? '⚠️ check the UI' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${valuesOf(c)} | ${c.hint ?? ''} |`;
+    `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : c.info ? 'ℹ️ more commits' : c.suspect ? '⚠️ check the UI' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${valuesOf(c)} | ${c.hint ?? ''} |`;
   const blocking = new Set(result.regressions);
   for (const group of groupRegressions(sorted.filter((c) => blocking.has(c)))) {
     // The root's own row with the biggest increase (else the group's biggest).
@@ -685,6 +692,11 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   if (result.changes.some((c) => c.suspect)) {
     lines.push(
       '⚠️ check the UI: fewer renders on a component that reads a mutable instance (a table or form API) or data that changes without its props. A React.memo there hides those changes: make sure the screen still updates before accepting it.',
+    );
+  }
+  if (result.changes.some((c) => c.info)) {
+    lines.push(
+      'ℹ️ more commits: React committed more often (often load timing, sometimes a setState in an effect). Not failing: component render counts are the gate. Set `snapshot.failOnMoreCommits` to fail on it.',
     );
   }
   if (result.changes.some((c) => c.uncovered)) {

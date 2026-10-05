@@ -113,6 +113,7 @@ export class RenderRecorder {
       false,
       this.config.snapshot.failOnNewAvoidable,
       this.config.snapshot.failOnMoreAvoidable,
+      this.config.snapshot.failOnMoreCommits,
     );
     if (!result.passed) {
       // One remedy that fits Playwright tests (not the CLI's `crispy test --update`).

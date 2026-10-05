@@ -21,6 +21,8 @@ All notable changes to this project are documented here. The format follows
 - `crispy scan` adds `.crispy/` (reports) to `.gitignore` in a git project.
 - A renamed component (React.memo often renames `X` to `XImpl`) that reads a mutable instance is
   shown as "⚠️ check the UI" too.
+- More commits than the snapshot are reported (ℹ️) but no longer fail `crispy test`: they vary with
+  load timing and failed CI on unchanged code. `snapshot.failOnMoreCommits: true` restores the gate.
 - Fewer renders on a component that reads a mutable instance (a TanStack table, a form API) or
   mutable data is shown as "⚠️ check the UI" instead of 🟢 in snapshots and `compare`: a React.memo
   there freezes the UI. Snapshots mark such components `"mutable": true`.
