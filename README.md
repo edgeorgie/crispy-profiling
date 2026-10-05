@@ -25,40 +25,38 @@ No code changes in your app: it uses the same hook React DevTools uses. Tested o
 
 ## Quick start
 
-> Not on npm yet — until the first release, install from GitHub:
-> `npm i -D github:edgeorgie/crispy-profiling#develop` (it builds on install).
-
 ```bash
 npm i -D crispy-profiling
 npx crispy install                                   # downloads the matching Chromium (once)
-npx crispy init --base-url http://localhost:5173     # creates crispy.config.json
+npx crispy init --base-url http://localhost:5173     # creates crispy.config.json: edit the steps
 npm run dev &                                        # your app, development build
-npx crispy run                                       # writes .crispy/report.json + prints a summary
+npx crispy test                                      # records crispy.snap.json → commit it
 ```
 
+From then on, `npx crispy test` (locally, in CI or from an AI agent) fails when a component starts
+re-rendering, and tells you why and how to fix it:
+
 ```text
-### Scenario `list` (`/`, 3 runs)
+| 🔴 regressed | list / interaction | Row | renders | — → 20 | recreated on every render (rendered at
+  src/App.tsx:222 (App)): `onSelect` is a new function with the same code in `App`: wrap it in
+  useCallback with the values it uses as dependencies. Then wrap this component in React.memo. |
+```
 
-**Phase `interaction`** — 1 commits, 24 renders, 3 avoidable (2 wasted), 20 from recreated callbacks
+For a one-off look at a flow, `npx crispy run` prints every component with its causes and a fix:
 
-| Component   | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Unstable props | Callback props | Rendered at         |
-| ----------- | ------: | --------: | -------: | ----------------------------------------------------- | -------------- | -------------- | ------------------- |
-| Row         |      20 |         0 |       20 | 0/0/0/0/20/0                                          | —              | `onSelect`×20  | `src/App.tsx:42 (App)` |
-| Header      |       1 |         1 |        0 | 0/0/0/0/0/1                                           | —              | —              | `src/App.tsx:30 (App)` |
-| Status      |       1 |         1 |        0 | 0/0/0/1/0/0                                           | `style`×1      | —              | `src/App.tsx:36 (App)` |
-| ThemedLabel |       1 |         1 |        0 | 0/0/0/0/0/1                                           | —              | —              | `src/App.tsx:31 (App)` |
-| App         |       1 |         0 |        0 | 0/1/0/0/0/0                                           | —              | —              | —                   |
+```text
+| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Rendered at          | Why / how to fix |
+| Row       |      20 |         0 |       20 | 0/0/0/0/20/0 | `src/App.tsx:222 (App)` | `onSelect` is a new function with the same code in `App`: wrap it in useCallback… |
+| Status    |       1 |         1 |        0 | 0/0/0/1/0/0  | `src/App.tsx:178 (App)` | `style` is recreated with equal data in `App`: hoist it out of the component or wrap it in useMemo… |
+| App       |       1 |         0 |        0 | 0/1/0/0/0/0  | `src/main.tsx:12`       | state updates here cause 23 avoidable render(s) below (`Row`, `Header`, `Status`)… |
 ```
 
 _"Rendered at" and `definedIn` are mapped back to your original source files and lines through the
-source maps your dev server or bundler serves (inline or linked); without source maps they refer to
-the code the browser runs._
+source maps your dev server or bundler serves (Vite, webpack, Turbopack); without source maps they
+refer to the code the browser runs._
 
-Every `Row` re-rendered because `onSelect` is a new function with the same code on each `App`
-render. If the values it uses did not change, `useCallback` (with those values as dependencies) plus
-`React.memo(Row)` removes all 20 renders — crispy reports these as *callback* renders because it
-cannot see what a closure captures. `Status` got an inline `style` object with equal data
-(certainly avoidable) and `Header` re-rendered with identical props (wasted).
+Works with Vite and Next.js (Turbopack and webpack dev servers); framework internals such as the
+Next.js dev overlay are filtered out. Profile the development build.
 
 ## Render snapshots (`crispy test`)
 
@@ -72,13 +70,8 @@ npx crispy test -u     # accept intended changes / lock in improvements
 npx crispy test --ci   # in CI: a missing snapshot fails instead of being written (auto-detected; --no-ci to opt out)
 ```
 
-When something regresses you get the component, the cause, where it is rendered and the fix:
-
-```text
-| 🔴 regressed | list / interaction | Row | renders | — → 20 | `onSelect` recreated on every render with the
-  same content (rendered at src/App.tsx:42): stabilize with useCallback/useMemo or hoist it, and wrap the
-  child in React.memo (or enable React Compiler). |
-```
+When something regresses you get the component, the cause, where it is rendered and the fix (see
+[Quick start](#quick-start)).
 
 `crispy.snap.json` has one line per component, so the PR diff shows exactly which counts changed:
 

@@ -57,7 +57,8 @@ If Chromium cannot be downloaded, set `CRISPY_CHROMIUM_PATH` to any Chromium/Chr
 - `release/*` branches from `develop`, merges into `main` via PR, then `main` is tagged `vX.Y.Z`
   and merged back into `develop`. `hotfix/*` branches from `main` and merges into both.
 - Group related changes into one well-organized PR per milestone (atomic commits inside the branch)
-  instead of many tiny PRs, and **squash-merge** it.
+  instead of many tiny PRs, and **squash-merge** it. `release/*` and `hotfix/*` PRs (and merging
+  `main` back into `develop`) use a **merge commit**, otherwise the branches diverge.
 
 ## Commits and pull requests
 
