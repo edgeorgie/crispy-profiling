@@ -14,7 +14,7 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
     lines.push(`### Scenario \`${s.name}\` (\`${s.path}\`, ${s.runs} runs)`, '');
     for (const [phase, p] of Object.entries(s.phases)) {
       lines.push(
-        `**Phase \`${phase}\`** — ${p.commits.median} commits, ${p.totalRenders.median} renders, ${p.totalAvoidableRenders.median} avoidable (${p.totalWastedRenders.median} wasted), ${p.totalCallbackRenders.median} from recreated callbacks${p.cost ? `, **${Math.round(p.cost.scriptMs.median)} ms JavaScript** (${Math.round(p.cost.taskMs.median)} ms main thread)` : ''}`,
+        `**Phase \`${phase}\`** — ${p.commits.median} React commits (screen updates), ${p.totalRenders.median} renders, **${p.totalAvoidableRenders.median + p.totalCallbackRenders.median} avoidable** (${p.totalAvoidableRenders.median} with unchanged inputs, ${p.totalCallbackRenders.median} from recreated callbacks)${p.cost ? `, **${Math.round(p.cost.scriptMs.median)} ms JavaScript** (${Math.round(p.cost.taskMs.median)} ms main thread)` : ''}`,
         '',
       );
       const causes = rootCauses(p);
@@ -27,7 +27,7 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
         );
       }
       lines.push(
-        '| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Rendered at | Why / how to fix |',
+        '| Component | Renders | Avoidable: unchanged inputs | Avoidable: recreated callbacks | Causes (props/state/context/unstable/callback/parent) | Rendered at | Why / how to fix |',
         '| --- | ---: | ---: | ---: | --- | --- | --- |',
       );
       // Top components, plus every component whose own state changed: the likely
