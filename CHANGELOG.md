@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 - Hints no longer suggest React.memo for a component that gets new `children` JSX on most renders
   (the memo would compare and render anyway). Root causes under 10 renders, or under 2% of the
   phase's renders, are marked "Optional (low impact)" (`minor` in the API).
+- When a reused server has no React (usually another app on the same port), the error says so first
+  and gives a free port and `webServer.command` to use.
+- Markdown reports name the causes ("parent re-rendered 30, own state 2") instead of `0/2/0/0/0/30`,
+  and the 🟡 snapshot note says it is not worse.
 - `crispy install` prints one line while it downloads and, on failure, a short reason instead of
   Playwright's repeated progress lines and stack trace (`--verbose` shows them).
 - `crispy scan` keeps one scenario for list rows that differ only by a number ("Member 1",

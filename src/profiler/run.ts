@@ -30,9 +30,19 @@ export interface RunOptions {
 }
 
 /** Adds a hint when a scenario failed against a server crispy did not start. */
-function explainReused(err: unknown, url: string | undefined): Error {
+function explainReused(err: unknown, url: string | undefined, command?: string): Error {
   const e = err instanceof Error ? err : new Error(String(err));
-  if (url && /failed|Timeout|React was not detected|never rendered/i.test(e.message)) {
+  if (!url) return e;
+  if (/React was not detected/.test(e.message)) {
+    // Most often another project's dev server on the same port: say so first, with the fix.
+    const u = new URL(url);
+    const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
+    const free = port + 7;
+    const cmd = command
+      ? `"webServer": { "command": "${command} -- --port ${free} --strictPort" }`
+      : '';
+    e.message = `${u.host} is probably served by another app: crispy reused a server it did not start, and found no React there. Run this app on a free port, e.g. in crispy.config.json: "baseUrl": "${u.protocol}//${u.hostname}:${free}"${cmd ? `, ${cmd}` : ''}.\n(${e.message})`;
+  } else if (/failed|Timeout|never rendered/i.test(e.message)) {
     e.message += `\nNote: crispy reused a server it did not start at ${url}. If another app is running there, stop it or give this app its own port.`;
   }
   return e;
@@ -731,7 +741,7 @@ export async function profile(
           );
         }
       } catch (err) {
-        const why = explainReused(err, options.reusedServer);
+        const why = explainReused(err, options.reusedServer, config.webServer?.command);
         if (!options.onScenarioError) throw why;
         options.onScenarioError(scenario.name, why);
         continue;
