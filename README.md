@@ -2,6 +2,9 @@
 
 **Snapshot testing for React re-renders — deterministic, runtime-proven, with the fix.**
 
+Your React app feels slow when you type or click? crispy shows which components re-render for no
+reason, and the exact line to fix.
+
 [![CI](https://github.com/edgeorgie/crispy-profiling/actions/workflows/ci.yml/badge.svg)](https://github.com/edgeorgie/crispy-profiling/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/crispy-profiling.svg)](https://www.npmjs.com/package/crispy-profiling)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -26,9 +29,6 @@ timing; snapshots store them as ranges). That makes it a reliable feedback loop 
 - **CI**: render budgets and baseline comparison that fail a PR when a component starts re-rendering.
 - **You**: a CLI that answers "why does this re-render?" without opening DevTools.
 
-**Is this for me?** If your React app feels slow when you type or click, crispy shows which
-components re-render for no reason and how to fix each one.
-
 No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19 and
 validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are not tested.
 
@@ -40,6 +40,11 @@ npx crispy install   # downloads Chromium once (if that fails, an installed Chro
 npx crispy scan      # zero config: starts your dev server, finds interactions, profiles them
 npx crispy test      # records crispy.snap.json from the scanned scenarios → commit it
 ```
+
+Words you will see: a **render** is React running a component again; **avoidable** means its
+inputs did not really change, so the screen would look the same without it; **hoist** means move a
+constant out of the component; **memoize** means keep the same value or function between renders
+(`useMemo`, `useCallback`, `React.memo`).
 
 `crispy scan` detects Next.js/Vite, the dev URL (the port your dev server prints, e.g. `server.port`
 in `vite.config.ts`) and your dev command, visits a few routes, tries
