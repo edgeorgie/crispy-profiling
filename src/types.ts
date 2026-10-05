@@ -243,6 +243,8 @@ export interface ComponentDiff {
   headAvoidable: number;
   status: 'regressed' | 'improved' | 'unchanged' | 'added';
   /** Improved, but the base reads a mutable instance or mutable data: check the UI. */
+  /** Same component under another key in base (`Row` → `Row2` after React.memo). */
+  renamedFrom?: string;
   suspect?: true;
 }
 
@@ -257,6 +259,9 @@ export interface CompareResult {
     headWasted: number;
     baseAvoidable: number;
     headAvoidable: number;
+    /** JavaScript ms (median per phase, summed), when both reports have `timings`. */
+    baseMs?: number;
+    headMs?: number;
   };
   passed: boolean;
   /** Scenarios/phases that ran on one side only ("checkout / load (only in base)"). */

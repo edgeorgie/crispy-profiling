@@ -223,7 +223,7 @@ export function createServer(): McpServer {
           baseDir: dirname(resolve(configPath)),
         });
         return text(
-          `Status: ${outcome.exitCode === 0 ? 'PASS' : 'FAIL'}\n\n${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
+          `Status: ${outcome.exitCode !== 0 ? 'FAIL' : outcome.result?.changes.some((c) => c.suspect) ? 'WARN (fewer renders on a component that reads mutable data: check the UI, or undo that React.memo)' : 'PASS'}\n\n${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
         );
       } catch (err) {
         return fail(err);

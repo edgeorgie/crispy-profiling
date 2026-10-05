@@ -92,7 +92,11 @@ export function compareToMarkdown(result: CompareResult, top = 20): string {
   const lines: string[] = [
     `## 🥓 crispy-profiling: ${result.passed ? '✅ no render regressions' : `❌ ${result.regressions.length} render regression(s)`}`,
     '',
-    `Total renders: ${t.baseRenders} → ${t.headRenders} · Avoidable: ${t.baseAvoidable} → ${t.headAvoidable}`,
+    `Total renders: ${t.baseRenders} → ${t.headRenders} · Avoidable (unchanged inputs + recreated callbacks): ${t.baseAvoidable} → ${t.headAvoidable}${
+      t.baseMs !== undefined && t.headMs !== undefined
+        ? ` · JavaScript: ${Math.round(t.baseMs)} → ${Math.round(t.headMs)} ms (${t.headMs > t.baseMs ? '+' : ''}${t.baseMs ? Math.round(((t.headMs - t.baseMs) / t.baseMs) * 100) : 0}%, medians; ms vary between runs)`
+        : ''
+    }`,
     '',
   ];
   if (result.notCompared?.length) {
@@ -114,7 +118,7 @@ export function compareToMarkdown(result: CompareResult, top = 20): string {
   for (const d of interesting) {
     const pct = d.deltaPct === null ? '' : ` (${d.deltaPct > 0 ? '+' : ''}${d.deltaPct}%)`;
     lines.push(
-      `| ${d.suspect ? '⚠️ check the UI' : `${icon[d.status]} ${d.status}`} | ${esc(d.scenario)} / ${esc(d.phase)} | ${esc(d.component)} | ${d.baseRenders} → ${d.headRenders} | ${d.delta > 0 ? '+' : ''}${d.delta}${pct} | ${d.baseAvoidable} → ${d.headAvoidable} |`,
+      `| ${d.suspect ? '⚠️ check the UI' : `${icon[d.status]} ${d.status}`} | ${esc(d.scenario)} / ${esc(d.phase)} | ${d.renamedFrom ? `${esc(d.renamedFrom)} → ` : ''}${esc(d.component)} | ${d.baseRenders} → ${d.headRenders} | ${d.delta > 0 ? '+' : ''}${d.delta}${pct} | ${d.baseAvoidable} → ${d.headAvoidable} |`,
     );
   }
   if (interesting.some((d) => d.status === 'improved')) lines.push('', GREEN_CAVEAT);
