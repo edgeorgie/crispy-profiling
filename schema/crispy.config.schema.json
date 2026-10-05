@@ -60,6 +60,14 @@
       "default": false,
       "type": "boolean"
     },
+    "random": {
+      "default": "seeded",
+      "type": "string",
+      "enum": [
+        "seeded",
+        "native"
+      ]
+    },
     "cpuThrottle": {
       "default": 1,
       "type": "number",
@@ -272,6 +280,68 @@
                     "selector": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "visible",
+                        "hidden",
+                        "attached",
+                        "detached"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "selector"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "select"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "selector",
+                    "value"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "drag"
+                    },
+                    "selector": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "to": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "dx": {
+                      "type": "number"
+                    },
+                    "dy": {
+                      "type": "number"
+                    },
+                    "steps": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 200
                     }
                   },
                   "required": [

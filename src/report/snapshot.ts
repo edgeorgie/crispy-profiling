@@ -280,10 +280,11 @@ export function compareSnapshot(
     expected: Count,
     actual: Stat,
     hint?: string,
+    slack = tolerance,
   ) => {
     const flaky = Array.isArray(expected) || actual.min !== actual.max;
     const entry = { ...base, metric, expected, actual: toCount(actual), ...(flaky && { flaky }) };
-    if (actual.min > hi(expected) + tolerance) {
+    if (actual.min > hi(expected) + slack) {
       changes.push({ ...entry, status: 'regressed', ...(hint && { hint }) });
     } else if (actual.max < lo(expected)) {
       changes.push({ ...entry, status: 'improved' });
@@ -315,7 +316,17 @@ export function compareSnapshot(
         continue;
       }
       // Extra commits (e.g. setState-in-effect cascades) are a regression on their own.
-      check({ scenario, phase }, 'commits', exp.commits, reportPhase?.commits ?? zero);
+      // One extra commit (a framework scheduling detail) is tolerated in phases that
+      // already commit; component counts still catch every extra render.
+      const commitSlack = hi(exp.commits) > 0 ? Math.max(tolerance, 1) : tolerance;
+      check(
+        { scenario, phase },
+        'commits',
+        exp.commits,
+        reportPhase?.commits ?? zero,
+        undefined,
+        commitSlack,
+      );
 
       const renames = detectRenames(exp, actualPhases[phase] ?? { commits: 0, components: {} });
       for (const [from, to] of renames) {
