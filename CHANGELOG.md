@@ -30,8 +30,10 @@ with the fix.
   (`styled.div @ src/Card.tsx:12`), stable across runs and full navigations.
 - Framework internals hidden by default (`includeInternals` to show them), including Next.js dev
   overlay roots; commits that only touch internals are not counted.
-- Scenario runner on Playwright (Chromium): declarative steps and phases, settling on network idle
-  and React work, fake clock, CPU throttling, per-key typing.
+- Scenario runner on Playwright (Chromium): declarative steps (`click`, `type`, `select`, `drag`,
+  `waitFor` with state, `goto`…) and phases, settling on network idle and React work, waiting for
+  the first render of apps that boot asynchronously, seeded `Math.random`, fake clock, CPU
+  throttling, per-key typing.
 - Deterministic JSON reports (median/min/max over runs, stability flag); opt-in timings.
 - Render budgets and baseline comparison with regression thresholds.
 - CLI: `init`, `install`, `run`, `test`, `compare`, `mcp`.
@@ -42,4 +44,7 @@ with the fix.
 
 ### Validated on
 - Vite 8 + React 19 (React Router, Zustand, TanStack Query, styled-components, React Compiler).
-- Next.js 16 (Turbopack and webpack dev servers), React 18.3.
+- Next.js 16 (Turbopack and webpack dev servers), React 18.3 and 19.0.
+- Open-source apps: Redux Essentials, Next.js App Router Playground, Excalidraw, shadcn-admin and
+  the react-admin demo — fixable re-render problems found and fixed in all five (−12 % to −85 %
+  renders in the profiled flows).
