@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Breaking
+- `readOnly` is on by default in `run`, `test` and the MCP tools, not only in `crispy scan` (the
+  Playwright integration is unchanged: there your own test drives the page): replayed clicks never send POST/PUT/DELETE requests or
+  WebSocket messages, and what was blocked is listed in the report's warnings. Set
+  `"readOnly": false` for flows that must write (e.g. a disposable test database).
+
 ### Fixed
 - `compare` no longer lists the components of a scenario or phase that ran on one side only as
   🟢 −100%: it says they were not compared (`notCompared`).

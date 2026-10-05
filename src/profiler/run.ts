@@ -6,6 +6,7 @@ import { chromium } from 'playwright-core';
 import { type CrispyConfig, phasesOf, type Scenario, type Step } from '../config.js';
 import { buildReport } from '../report/aggregate.js';
 import type { CrispyReport, RawRun } from '../types.js';
+import { cmp } from '../util/cmp.js';
 import { resolveDefinitions, trackScripts } from './definitions.js';
 import { crispyHookSource } from './hook.js';
 import { SourceMapResolver } from './sourcemaps.js';
@@ -835,6 +836,8 @@ export async function profile(
   try {
     const auth = await authenticate(browser, config, options.cwd, log);
     const results: { scenario: Scenario; runs: RawRun[] }[] = [];
+    /** Writes read-only mode blocked, per scenario: reported in its warnings. */
+    const blockedWrites = new Map<string, Set<string>>();
     for (const scenario of scenarios) {
       const runs: RawRun[] = [];
       try {
@@ -843,7 +846,11 @@ export async function profile(
           const blocked =
             options.onBlockedRequest ??
             (config.readOnly
-              ? (_name: string, what: string) => log(`[crispy] read-only: blocked ${what}`)
+              ? (name: string, what: string) => {
+                  const seen = blockedWrites.get(name) ?? new Set<string>();
+                  if (!seen.has(what)) log(`[crispy] read-only: blocked ${what}`);
+                  blockedWrites.set(name, seen.add(what));
+                }
               : undefined);
           runs.push(
             await runScenarioOnce(
@@ -863,7 +870,16 @@ export async function profile(
       }
       results.push({ scenario, runs });
     }
-    return buildReport(results, config);
+    const report = buildReport(results, config);
+    for (const [name, writes] of blockedWrites) {
+      const s = report.scenarios[name];
+      if (!s) continue;
+      for (const what of [...writes].sort(cmp))
+        s.warnings.push(
+          `read-only: blocked ${what} (nothing was sent; set "readOnly": false only if this flow must write, e.g. against a disposable database)`,
+        );
+    }
+    return report;
   } finally {
     await browser.close();
     await stopServer();

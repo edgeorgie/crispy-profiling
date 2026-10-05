@@ -154,11 +154,12 @@ export const ConfigSchema = z.object({
   timings: z.boolean().default(false),
   /**
    * Block every request other than GET/HEAD/OPTIONS and every WebSocket message the
-   * page sends (hot-reload sockets excepted) in the browser (and close
-   * popups), so replaying interactions never changes data. Set by `crispy scan`
-   * for the scenarios it generates.
+   * page sends (hot-reload sockets excepted) in the browser (and close popups), so
+   * replaying interactions never changes data. On by default; blocked writes are
+   * listed in the report's warnings. Set `false` for flows that must write (e.g. a
+   * disposable test database).
    */
-  readOnly: z.boolean().default(false),
+  readOnly: z.boolean().default(true),
   /** Number of components to keep per phase in the report (sorted by renders). 0 = all. */
   topComponents: z.number().int().min(0).default(0),
   /**
