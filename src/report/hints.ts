@@ -148,7 +148,13 @@ export function hintFor(
   if (c.causes.state > 0) {
     const what = top(c.stateChanges, 1)[0];
     if (what?.startsWith('store subscription')) {
-      return `a store or router subscription changed (${what.replace(/^store subscription \(useSyncExternalStore\)( via )?/, '') || 'useSyncExternalStore'})${where}: select only what this component needs (e.g. the pathname instead of the whole location, or a primitive instead of a new object), or move the subscription into the child that uses it.`;
+      const hook = what.replace(/^store subscription \(useSyncExternalStore\)\s*/, '');
+      const below = name ? cascadeOf(name, phase).total : 0;
+      // Only advise when the subscription costs avoidable renders below; otherwise the
+      // render is how the component shows new data.
+      return below > 0
+        ? `a store or router subscription changed (${hook || 'useSyncExternalStore'})${where} and re-rendered ${below} unchanged render(s) below: select only what this component needs (a primitive or a shallow-equal selector instead of a new object), or move the subscription into the child that uses it.`
+        : `a store or router subscription changed (${hook || 'useSyncExternalStore'})${where}: expected when the data it selects changes. If it renders more often than what it shows changes, select less.`;
     }
     return `its own state changed${what ? `: ${what}` : ' (a setState call or new data, e.g. a query result)'}${where}. If it renders more often than its data changes, look for effects that set state after render.`;
   }

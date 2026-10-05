@@ -665,7 +665,7 @@ describe('named state causes', () => {
     const phases = (await profile(config)).scenarios.n?.phases;
     expect(phases?.own?.components.App?.stateChanges).toEqual({ '`count` (useState)': 1 });
     expect(phases?.store?.components.StoreReader?.stateChanges).toEqual({
-      'store subscription (useSyncExternalStore) via `useCounterStore`': 1,
+      'store subscription (useSyncExternalStore) in `useCounterStore`': 1,
     });
   });
 });
@@ -718,5 +718,31 @@ describe('Playwright Test integration', () => {
     } finally {
       await browser.close();
     }
+  });
+});
+
+describe('named state causes: ground truth (R6-01, R6-02)', () => {
+  it('names the right hook after multi-slot hooks and custom hooks', async () => {
+    const steps = ['a', 'b', 'c', 'd', 'e'].flatMap((x) => [
+      { action: 'phase' as const, name: x },
+      { action: 'click' as const, selector: `#lab-${x}` },
+    ]);
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'lab', path: '/?lab', steps }],
+    });
+    const p = (await profile(config)).scenarios.lab?.phases;
+    const names = (phase: string, c: string) =>
+      Object.keys(p?.[phase]?.components[c]?.stateChanges ?? {});
+    expect(names('a', 'StoreThenState')).toEqual(['`count` (useState)']);
+    expect(names('b', 'StateThenStore')).toEqual(['`v` (useSyncExternalStore)']);
+    expect(names('b', 'StoreHookOnly')).toEqual([
+      'store subscription (useSyncExternalStore) in `useMiniStore`',
+    ]);
+    expect(names('c', 'TransitionThenState')).toEqual(['`tab` (useState)']);
+    expect(names('d', 'StoreHookThenReducer')).toEqual(['`n` (useReducer)']);
+    expect(names('e', 'CustomThenState')).toEqual(['`label` (useState)']);
   });
 });

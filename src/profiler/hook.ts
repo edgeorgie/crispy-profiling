@@ -352,8 +352,6 @@ export function installCrispyHook(): void {
     );
   }
 
-  // Hooks that never have an entry in the fiber's hook list.
-  const NO_STATE_HOOKS: Record<string, true> = { useContext: true, use: true, useDebugValue: true };
   const PRIMITIVE_HOOKS: Record<string, true> = {
     useState: true,
     useReducer: true,
@@ -385,7 +383,7 @@ export function installCrispyHook(): void {
     calls = [];
     try {
       const src = Function.prototype.toString.call(fn);
-      const re = /\b(use[A-Z]\w*)\)?\s*\(/g;
+      const re = /\b(use[A-Z]\w*)["']?\]?\)?\s*\(/g;
       for (let m = re.exec(src); m; m = re.exec(src)) {
         const hook = m[1] as string;
         const before = src.slice(Math.max(0, m.index - 120), m.index);
@@ -394,7 +392,7 @@ export function installCrispyHook(): void {
         );
         const named =
           stmt.match(/(?:const|let|var)\s*\[\s*(\w+)/) ||
-          stmt.match(/(?:const|let|var)\s+(\w+)\s*=\s*$/);
+          stmt.match(/(?:const|let|var)\s+(\w+)\s*=\s*(?:\(0,\s*)?[\w$.[\]"']*$/);
         calls.push({ hook, name: named ? (named[1] as string) : null });
       }
     } catch {}
@@ -402,10 +400,36 @@ export function installCrispyHook(): void {
     return calls;
   }
 
+  /** Hook-list nodes each hook type occupies (React 18/19 layout). */
+  const HOOK_SLOTS: Record<string, number> = {
+    useContext: 0,
+    use: 0,
+    useDebugValue: 0,
+    useFormStatus: 0,
+    useSyncExternalStore: 2,
+    useTransition: 2,
+    useActionState: 3,
+    useFormState: 3,
+  };
+  const slotsOf = (t: string) => (t in HOOK_SLOTS ? (HOOK_SLOTS[t] as number) : 1);
+  /** Hooks whose value is state (a change re-renders the component). */
+  const STATE_KINDS: Record<string, true> = {
+    useState: true,
+    useReducer: true,
+    useSyncExternalStore: true,
+    useTransition: true,
+    useActionState: true,
+    useFormState: true,
+    useOptimistic: true,
+    useDeferredValue: true,
+  };
+
   /**
    * Names the state that really changed in a function component, e.g.
-   * "`query` (useState)", "store subscription (useSyncExternalStore) via
-   * `useLocation`". Uses the dev-only hook types React records on each fiber.
+   * "`query` (useState)" or "store subscription (useSyncExternalStore) in
+   * `useLocation`". Only names what can be told for sure: primitives written
+   * before the first or after the last custom hook map to exact list slots;
+   * inside custom hooks it names the hook only when there is one candidate.
    */
   function changedStateName(prev: any, next: any): string | null {
     if (next.tag === 1) return 'class state (this.state)';
@@ -413,29 +437,56 @@ export function installCrispyHook(): void {
     let b = next.memoizedState;
     if (!a || !b || typeof b !== 'object' || !('next' in b)) return null;
     let index = -1;
+    let count = 0;
     for (let i = 0; a && b; i++, a = a.next, b = b.next) {
-      if (isEffect(a.memoizedState) || isMemoHook(b)) continue;
-      if (classify(a.memoizedState, b.memoizedState) === 3) {
-        index = i;
-        break;
-      }
+      count = i + 1;
+      if (index >= 0 || isEffect(a.memoizedState) || isMemoHook(b)) continue;
+      if (classify(a.memoizedState, b.memoizedState) === 3) index = i;
     }
     if (index < 0) return null;
-    const types: string[] = (next._debugHookTypes || []).filter((t: string) => !NO_STATE_HOOKS[t]);
-    const kind = types[index] || 'hook';
-    const calls = callsIn(next.type);
-    const custom = calls.filter((c) => !PRIMITIVE_HOOKS[c.hook]).map((c) => c.hook);
-    const own = calls.filter((c) => !NO_STATE_HOOKS[c.hook]);
-    // Only primitives in this component: the n-th call is the n-th hook.
-    if (custom.length === 0 && own.length === types.length) {
-      const call = own[index];
-      return call?.name ? `\`${call.name}\` (${kind})` : `${kind} #${index + 1}`;
+
+    // Slot -> hook type, following React's layout.
+    const slotType: string[] = [];
+    for (const t of next._debugHookTypes || []) {
+      for (let k = 0; k < slotsOf(t); k++) slotType.push(k === 0 ? t : `${t}(internal)`);
     }
-    const uniq = custom.filter((h, i) => custom.indexOf(h) === i).slice(0, 3);
-    const via = uniq.length ? ` via ${uniq.map((h) => `\`${h}\``).join(', ')}` : '';
+    const kind = slotType.length === count ? slotType[index] : undefined;
+    if (!kind || !STATE_KINDS[kind]) return `state (hook #${index + 1})`;
+
+    const calls = callsIn(next.type);
+    const custom = (c: { hook: string }) => !PRIMITIVE_HOOKS[c.hook];
+    const label = (c: { hook: string; name: string | null }) =>
+      c.name ? `\`${c.name}\` (${c.hook})` : `${c.hook}`;
+    // Primitives before the first custom hook occupy the first slots...
+    let slot = 0;
+    for (const c of calls) {
+      if (custom(c)) break;
+      const n = slotsOf(c.hook);
+      if (index >= slot && index < slot + n) return c.hook === kind ? label(c) : `${kind}`;
+      slot += n;
+    }
+    // ...and primitives after the last custom hook occupy the last ones.
+    slot = count;
+    for (let i = calls.length - 1; i >= 0; i--) {
+      const c = calls[i] as { hook: string; name: string | null };
+      if (custom(c)) break;
+      const n = slotsOf(c.hook);
+      if (index >= slot - n && index < slot) return c.hook === kind ? label(c) : `${kind}`;
+      slot -= n;
+    }
+    const owners = calls.filter(custom).map((c) => c.hook);
+    const uniq = owners.filter((h, i) => owners.indexOf(h) === i);
+    const where = !uniq.length
+      ? ''
+      : uniq.length === 1
+        ? ` in \`${uniq[0]}\``
+        : ` in one of ${uniq
+            .slice(0, 3)
+            .map((h) => `\`${h}\``)
+            .join(', ')}`;
     return kind === 'useSyncExternalStore'
-      ? `store subscription (useSyncExternalStore)${via}`
-      : `${kind}${via}`;
+      ? `store subscription (useSyncExternalStore)${where}`
+      : `${kind}${where}`;
   }
 
   function stateChange(prev: any, next: any): Change {
