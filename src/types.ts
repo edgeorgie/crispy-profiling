@@ -135,6 +135,12 @@ export interface PhaseReport {
   totalAvoidableRenders: Stat;
   totalCallbackRenders: Stat;
   components: Record<string, ComponentReport>;
+  /**
+   * Components referenced by this phase (as creators, providers, triggers or owners)
+   * that are library code, including internals hidden from `components`. Used so
+   * hints never point into libraries.
+   */
+  library?: string[];
 }
 
 export interface BudgetViolation {

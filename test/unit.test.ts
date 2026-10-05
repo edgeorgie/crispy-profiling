@@ -698,3 +698,26 @@ describe('root causes (R5-05, R5-06)', async () => {
     expect(causes[1]?.text).toContain('Wrapping `List` in React.memo would skip 13 of them');
   });
 });
+
+describe('root causes never double count (R6-03)', async () => {
+  const { rootCauses } = await import('../src/report/hints.js');
+  it('attributes each avoidable render once and skips library creators', () => {
+    const row = component(4, 4, 0);
+    row.callbackRenders = s(4);
+    // One parent recreates two props of the same rows: one cause, 4 renders.
+    row.creators = { 'style|Grid': 4, 'onPick|Grid': 4 };
+    const btn = component(10, 10, 0);
+    btn.callbackRenders = s(10);
+    // Several owners recreate props of the same button: still at most 10.
+    btn.creators = { 'onClick|A': 10, 'icon|B': 6, 'ref|SlotClone': 10 };
+    const p = phase({ Row: row, Button: btn });
+    p.library = ['SlotClone'];
+    const causes = rootCauses(p);
+    const total = causes.reduce((a, c) => a + c.renders, 0);
+    expect(total).toBeLessThanOrEqual(14);
+    expect(causes.some((c) => c.text.includes('SlotClone'))).toBe(false);
+    expect(causes.find((c) => c.text.startsWith('`Grid`'))?.text).toContain(
+      '`Grid` recreates `style`, `onPick` → 4 avoidable render(s) in `Row`',
+    );
+  });
+});

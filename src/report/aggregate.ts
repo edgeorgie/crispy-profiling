@@ -418,11 +418,26 @@ export function buildReport(
     const rank = (p: string) => (declared.includes(p) ? declared.indexOf(p) : declared.length);
     const order = [...phaseNames].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
     const phases: Record<string, PhaseReport> = {};
+    // Definition files of every component seen, internals included.
+    const allFiles: Record<string, string> = { ...definedIn };
+    for (const r of rawRuns)
+      for (const [k, f] of Object.entries(r.definitions ?? {})) allFiles[k] ??= f;
     for (const p of order) {
-      phases[p] = aggregatePhase(runs, p, config);
-      for (const [k, c] of Object.entries((phases[p] as PhaseReport).components)) {
+      const phase = aggregatePhase(runs, p, config);
+      phases[p] = phase;
+      for (const [k, c] of Object.entries(phase.components)) {
         if (definedIn[k]) c.definedIn = definedIn[k];
       }
+      const referenced = new Set<string>();
+      for (const c of Object.values(phase.components)) {
+        for (const key of Object.keys(c.creators)) referenced.add(key.split('|')[1] as string);
+        for (const k of Object.keys(c.recreatedContextFrom)) referenced.add(k);
+        for (const k of Object.keys(c.triggeredBy)) referenced.add(k);
+      }
+      const library = [...referenced]
+        .filter((k) => allFiles[k] && LIBRARY_PATH.test(allFiles[k]))
+        .sort(cmp);
+      if (library.length) phase.library = library;
     }
 
     const report: ScenarioReport = {
