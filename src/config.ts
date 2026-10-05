@@ -33,6 +33,17 @@ export const StepSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('wait'), ms: z.number().int().min(0).max(60_000) }),
   z.object({ action: z.literal('scroll'), y: z.number(), selector: z.string().optional() }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
+  /**
+   * Checks the screen, so a "fix" that freezes the UI fails instead of passing with
+   * fewer renders: the element exists (and is visible), contains `text`, or matches
+   * `count` times. Waits up to `timeoutMs`.
+   */
+  z.object({
+    action: z.literal('expect'),
+    selector: z.string().min(1),
+    text: z.string().optional(),
+    count: z.number().int().min(0).optional(),
+  }),
   z.object({
     action: z.literal('phase'),
     name: z
