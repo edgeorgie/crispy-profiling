@@ -840,3 +840,25 @@ describe('effect cascades: attribution (red-team round 8)', () => {
     expect(hint).toMatch(/call the parent's setter in the event handler/);
   });
 });
+
+describe('crispy scan', () => {
+  it('finds safe interactions on its own and the effect cascade among them', async () => {
+    const { scan } = await import('../src/scan.js');
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'x' }],
+    });
+    const result = await scan(config, { path: '/?cascade', maxRoutes: 1, maxActions: 6, runs: 1 });
+    expect(result.skipped.map((s) => s.reason)).toEqual([]);
+    const names = result.scenarios.map((s) => s.name);
+    expect(names.length).toBe(6);
+    // Every scenario re-runs from scratch; the effect cascade is found without writing steps.
+    const derived = Object.values(result.report.scenarios).find(
+      (s) => s.phases.interaction?.components.EffectDerived?.effectCascades,
+    );
+    expect(derived).toBeDefined();
+    expect(result.causes.some((c) => c.text.includes('A useEffect in `EffectDerived`'))).toBe(true);
+  }, 180_000);
+});

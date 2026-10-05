@@ -887,3 +887,24 @@ describe('dev server URL fallback is safe (R7-02, R7-03)', async () => {
     ).rejects.toThrow(/did not answer/);
   });
 });
+
+describe('scan safety', async () => {
+  const { RISKY } = await import('../src/scan.js');
+  it('never clicks actions with effects outside the page', () => {
+    const risky = new RegExp(RISKY, 'i');
+    for (const name of [
+      'Delete',
+      'Remove item',
+      'Log out',
+      'Sign out',
+      'Pay now',
+      'Checkout',
+      'Send message',
+      'Reset password',
+      'Clear all',
+    ])
+      expect(risky.test(name), name).toBe(true);
+    for (const name of ['Add item', 'Settings', 'Next page', 'Filter', 'Toggle theme', 'Open menu'])
+      expect(risky.test(name), name).toBe(false);
+  });
+});

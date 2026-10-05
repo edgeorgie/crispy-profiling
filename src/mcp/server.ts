@@ -8,6 +8,7 @@ import { profile } from '../profiler/run.js';
 import { serializeReport } from '../report/aggregate.js';
 import { compareReports } from '../report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../report/markdown.js';
+import { scan } from '../scan.js';
 import { runSnapshotTest } from '../snapshot-test.js';
 import type { CrispyReport } from '../types.js';
 import { cmp } from '../util/cmp.js';
@@ -64,6 +65,49 @@ export function createServer(): McpServer {
         });
         const report = await profile(config);
         return text(reportToMarkdown(report, top) + (await saveReport(report, outFile)));
+      } catch (err) {
+        return fail(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'scan_app',
+    {
+      title: 'Find and profile interactions automatically',
+      description:
+        'Zero-config start: opens the app, finds safe interactions on a few routes (buttons, tabs, ' +
+        'text inputs; never delete/pay/sign-out/submit), profiles each one and returns the top root ' +
+        'causes of avoidable renders with fixes, plus the scenarios as crispy.config.json scenarios ' +
+        'so they can be saved and guarded with test_render_snapshots.',
+      inputSchema: {
+        url: z.url().describe('Start page, e.g. http://localhost:5173/'),
+        maxRoutes: z.number().int().min(1).max(10).default(3),
+        maxActions: z.number().int().min(1).max(20).default(5).describe('Interactions per route'),
+      },
+    },
+    async ({ url, maxRoutes, maxActions }) => {
+      try {
+        const u = new URL(url);
+        const config = parseConfig({ baseUrl: u.origin, scenarios: [{ name: 'scan' }] });
+        const result = await scan(config, {
+          path: `${u.pathname}${u.search}`,
+          maxRoutes,
+          maxActions,
+        });
+        const causes = result.causes.length
+          ? result.causes
+              .slice(0, 10)
+              .map((c, i) => `${i + 1}. [${c.where}] ${c.text}`)
+              .join('\n')
+          : 'No avoidable renders found in these interactions.';
+        const skipped = result.skipped.length
+          ? `\n\nSkipped:\n${result.skipped.map((s) => `- ${s.name}: ${s.reason}`).join('\n')}`
+          : '';
+        return text(
+          `${result.scenarios.length} interaction(s) profiled.\n\nTop root causes:\n${causes}${skipped}\n\n` +
+            `Scenarios (save under "scenarios" in crispy.config.json):\n${JSON.stringify(result.scenarios, null, 2)}`,
+        );
       } catch (err) {
         return fail(err);
       }
