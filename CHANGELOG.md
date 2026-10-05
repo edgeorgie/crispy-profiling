@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Hints no longer suggest React.memo for a component that gets new `children` JSX on most renders
+  (the memo would compare and render anyway). Root causes under 10 renders, or under 2% of the
+  phase's renders, are marked "Optional (low impact)" (`minor` in the API).
 - `crispy install` prints one line while it downloads and, on failure, a short reason instead of
   Playwright's repeated progress lines and stack trace (`--verbose` shows them).
 - `crispy scan` keeps one scenario for list rows that differ only by a number ("Member 1",

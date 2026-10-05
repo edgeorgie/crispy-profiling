@@ -3,6 +3,12 @@ import { cmp } from '../util/cmp.js';
 import { LIBRARY_FILE } from '../util/paths.js';
 
 const code = (keys: string[]) => keys.map((k) => `\`${k}\``).join(', ');
+
+/** Gets new `children` JSX on most renders: React.memo would compare and still render. */
+const newChildren = (c: ComponentReport | undefined) =>
+  !!c &&
+  (c.unstableProps.children ?? 0) + (c.changedProps.children ?? 0) >=
+    Math.max(1, c.renders.median / 2);
 const top = (m: Record<string, number>, n = 3) => Object.keys(m).slice(0, n);
 
 /** "file:line (Owner)" → { where: " (rendered at file:line (Owner))", owner: "Owner" } */
@@ -160,7 +166,9 @@ export function hintFor(
           ? 'It is already wrapped in React.memo, so stable props remove these renders.'
           : Object.keys(c.instanceProps ?? {}).length
             ? `Do not wrap it in React.memo: it receives ${code(Object.keys(c.instanceProps ?? {}).slice(0, 2))}, a mutable instance whose changes a memo would hide.`
-            : 'Then wrap this component in React.memo.',
+            : newChildren(c)
+              ? 'React.memo will not help yet: it also receives new `children` JSX on every render. Stop the parent from re-rendering instead.'
+              : 'Then wrap this component in React.memo.',
       Object.keys(c.callbackProps).length
         ? 'If the values a callback uses really change, that render is necessary.'
         : '',
@@ -244,6 +252,8 @@ export interface RootCause {
    * times their share of the phase's renders. Only with `timings: true`.
    */
   ms?: number;
+  /** Fewer than 10 renders, or under 2% of the phase's renders: worth it only if the rest is done. */
+  minor?: true;
 }
 
 /** Most expensive first: by estimated ms when both are known, else by renders. */
@@ -319,7 +329,8 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       (k) =>
         !phase.components[k]?.memo &&
         !libraryKey(k) &&
-        !Object.keys(phase.components[k]?.instanceProps ?? {}).length,
+        !Object.keys(phase.components[k]?.instanceProps ?? {}).length &&
+        !newChildren(phase.components[k]),
     );
     const wrap = notMemo.length
       ? `, then wrap ${code(notMemo.slice(0, 2))} in React.memo (stable props alone do not skip renders)`
@@ -417,6 +428,7 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
           !Object.keys(c.maskedContextFrom ?? {}).length &&
           !c.mutableReads &&
           !Object.keys(c.instanceProps ?? {}).length &&
+          !newChildren(c) &&
           /^[A-Z]/.test(k),
       )
       .map(([k]) => [k, below(k)] as const)
@@ -439,6 +451,12 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     for (const c of out) {
       c.ms = Math.round((js * c.renders) / total);
       if (c.ms > 0) c.text += ` (≈ ${c.ms} ms of JavaScript)`;
+    }
+  }
+  for (const c of out) {
+    if (c.renders < 10 || c.renders < total * 0.02) {
+      c.minor = true;
+      c.text = `Optional (low impact, ${c.renders} render(s)): ${c.text}`;
     }
   }
   return out.sort(byCost).slice(0, max);
