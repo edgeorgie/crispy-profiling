@@ -564,6 +564,19 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
     );
   });
 
+  it('tells a child to fix its avoidably re-rendering parent first (council round 1)', () => {
+    const price = { ...component(3, 3, 3), locations: ['src/Row.tsx:9 (ProductRow)'] };
+    const row = component(3, 3, 3);
+    row.unstableProps = { style: 3 };
+    const p = phase({ Price: price, ProductRow: row });
+    const hint = hintFor(price, p, 'Price') ?? '';
+    expect(hint).toContain('fix `ProductRow` first');
+    expect(hint).not.toContain('wrap it in React.memo, or');
+    // A parent whose renders are necessary: React.memo on the child is still the advice.
+    const needed = phase({ Price: price, ProductRow: component(3, 3, 0) });
+    expect(hintFor(price, needed, 'Price')).toContain('wrap it in React.memo');
+  });
+
   it('calls a primitive dependency a real change, not something to stabilize', () => {
     const c = at(component(3));
     c.callbackProps = { onAdd: 3 };

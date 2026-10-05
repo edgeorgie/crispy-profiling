@@ -182,6 +182,17 @@ export function hintFor(
     if (c.mutableReads && !c.wastedRenders.median) {
       return `re-renders with identical props because ${because}${where}, and its output changes anyway: it reads data that changes without changing its props (a mutable object such as a table or form instance, a ref, or a global). These renders are needed — do not wrap it in React.memo (it would show stale data). To skip them, pass the values it shows as props.`;
     }
+    // Its parent re-renders avoidably too: fixing the parent removes these renders
+    // with no React.memo here (council round 1: memo-the-child hints).
+    const parent = owner ? phase?.components[owner] : undefined;
+    if (
+      parent &&
+      owner !== name &&
+      !isLibrary(owner) &&
+      parent.avoidableRenders.median + parent.callbackRenders.median >= c.causes.parent
+    ) {
+      return `re-renders with identical props only because \`${owner}\` re-renders${where}, and \`${owner}\`'s own renders are avoidable: fix \`${owner}\` first (see its hint). That removes these renders too, without wrapping this one in React.memo.`;
+    }
     const masked = top(c.maskedContextFrom ?? {}).filter((k) => !isLibrary(k));
     if (masked.length) {
       return `re-renders with identical props because ${because}${where}, and it reads a context whose value ${code(masked)} recreates on every render: React.memo alone will not skip it. Memoize that provider value (useMemo) first, then wrap it in React.memo.`;
