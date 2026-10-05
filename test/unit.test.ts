@@ -666,6 +666,19 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
     expect(hint).not.toContain('Then wrap this component in React.memo');
   });
 
+  it('never suggests a hook inside a render function such as a TanStack cell (council round 3)', async () => {
+    const { rootCauses } = await import('../src/report/hints.js');
+    const box = at(component(5, 5, 0));
+    box.callbackRenders = s(5);
+    box.callbackProps = { onCheckedChange: 5 };
+    box.creators = { 'onCheckedChange|cell': 5 };
+    const hint = hintFor(box) ?? '';
+    expect(hint).toContain('a render function where hooks are not allowed');
+    expect(hint).not.toContain('wrap it in useCallback with the values');
+    const causes = rootCauses(phase({ Checkbox: box }));
+    expect(causes[0]?.text).toContain('`cell` is a render function where hooks are not allowed');
+  });
+
   it('points at the changing dependency of an existing useCallback', () => {
     const c = at(component(3));
     c.callbackProps = { onAdd: 3 };
