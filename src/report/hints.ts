@@ -31,11 +31,30 @@ function cascadeOf(name: string, phase: PhaseReport | undefined): { total: numbe
   return { total: hits.reduce((a, [, n]) => a + n, 0), top: hits.slice(0, 3).map(([k]) => k) };
 }
 
-/** " (`query` (useState))": the state that changed, when known. */
+/** " (`query` (useState))": the state that changed, when known (not one an effect sets). */
 const stateOf = (c: ComponentReport) => {
-  const what = Object.keys(c.stateChanges ?? {})[0];
+  const keys = Object.keys(c.stateChanges ?? {});
+  const what = keys.find((k) => !c.effectCascades?.[k]) ?? keys[0];
   return what ? ` (${what})` : '';
 };
+
+/** State this component's useEffect sets right after a render, and what it costs. */
+export function effectCascade(c: ComponentReport): {
+  total: number;
+  renders: number;
+  states: string[];
+  fix: string;
+} {
+  const m = c.effectCascades ?? {};
+  const states = Object.keys(m);
+  const total = c.cascadeCommits ?? Object.values(m).reduce((a, n) => a + n, 0);
+  const fix = states.some((k) => k.endsWith('(via a prop)'))
+    ? "call the parent's setter in the event handler instead, or lift the state up and compute it during render"
+    : states.some((k) => k.startsWith('a store read by'))
+      ? 'update it in the event handler that changes its input, or derive it where it is read (a selector or during render)'
+      : 'compute the value during render (useMemo if it is expensive) or set it in the event handler that changes its input';
+  return { total, renders: c.cascadeRenders ?? total, states, fix };
+}
 
 /** First entry of a "prop|Creator[|extra]" count map for `prop`. */
 function lookup(m: Record<string, number>, prop: string): string[] | null {
@@ -77,6 +96,14 @@ export function hintFor(
     const file = phase?.components[k]?.definedIn;
     return file !== undefined && LIBRARY_FILE.test(file);
   };
+
+  // State set in a useEffect right after a render: an extra commit every time.
+  const effect = effectCascade(c);
+  if (effect.total > 0 && !library) {
+    const shown = effect.states.slice(0, 3).join(', ');
+    const more = effect.states.length > 3 ? ` and ${effect.states.length - 3} more` : '';
+    return `a useEffect here sets ${shown}${more} right after rendering, ${effect.total} time(s)${where}: each one is an extra commit (${effect.renders} render(s) in total). To fix, ${effect.fix}. If the effect reads the DOM (sizes, positions), move it to useLayoutEffect to avoid a visible flash.`;
+  }
 
   // Root cause of a cascade: its state updates cause avoidable renders below.
   // Library components (routers, error boundaries) are never the place to fix.
@@ -268,7 +295,23 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     });
   }
 
-  // 3. State updates that re-render unchanged children, with the best React.memo boundary.
+  // 3. State set in a useEffect right after a render: one extra commit each time.
+  // The renders in those commits are not counted again below.
+  for (const [name, c] of comps) {
+    const effect = effectCascade(c);
+    if (!effect.total || libraryKey(name)) continue;
+    out.push({
+      renders: effect.renders,
+      text: `A useEffect in \`${name}\` sets ${effect.states.slice(0, 2).join(', ')}${effect.states.length > 2 ? ' and more' : ''} right after rendering → ${effect.total} extra commit(s), ${effect.renders} render(s): ${effect.fix}.`,
+    });
+  }
+
+  for (const [name, c] of comps) {
+    const n = Math.min(c.inEffectCascades ?? 0, c.wastedRenders.median, budget(name, c));
+    if (n > 0) spend(name, n);
+  }
+
+  // 4. State updates that re-render unchanged children, with the best React.memo boundary.
   const ownerOf = (c: ComponentReport) => c.locations[0]?.match(/ \((.+)\)$/)?.[1];
   for (const [trigger, t] of comps) {
     if (!t.causes.state || libraryKey(trigger)) continue;

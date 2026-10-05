@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Effect cascades: `effectCascades` names the state a `useEffect` sets right after a render (its
+  own, a parent's through a setter prop, or a store), blamed on the component whose effect ran,
+  with the extra commits and renders it costs, a hint and a root cause ranked above the
+  `React.memo` advice it would otherwise produce. `createRoot` on React 18 and 19.
+
 ## [0.1.0] - 2026-10-05
 
 First public release: snapshot testing for React re-renders — deterministic, runtime-proven,
