@@ -252,7 +252,7 @@ export interface RootCause {
    * times their share of the phase's renders. Only with `timings: true`.
    */
   ms?: number;
-  /** Fewer than 10 renders, or under 2% of the phase's renders: worth it only if the rest is done. */
+  /** Under 2% of the phase's renders, or under 10 and under 20%: worth it only if the rest is done. */
   minor?: true;
 }
 
@@ -465,7 +465,9 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     }
   }
   for (const c of out) {
-    if (c.renders < 10 || c.renders < total * 0.02) {
+    // Few renders that are also a small share of the phase (a 5-render <h1>), not a
+    // small flow where those few renders are most of the work.
+    if (c.renders < total * 0.02 || (c.renders < 10 && c.renders < total * 0.2)) {
       c.minor = true;
       c.text = `Optional (low impact, ${c.renders} render(s)): ${c.text}`;
     }

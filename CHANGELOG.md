@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
   avoidable renders without a single standout cause.
 
 ### Changed
+- A root cause under 10 renders is optional only if it is also under 20% of the phase's renders.
 - Root causes say where the values are created (`src/App.tsx:36`) and give the fix for their kind
   (useCallback for functions, hoist or useMemo for objects) instead of a generic "useCallback / useMemo".
 - MCP `test_render_snapshots` speaks MCP: it points at `update=true` and the tool names instead of
