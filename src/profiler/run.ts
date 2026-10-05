@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { Browser, BrowserContext, Page } from 'playwright-core';
+import type { Browser, BrowserContext, CDPSession, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
 import { type CrispyConfig, phasesOf, type Scenario, type Step } from '../config.js';
 import { buildReport } from '../report/aggregate.js';
@@ -44,8 +44,10 @@ const SEEDED_RANDOM = `(() => {
 })();`;
 
 /** `${NAME}` in typed values comes from the environment, so credentials stay out of the config. */
-const withEnv = (value: string) =>
-  value.replace(/\$\{(\w+)\}/g, (_, name: string) => {
+/** `$${NAME}` types a literal `${NAME}`. */
+export const withEnv = (value: string) =>
+  value.replace(/(\$?)\$\{(\w+)\}/g, (match, escaped: string, name: string) => {
+    if (escaped) return match.slice(1);
     const v = process.env[name];
     if (v === undefined)
       throw new Error(`Environment variable ${name} is not set (used in a step value).`);
@@ -346,15 +348,25 @@ async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Pro
   }
 }
 
-export async function runScenarioOnce(
-  browser: Browser,
-  config: CrispyConfig,
-  scenario: Scenario,
-  storageState?: StorageState,
-): Promise<RawRun> {
-  const context = await browser.newContext({ viewport: config.viewport, storageState });
-  try {
-    const page = await context.newPage();
+/**
+ * Profiles renders on a Playwright page: installs the hook before the app
+ * loads and collects deterministic render data. Used by the scenario runner
+ * and by the Playwright Test integration (`crispy-profiling/playwright`).
+ */
+export class PageProfiler {
+  private definitions: Record<string, string> = {};
+  private ambiguous = new Set<string>();
+
+  private constructor(
+    readonly page: Page,
+    private readonly cdp: CDPSession,
+    private readonly scripts: Map<string, string>,
+    private readonly sourceMaps: SourceMapResolver,
+    readonly ctx: SettleContext,
+  ) {}
+
+  /** Call before the page navigates to the app. */
+  static async attach(page: Page, config: CrispyConfig): Promise<PageProfiler> {
     const warnings: string[] = [];
     const ctx: SettleContext = { page, network: new NetworkTracker(page), config, warnings };
     const errors: string[] = [];
@@ -366,22 +378,17 @@ export async function runScenarioOnce(
       await page.clock.install({ time: CLOCK_START });
       await page.clock.pauseAt(CLOCK_START + 1);
     }
-    const cdp = await context.newCDPSession(page);
+    const cdp = await page.context().newCDPSession(page);
     const scripts = await trackScripts(cdp);
     if (config.cpuThrottle > 1) {
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: config.cpuThrottle });
     }
     if (config.random === 'seeded') await page.addInitScript({ content: SEEDED_RANDOM });
     await page.addInitScript({ content: crispyHookSource() });
-    const url = new URL(scenario.path, config.baseUrl).toString();
-    await gotoApp(page, url, config.timeoutMs);
-    await waitForReact(page, url, config.timeoutMs, config.clock);
-    await settle(ctx, 'load');
-
     const sourceMaps = new SourceMapResolver(async (u) => {
       try {
         if (/^https?:\/\//.test(u)) {
-          const res = await context.request.get(u, { timeout: config.timeoutMs });
+          const res = await page.context().request.get(u, { timeout: config.timeoutMs });
           return res.ok() ? await res.text() : null;
         }
         // Scripts without a fetchable URL (webpack eval modules, inline scripts):
@@ -397,36 +404,53 @@ export async function runScenarioOnce(
         return null;
       }
     });
-    // Definitions live in the page, so collect them before every navigation too.
-    // A key bound to different files in different documents is ambiguous: drop it.
-    const definitions: Record<string, string> = {};
-    const ambiguous = new Set<string>();
-    const collectDefinitions = async () => {
-      const found = await resolveDefinitions(page, cdp, scripts, sourceMaps).catch(() => ({}));
-      for (const [k, f] of Object.entries(found)) {
-        if (ambiguous.has(k)) continue;
-        if (definitions[k] === undefined) definitions[k] = f;
-        else if (definitions[k] !== f) {
-          ambiguous.add(k);
-          delete definitions[k];
-        }
+    return new PageProfiler(page, cdp, scripts, sourceMaps, ctx);
+  }
+
+  get warnings(): string[] {
+    return this.ctx.warnings;
+  }
+
+  /** Waits until React has rendered (after a navigation). */
+  waitForReact(url: string): Promise<void> {
+    return waitForReact(this.page, url, this.ctx.config.timeoutMs, this.ctx.config.clock);
+  }
+
+  /** Waits until the network and React are idle. */
+  settle(label: string): Promise<void> {
+    return settle(this.ctx, label);
+  }
+
+  /** Renders from now on are recorded in this phase. */
+  phase(name: string): Promise<void> {
+    return setPhase(this.page, name);
+  }
+
+  /**
+   * Definitions live in the page, so collect them before every navigation too.
+   * A key bound to different files in different documents is ambiguous: drop it.
+   */
+  async collectDefinitions(): Promise<void> {
+    const found = await resolveDefinitions(
+      this.page,
+      this.cdp,
+      this.scripts,
+      this.sourceMaps,
+    ).catch(() => ({}));
+    for (const [k, f] of Object.entries(found)) {
+      if (this.ambiguous.has(k)) continue;
+      if (this.definitions[k] === undefined) this.definitions[k] = f;
+      else if (this.definitions[k] !== f) {
+        this.ambiguous.add(k);
+        delete this.definitions[k];
       }
-    };
-
-    const hasExplicitPhase = scenario.steps[0]?.action === 'phase';
-    if (scenario.steps.length > 0 && !hasExplicitPhase) {
-      await setPhase(page, DEFAULT_PHASE_AFTER_LOAD);
     }
-    for (const [i, step] of scenario.steps.entries()) {
-      if (step.action === 'goto') await collectDefinitions();
-      await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
-        settle(ctx, `step ${i + 1} (${step.action})`),
-      );
-      if (step.action !== 'phase') await settle(ctx, `step ${i + 1} (${step.action})`);
-    }
+  }
 
-    await collectDefinitions();
-    const raw = await page.evaluate(() => {
+  /** Raw render data recorded so far, with source-mapped locations. */
+  async collect(declaredPhases: string[] = []): Promise<RawRun> {
+    await this.collectDefinitions();
+    const raw = await this.page.evaluate(() => {
       const s = (window as any).__CRISPY__;
       return JSON.parse(
         JSON.stringify({
@@ -438,20 +462,59 @@ export async function runScenarioOnce(
         }),
       );
     });
+    const warnings = [...this.warnings];
     if (raw.hookErrors) {
       warnings.push(
         `the render hook could not analyze ${raw.hookErrors.count} component render(s); they are missing from the counts (first error: ${raw.hookErrors.first}). Please report it with your React version.`,
       );
     }
     delete raw.hookErrors;
-    raw.definitions = definitions;
+    raw.definitions = { ...this.definitions };
     // Every declared phase is reported, even with no renders: an empty phase is
     // part of the snapshot, so renders appearing there later are a regression.
-    for (const phase of phasesOf(scenario)) {
+    for (const phase of declaredPhases) {
       raw.phases[phase] ??= { commits: 0, components: {} };
     }
-    await rewriteLocations(raw as RawRun, sourceMaps);
+    await rewriteLocations(raw as RawRun, this.sourceMaps);
     return { ...raw, warnings } as RawRun;
+  }
+}
+
+export async function runScenarioOnce(
+  browser: Browser,
+  config: CrispyConfig,
+  scenario: Scenario,
+  storageState?: StorageState,
+): Promise<RawRun> {
+  const context = await browser.newContext({ viewport: config.viewport, storageState });
+  try {
+    const page = await context.newPage();
+    const profiler = await PageProfiler.attach(page, config);
+    const url = new URL(scenario.path, config.baseUrl).toString();
+    await gotoApp(page, url, config.timeoutMs);
+    await profiler.waitForReact(url);
+    await profiler.settle('load');
+
+    const hasExplicitPhase = scenario.steps[0]?.action === 'phase';
+    if (scenario.steps.length > 0 && !hasExplicitPhase) {
+      await profiler.phase(DEFAULT_PHASE_AFTER_LOAD);
+    }
+    for (const [i, step] of scenario.steps.entries()) {
+      if (step.action === 'goto') await profiler.collectDefinitions();
+      try {
+        await runStep(page, step, config.baseUrl, config.timeoutMs, config.clock, () =>
+          profiler.settle(`step ${i + 1} (${step.action})`),
+        );
+      } catch (err) {
+        const what = 'selector' in step ? `${step.action} "${step.selector}"` : step.action;
+        throw new Error(
+          `Scenario "${scenario.name}", step ${i + 1} (${what}) failed: ${(err as Error).message.split('\n')[0]}\n` +
+            'Check that the selector matches a visible element on that page, and edit the steps in your crispy config.',
+        );
+      }
+      if (step.action !== 'phase') await profiler.settle(`step ${i + 1} (${step.action})`);
+    }
+    return await profiler.collect(phasesOf(scenario));
   } finally {
     await context.close();
   }
@@ -500,9 +563,16 @@ export async function profile(
     : config.scenarios;
   if (scenarios.length === 0) throw new Error(`No scenarios match: ${options.only?.join(', ')}`);
 
-  const stopServer = config.webServer
-    ? await startWebServer({ ...config.webServer, cwd: options.cwd }, config.baseUrl, log)
-    : async () => {};
+  let stopServer = async () => {};
+  if (config.webServer) {
+    const server = await startWebServer(
+      { ...config.webServer, cwd: options.cwd },
+      config.baseUrl,
+      log,
+    );
+    stopServer = server.stop;
+    if (server.url !== config.baseUrl) config = { ...config, baseUrl: server.url };
+  }
   let browser: Browser;
   try {
     browser = await launchBrowser(config);

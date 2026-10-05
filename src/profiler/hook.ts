@@ -249,6 +249,7 @@ export function installCrispyHook(): void {
         callbackRenders: 0,
         triggeredBy: {},
         recreatedContextFrom: {},
+        stateChanges: {},
         providerAt: {},
         creators: {},
         staleMemo: {},
@@ -349,6 +350,144 @@ export function installCrispyHook(): void {
       ms.length === 2 &&
       (ms[1] === null || Array.isArray(ms[1]))
     );
+  }
+
+  const PRIMITIVE_HOOKS: Record<string, true> = {
+    useState: true,
+    useReducer: true,
+    useRef: true,
+    useMemo: true,
+    useCallback: true,
+    useEffect: true,
+    useLayoutEffect: true,
+    useInsertionEffect: true,
+    useImperativeHandle: true,
+    useSyncExternalStore: true,
+    useTransition: true,
+    useDeferredValue: true,
+    useId: true,
+    useOptimistic: true,
+    useActionState: true,
+    useContext: true,
+    use: true,
+    useDebugValue: true,
+  };
+  // Hook calls written in each component's own source, in order, with the
+  // variable they are assigned to: `const [query, setQuery] = useState(...)`.
+  const sourceCalls = new WeakMap<object, { hook: string; name: string | null }[]>();
+  function callsIn(type: any): { hook: string; name: string | null }[] {
+    const fn = typeof type === 'function' ? type : type && (type.render || type.type);
+    if (!fn || typeof fn !== 'function') return [];
+    let calls = sourceCalls.get(fn);
+    if (calls) return calls;
+    calls = [];
+    try {
+      const src = Function.prototype.toString.call(fn);
+      const re = /\b(use[A-Z]\w*)["']?\]?\)?\s*\(/g;
+      for (let m = re.exec(src); m; m = re.exec(src)) {
+        const hook = m[1] as string;
+        // Turbopack/webpack import identifiers can be ~200 chars: look back to the statement start.
+        const before = src.slice(Math.max(0, m.index - 600), m.index);
+        const stmt = before.slice(
+          Math.max(before.lastIndexOf(';'), before.lastIndexOf('{'), before.lastIndexOf('}')) + 1,
+        );
+        const named =
+          stmt.match(/(?:const|let|var)\s*\[\s*(\w+)/) ||
+          stmt.match(/(?:const|let|var)\s+(\w+)\s*=\s*(?:\(0,\s*)?[\w$.[\]"']*$/);
+        calls.push({ hook, name: named ? (named[1] as string) : null });
+      }
+    } catch {}
+    sourceCalls.set(fn, calls);
+    return calls;
+  }
+
+  /** Hook-list nodes each hook type occupies (React 18/19 layout). */
+  const HOOK_SLOTS: Record<string, number> = {
+    useContext: 0,
+    use: 0,
+    useDebugValue: 0,
+    useFormStatus: 0,
+    useSyncExternalStore: 2,
+    useTransition: 2,
+    useActionState: 3,
+    useFormState: 3,
+  };
+  const slotsOf = (t: string) => (t in HOOK_SLOTS ? (HOOK_SLOTS[t] as number) : 1);
+  /** Hooks whose value is state (a change re-renders the component). */
+  const STATE_KINDS: Record<string, true> = {
+    useState: true,
+    useReducer: true,
+    useSyncExternalStore: true,
+    useTransition: true,
+    useActionState: true,
+    useFormState: true,
+    useOptimistic: true,
+    useDeferredValue: true,
+  };
+
+  /**
+   * Names the state that really changed in a function component, e.g.
+   * "`query` (useState)" or "store subscription (useSyncExternalStore) in
+   * `useLocation`". Only names what can be told for sure: primitives written
+   * before the first or after the last custom hook map to exact list slots;
+   * inside custom hooks it names the hook only when there is one candidate.
+   */
+  function changedStateName(prev: any, next: any): string | null {
+    if (next.tag === 1) return 'class state (this.state)';
+    let a = prev.memoizedState;
+    let b = next.memoizedState;
+    if (!a || !b || typeof b !== 'object' || !('next' in b)) return null;
+    let index = -1;
+    let count = 0;
+    for (let i = 0; a && b; i++, a = a.next, b = b.next) {
+      count = i + 1;
+      if (index >= 0 || isEffect(a.memoizedState) || isMemoHook(b)) continue;
+      if (classify(a.memoizedState, b.memoizedState) === 3) index = i;
+    }
+    if (index < 0) return null;
+
+    // Slot -> hook type, following React's layout.
+    const slotType: string[] = [];
+    for (const t of next._debugHookTypes || []) {
+      for (let k = 0; k < slotsOf(t); k++) slotType.push(k === 0 ? t : `${t}(internal)`);
+    }
+    const kind = slotType.length === count ? slotType[index] : undefined;
+    if (!kind || !STATE_KINDS[kind]) return `state (hook #${index + 1})`;
+
+    const calls = callsIn(next.type);
+    const custom = (c: { hook: string }) => !PRIMITIVE_HOOKS[c.hook];
+    const label = (c: { hook: string; name: string | null }) =>
+      c.name ? `\`${c.name}\` (${c.hook})` : `${c.hook}`;
+    // Primitives before the first custom hook occupy the first slots...
+    let slot = 0;
+    for (const c of calls) {
+      if (custom(c)) break;
+      const n = slotsOf(c.hook);
+      if (index >= slot && index < slot + n) return c.hook === kind ? label(c) : `${kind}`;
+      slot += n;
+    }
+    // ...and primitives after the last custom hook occupy the last ones.
+    slot = count;
+    for (let i = calls.length - 1; i >= 0; i--) {
+      const c = calls[i] as { hook: string; name: string | null };
+      if (custom(c)) break;
+      const n = slotsOf(c.hook);
+      if (index >= slot - n && index < slot) return c.hook === kind ? label(c) : `${kind}`;
+      slot -= n;
+    }
+    const owners = calls.filter(custom).map((c) => c.hook);
+    const uniq = owners.filter((h, i) => owners.indexOf(h) === i);
+    const where = !uniq.length
+      ? ''
+      : uniq.length === 1
+        ? ` in \`${uniq[0]}\``
+        : ` in one of ${uniq
+            .slice(0, 3)
+            .map((h) => `\`${h}\``)
+            .join(', ')}`;
+    return kind === 'useSyncExternalStore'
+      ? `store subscription (useSyncExternalStore)${where}`
+      : `${kind}${where}`;
   }
 
   function stateChange(prev: any, next: any): Change {
@@ -532,7 +671,11 @@ export function installCrispyHook(): void {
     bump(e.unstableProps, p.unstable);
     bump(e.callbackProps, p.callbacks);
     if (p.changed.length) e.causes.props++;
-    if (s === 3) e.causes.state++;
+    if (s === 3) {
+      e.causes.state++;
+      const what = changedStateName(prev, next);
+      if (what) e.stateChanges[what] = (e.stateChanges[what] || 0) + 1;
+    }
     if (c === 3) e.causes.context++;
     if (s === 3) return true;
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
@@ -609,9 +752,37 @@ export function installCrispyHook(): void {
     return (flags & PERFORMED_WORK) === PERFORMED_WORK;
   }
 
-  function updateSubtree(next: any, prev: any, trigger: string | null): void {
+  /** React.memo saved a render: the parent rendered, this memo component did not. */
+  function memoSkip(fiber: any): void {
+    try {
+      const p = phaseData();
+      if (!p.memoSkips) p.memoSkips = {};
+      const k = keyOf(fiber);
+      p.memoSkips[k] = (p.memoSkips[k] || 0) + 1;
+    } catch (err) {
+      noteError(err);
+    }
+  }
+
+  function updateSubtree(
+    next: any,
+    prev: any,
+    trigger: string | null,
+    parentRendered = false,
+  ): void {
     let below = trigger;
-    if (COMPONENT_TAGS[next.tag] && didRender(next)) {
+    const isComponent = COMPONENT_TAGS[next.tag];
+    const rendered = isComponent && didRender(next);
+    if (parentRendered) {
+      if (next.tag === 15 && !rendered) memoSkip(next);
+      else if (
+        next.tag === 14 &&
+        next.child &&
+        (next.child === prev.child || !didRender(next.child))
+      )
+        memoSkip(next.child);
+    }
+    if (rendered) {
       try {
         if (recordUpdate(prev, next, trigger)) below = keyOf(next);
       } catch (err) {
@@ -619,9 +790,11 @@ export function installCrispyHook(): void {
       }
     }
     if (next.child === prev.child) return; // whole subtree bailed out
+    // Host elements pass their parent component's "rendered" down.
+    const passDown = isComponent ? rendered : parentRendered;
     let child = next.child;
     while (child) {
-      if (child.alternate) updateSubtree(child, child.alternate, below);
+      if (child.alternate) updateSubtree(child, child.alternate, below, passDown);
       else mountSubtree(child);
       child = child.sibling;
     }

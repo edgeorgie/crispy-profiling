@@ -22,11 +22,13 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     callbackRenders: s(0),
     triggeredBy: {},
     recreatedContextFrom: {},
+    stateChanges: {},
     providerAt: [],
     creators: {},
     staleMemo: {},
     compiled: false,
     memo: false,
+    memoSkips: 0,
     locations: [],
     stable: true,
   };
@@ -657,7 +659,7 @@ describe('zero-config setup', async () => {
     const port = 47000 + Math.floor(Math.random() * 1000);
     const url = `http://127.0.0.1:${port}`;
     const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
-    const stop = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: true }, url);
+    const { stop } = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: true }, url);
     expect(await isUp(url)).toBe(true);
     await stop();
     await new Promise((r) => setTimeout(r, 300));
@@ -694,5 +696,194 @@ describe('root causes (R5-05, R5-06)', async () => {
       '`App` recreates `onSelect` → 20 avoidable render(s) in `Row`',
     );
     expect(causes[1]?.text).toContain('Wrapping `List` in React.memo would skip 13 of them');
+  });
+});
+
+describe('root causes never double count (R6-03)', async () => {
+  const { rootCauses } = await import('../src/report/hints.js');
+  it('attributes each avoidable render once and skips library creators', () => {
+    const row = component(4, 4, 0);
+    row.callbackRenders = s(4);
+    // One parent recreates two props of the same rows: one cause, 4 renders.
+    row.creators = { 'style|Grid': 4, 'onPick|Grid': 4 };
+    const btn = component(10, 10, 0);
+    btn.callbackRenders = s(10);
+    // Several owners recreate props of the same button: still at most 10.
+    btn.creators = { 'onClick|A': 10, 'icon|B': 6, 'ref|SlotClone': 10 };
+    const p = phase({ Row: row, Button: btn });
+    p.library = ['SlotClone'];
+    const causes = rootCauses(p);
+    const total = causes.reduce((a, c) => a + c.renders, 0);
+    expect(total).toBeLessThanOrEqual(14);
+    expect(causes.some((c) => c.text.includes('SlotClone'))).toBe(false);
+    expect(causes.find((c) => c.text.startsWith('`Grid`'))?.text).toContain(
+      '`Grid` recreates `style`, `onPick` → 4 avoidable render(s) in `Row`',
+    );
+  });
+});
+
+describe('dev server lifecycle (R6-04, R6-07)', async () => {
+  const { spawn } = await import('node:child_process');
+  const { isUp, startWebServer } = await import('../src/profiler/webserver.js');
+
+  it('stops the dev server when crispy is interrupted', async () => {
+    const port = 48000 + Math.floor(Math.random() * 1000);
+    const child = spawn(
+      process.execPath,
+      ['--import', 'tsx', 'test/fixtures/start-server.ts', String(port)],
+      {
+        stdio: ['ignore', 'pipe', 'inherit'],
+      },
+    );
+    await new Promise<void>((done) =>
+      child.stdout?.on('data', (d) => String(d).includes('ready') && done()),
+    );
+    expect(await isUp(`http://127.0.0.1:${port}`)).toBe(true);
+    child.kill('SIGINT');
+    await new Promise((r) => child.on('exit', r));
+    await new Promise((r) => setTimeout(r, 2000));
+    expect(await isUp(`http://127.0.0.1:${port}`)).toBe(false);
+  }, 30_000);
+
+  it('refuses to profile whatever already runs on the port unless reuse is allowed', async () => {
+    const port = 49000 + Math.floor(Math.random() * 1000);
+    const url = `http://127.0.0.1:${port}`;
+    const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
+    const { stop } = await startWebServer(
+      { command, timeoutMs: 10_000, reuseExisting: false },
+      url,
+    );
+    try {
+      await expect(
+        startWebServer({ command, timeoutMs: 5000, reuseExisting: false }, url),
+      ).rejects.toThrow(/already running/);
+    } finally {
+      await stop();
+    }
+  });
+});
+
+describe('real-world app detection (R6-06)', async () => {
+  const { mkdirSync, mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { detectApp } = await import('../src/detect.js');
+  const { startWebServer } = await import('../src/profiler/webserver.js');
+  const project = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), 'crispy-detect-'));
+    for (const [f, c] of Object.entries(files)) {
+      mkdirSync(join(dir, f, '..'), { recursive: true });
+      writeFileSync(join(dir, f), c);
+    }
+    return dir;
+  };
+
+  it('reads ports from vite.config and .env, and ignores ports of other processes', () => {
+    const vite = { devDependencies: { vite: '8' }, scripts: { dev: 'vite' } };
+    expect(
+      detectApp(
+        project({
+          'package.json': JSON.stringify(vite),
+          'vite.config.ts': 'export default { server: { port: 3005 } }',
+        }),
+      ).baseUrl,
+    ).toBe('http://localhost:3005');
+    // Vite ignores PORT; Next.js reads it.
+    expect(
+      detectApp(project({ 'package.json': JSON.stringify(vite), '.env': 'PORT=4100\n' })).baseUrl,
+    ).toBe('http://localhost:5173');
+    const next = { dependencies: { next: '16' }, scripts: { dev: 'next dev' } };
+    expect(
+      detectApp(project({ 'package.json': JSON.stringify(next), '.env': 'PORT=4100\n' })).baseUrl,
+    ).toBe('http://localhost:4100');
+    const both = {
+      devDependencies: { vite: '8' },
+      scripts: { dev: 'concurrently "api --port 8080" "vite"' },
+    };
+    expect(detectApp(project({ 'package.json': JSON.stringify(both) })).baseUrl).toBe(
+      'http://localhost:5173',
+    );
+  });
+
+  it('uses the workspace package manager and skips install prefixes', () => {
+    const root = project({
+      'yarn.lock': '',
+      'package.json': JSON.stringify({ devDependencies: { vite: '8' } }),
+    });
+    const app = join(root, 'app');
+    mkdirSync(app);
+    writeFileSync(
+      join(app, 'package.json'),
+      JSON.stringify({ scripts: { start: 'yarn && vite' } }),
+    );
+    expect(detectApp(app)).toEqual({
+      framework: 'vite',
+      baseUrl: 'http://localhost:5173',
+      devCommand: 'yarn vite',
+    });
+  });
+
+  it('follows the URL the dev server prints when the configured one never answers', async () => {
+    const port = 46000 + Math.floor(Math.random() * 1000);
+    const command = `node -e "require('http').createServer((q,r)=>{r.setHeader('content-type','text/html');r.end('ok')}).listen(${port},()=>console.log('Local: http://localhost:${port}/'))"`;
+    const server = await startWebServer(
+      { command, timeoutMs: 10_000, reuseExisting: false },
+      'http://localhost:45999',
+    );
+    try {
+      expect(server.url).toBe(`http://localhost:${port}/`);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe('environment values in steps (R6-17)', async () => {
+  const { withEnv } = await import('../src/profiler/run.js');
+  it('reads environment placeholders and keeps escaped ones literal', () => {
+    process.env.CRISPY_UNIT_SECRET = 's3cret';
+    const placeholder = '$' + '{CRISPY_UNIT_SECRET}';
+    expect(withEnv(`pw: ${placeholder} / $${placeholder}`)).toBe(`pw: s3cret / ${placeholder}`);
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: crispy's own placeholder syntax
+    expect(() => withEnv('${CRISPY_UNIT_MISSING}')).toThrow(/CRISPY_UNIT_MISSING is not set/);
+  });
+});
+
+describe('dev server URL fallback is safe (R7-02, R7-03)', async () => {
+  const { writeFileSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { startWebServer } = await import('../src/profiler/webserver.js');
+
+  it('keeps the configured URL when an API announces itself first', async () => {
+    const api = 44000 + Math.floor(Math.random() * 500);
+    const app = 44600 + Math.floor(Math.random() * 300);
+    const script = join(mkdtempSync(join(tmpdir(), 'crispy-ws-')), 'both.cjs');
+    writeFileSync(
+      script,
+      `const http = require('http');
+       http.createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end('{}'); })
+         .listen(${api}, () => console.log('API listening on http://localhost:${api}'));
+       setTimeout(() => http.createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('app'); })
+         .listen(${app}, () => console.log('Local: http://localhost:${app}/')), 1500);`,
+    );
+    const server = await startWebServer(
+      { command: `node ${script}`, timeoutMs: 15_000, reuseExisting: false },
+      `http://localhost:${app}`,
+    );
+    try {
+      expect(server.url).toBe(`http://localhost:${app}`);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('says the server did not answer when it times out (not that it exited)', async () => {
+    await expect(
+      startWebServer(
+        { command: 'echo booting; sleep 100', timeoutMs: 3000, reuseExisting: false },
+        'http://localhost:45998',
+      ),
+    ).rejects.toThrow(/did not answer/);
   });
 });

@@ -59,24 +59,39 @@ runs:
         set +e
         mkdir -p .crispy
         summary=".crispy/summary.md"
+        log=".crispy/crispy.log"
+        rm -f "$summary" "$summary.compare" "$log"
         if [ "$CRISPY_COMMAND" = "test" ]; then
-          "$CRISPY_BIN" test -c "$CRISPY_CONFIG" --ci --markdown "$summary"
+          "$CRISPY_BIN" test -c "$CRISPY_CONFIG" --ci --markdown "$summary" 2> >(tee "$log" >&2)
           status=$?
         else
           flag=""; [ "$CRISPY_FAIL" = "true" ] || flag="--no-fail"
-          "$CRISPY_BIN" run -c "$CRISPY_CONFIG" -o "$CRISPY_OUT" --markdown "$summary" $flag
+          "$CRISPY_BIN" run -c "$CRISPY_CONFIG" -o "$CRISPY_OUT" --markdown "$summary" $flag 2> >(tee "$log" >&2)
           status=$?
           if [ "$status" -le 1 ] && [ -n "$CRISPY_BASELINE" ] && [ -f "$CRISPY_BASELINE" ]; then
-            "$CRISPY_BIN" compare "$CRISPY_BASELINE" "$CRISPY_OUT" --threshold "$CRISPY_THRESHOLD" --markdown "$summary.compare" $flag
+            "$CRISPY_BIN" compare "$CRISPY_BASELINE" "$CRISPY_OUT" --threshold "$CRISPY_THRESHOLD" --markdown "$summary.compare" $flag 2> >(tee -a "$log" >&2)
             cmp_status=$?
-            cat "$summary.compare" >> "$summary"
-            [ "$cmp_status" -gt "$status" ] && status=$cmp_status
+            if [ -f "$summary.compare" ]; then
+              cat "$summary.compare" >> "$summary"
+            else
+              printf '\n### ❌ compare could not run\n\n```text\n%s\n```\n' "$(tail -10 "$log")" >> "$summary"
+            fi
+            # A failed comparison is reported next to the report, not instead of it.
+            [ "$cmp_status" -eq 1 ] && [ "$status" -eq 0 ] && status=1
           fi
         fi
-        if [ -f "$summary" ]; then
-          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+        # crispy could not run (e.g. the dev server failed): still explain why.
+        if [ ! -f "$summary" ]; then
+          {
+            echo "## 🥓 crispy render snapshots: ❌ could not run"
+            echo
+            echo '```text'
+            grep -v '^\[crispy\] .*: run [0-9]' "$log" 2>/dev/null | tail -25
+            echo '```'
+          } > "$summary"
         fi
+        cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+        echo "summary=$summary" >> "$GITHUB_OUTPUT"
         if [ "$status" -eq 1 ] && [ "$CRISPY_FAIL" != "true" ]; then status=0; fi
         exit $status
     - name: Comment on the pull request
@@ -90,13 +105,23 @@ runs:
         REPO: ${{ github.repository }}
       run: |
         marker='<!-- crispy-profiling -->'
-        body="$(printf '%s\n%s' "$marker" "$(cat "$CRISPY_SUMMARY")")"
+        body_file="$(mktemp)"
+        {
+          echo "$marker"
+          # GitHub comments are limited to 65,536 characters; the job summary has the rest.
+          head -c 60000 "$CRISPY_SUMMARY"
+          if [ "$(wc -c < "$CRISPY_SUMMARY")" -gt 60000 ]; then
+            printf '\n\n…truncated: the full report is in the job summary (%s).\n' "$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+          fi
+        } > "$body_file"
+        # The token's own identity (a PAT or App token is not github-actions[bot]).
+        me=$(gh api user --jq .login 2>/dev/null || echo 'github-actions[bot]')
         existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" 2>/dev/null | head -1)
+          --jq ".[] | select(.user.login == \"$me\" and (.body | startswith(\"$marker\"))) | .id" 2>/dev/null | head -1)
         if [ -n "$existing" ]; then
-          gh api -X PATCH "repos/$REPO/issues/comments/$existing" -f body="$body" >/dev/null \
+          gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@"$body_file" >/dev/null \
             || echo "::warning::crispy could not update its PR comment (needs pull-requests: write)"
         elif [ "$CRISPY_OUTCOME" != "success" ] || grep -q "🟢\|🆕\|🔁\|⚠️" "$CRISPY_SUMMARY"; then
-          gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null \
+          gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@"$body_file" >/dev/null \
             || echo "::warning::crispy could not comment on the PR (needs pull-requests: write)"
         fi

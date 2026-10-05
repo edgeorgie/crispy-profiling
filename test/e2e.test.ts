@@ -642,3 +642,131 @@ describe('apps behind a login', () => {
     expect(phases?.load?.components.Login).toBeUndefined();
   });
 });
+
+describe('named state causes', () => {
+  it('names the state hook or store subscription behind a render', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'n',
+          path: '/?store',
+          steps: [
+            { action: 'phase', name: 'own' },
+            { action: 'click', selector: '#inc' },
+            { action: 'phase', name: 'store' },
+            { action: 'click', selector: '#store-bump' },
+          ],
+        },
+      ],
+    });
+    const phases = (await profile(config)).scenarios.n?.phases;
+    expect(phases?.own?.components.App?.stateChanges).toEqual({ '`count` (useState)': 1 });
+    expect(phases?.store?.components.StoreReader?.stateChanges).toEqual({
+      'store subscription (useSyncExternalStore) in `useCounterStore`': 1,
+    });
+  });
+});
+
+describe('useless React.memo', () => {
+  it('flags a memo only when it skipped nothing in the whole scenario (R6-08)', async () => {
+    const inc = { action: 'click' as const, selector: '#inc' };
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        { name: 'only-inc', path: '/?memo', steps: [inc, inc, inc] },
+        {
+          name: 'inc-then-theme',
+          path: '/?memo',
+          steps: [
+            inc,
+            inc,
+            inc,
+            // App re-renders with the same count: the memo skips CounterView here.
+            { action: 'phase', name: 'theme' },
+            { action: 'click', selector: '#theme-toggle' },
+          ],
+        },
+      ],
+    });
+    // Only the flow where the memo never helps: flagged.
+    const alone = await profile({ ...config, scenarios: config.scenarios.slice(0, 1) });
+    const useless = alone.scenarios['only-inc']?.phases.interaction;
+    expect(useless?.components.CounterView?.uselessMemo).toBe(true);
+    expect(hintFor(useless?.components.CounterView, useless, 'CounterView')).toContain(
+      'React.memo did not skip any render in these flows',
+    );
+    // With a flow where it skips renders anywhere in the report: never flagged (R7-04).
+    const report = await profile(config);
+    for (const s of Object.values(report.scenarios)) {
+      const c = s.phases.interaction?.components.CounterView;
+      expect(c?.memoSkips).toBeGreaterThan(0);
+      expect(c?.uselessMemo).toBeUndefined();
+    }
+    // The memo that always works skipped its renders, so it is not in the interaction at all.
+    expect(useless?.components.LabelView).toBeUndefined();
+  });
+});
+
+describe('Playwright Test integration', () => {
+  it('records renders in an existing test and fails with the fix', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { renders } = await import('../src/playwright.js');
+    const { launchBrowser } = await import('../src/profiler/run.js');
+    const browser = await launchBrowser(
+      parseConfig({ baseUrl: slowUrl, scenarios: [{ name: 'x' }] }),
+    );
+    const snapshotDir = mkdtempSync(join(tmpdir(), 'crispy-pw-'));
+    const flow = async (url: string) => {
+      const page = await browser.newPage();
+      try {
+        const r = await renders(page, { snapshotDir, ci: false, config: { settleMs: 150 } });
+        await page.goto(url);
+        await r.phase('select');
+        await page.click('#inc');
+        await r.toMatchSnapshot('list');
+      } finally {
+        await page.close();
+      }
+    };
+    try {
+      await flow(fastUrl); // writes __renders__/list.snap.json
+      await flow(fastUrl); // matches
+      await expect(flow(slowUrl)).rejects.toThrow(/Row[\s\S]*`onSelect` is a new function/);
+    } finally {
+      await browser.close();
+    }
+  });
+});
+
+describe('named state causes: ground truth (R6-01, R6-02)', () => {
+  it('names the right hook after multi-slot hooks and custom hooks', async () => {
+    const steps = ['a', 'b', 'c', 'd', 'e'].flatMap((x) => [
+      { action: 'phase' as const, name: x },
+      { action: 'click' as const, selector: `#lab-${x}` },
+    ]);
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'lab', path: '/?lab', steps }],
+    });
+    const p = (await profile(config)).scenarios.lab?.phases;
+    const names = (phase: string, c: string) =>
+      Object.keys(p?.[phase]?.components[c]?.stateChanges ?? {});
+    expect(names('a', 'StoreThenState')).toEqual(['`count` (useState)']);
+    expect(names('b', 'StateThenStore')).toEqual(['`v` (useSyncExternalStore)']);
+    expect(names('b', 'StoreHookOnly')).toEqual([
+      'store subscription (useSyncExternalStore) in `useMiniStore`',
+    ]);
+    expect(names('c', 'TransitionThenState')).toEqual(['`tab` (useState)']);
+    expect(names('d', 'StoreHookThenReducer')).toEqual(['`n` (useReducer)']);
+    expect(names('e', 'CustomThenState')).toEqual(['`label` (useState)']);
+  });
+});

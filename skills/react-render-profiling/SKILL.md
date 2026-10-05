@@ -36,6 +36,9 @@ npx crispy-profiling compare .crispy/base.json .crispy/head.json
 
 Chromium is required once: `npx crispy-profiling install`.
 
+If the project already has Playwright tests, prefer adding `renders(page)` + `toMatchSnapshot()`
+from `crispy-profiling/playwright` to the relevant test over writing a new scenario.
+
 ## Workflow
 
 1. **Dev server**: if `crispy.config.json` has `webServer`, crispy starts it; otherwise start the
@@ -74,6 +77,7 @@ there, and fix the trigger before touching the children it re-renders.
 | `changedProps` lists a function (`onClick`, `onSelect`...) | Inline callback recreated every render | `useCallback` in the parent (and `React.memo` on the child) |
 | `changedProps` lists an object/array (`style`, `options`, `items`) | Literal recreated every render | `useMemo` or hoist the constant outside the component |
 | `changedProps` lists `children` | JSX children are new elements each time (normal) | `React.memo` will not help: stop the parent from re-rendering, or pass the children from a component that does not re-render |
+| `stateChanges` says `store subscription … in useX` | A store/router hook returns a value that changes more often than the component needs | Select only what it uses (pathname, a primitive, a shallow-equal selector) or move the subscription into the child that uses it |
 | `staleMemo` lists a prop | It already uses `useCallback`/`useMemo`, but a dependency changes every render | Make that dependency stable (memoize it, or read it inside the callback) |
 | component defined in `node_modules` | Library component (styled-components, `Link`…) | Never wrap it: fix the props where your code passes them (`creators` names the component) |
 | `triggeredBy` names one component for many others | Its state update re-renders a large subtree | Move that state closer to where it is used, or make the props passed down stable so `React.memo` can skip them |
@@ -83,7 +87,8 @@ there, and fix the trigger before touching the children it re-renders.
 | `stable: false` (⚠️) | Counts differ between runs (timers, network, randomness) | Add `waitFor` steps or mock the nondeterminism before trusting deltas |
 
 Rules:
-- `React.memo` only helps if every prop is stable; check `changedProps` first.
+- `React.memo` only helps if every prop is stable; check `changedProps` first. If a memo component is
+  flagged `uselessMemo` (never skipped a render in the scenario), consider removing it instead of adding more.
 - Do not memoize everything. Fix the components with the most `avoidableRenders` /
   `callbackRenders` and the triggers of large cascades; leave cheap leaf components alone.
   `selfDurationMs` only exists with `"timings": true` (off by default: not reproducible).

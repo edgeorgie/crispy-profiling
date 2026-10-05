@@ -1,4 +1,5 @@
 import type { ComponentReport, PhaseReport } from '../types.js';
+import { cmp } from '../util/cmp.js';
 import { LIBRARY_FILE } from '../util/paths.js';
 
 const code = (keys: string[]) => keys.map((k) => `\`${k}\``).join(', ');
@@ -29,6 +30,12 @@ function cascadeOf(name: string, phase: PhaseReport | undefined): { total: numbe
     .sort((a, b) => b[1] - a[1]);
   return { total: hits.reduce((a, [, n]) => a + n, 0), top: hits.slice(0, 3).map(([k]) => k) };
 }
+
+/** " (`query` (useState))": the state that changed, when known. */
+const stateOf = (c: ComponentReport) => {
+  const what = Object.keys(c.stateChanges ?? {})[0];
+  return what ? ` (${what})` : '';
+};
 
 /** First entry of a "prop|Creator[|extra]" count map for `prop`. */
 function lookup(m: Record<string, number>, prop: string): string[] | null {
@@ -65,7 +72,9 @@ export function hintFor(
   const { where, owner } = site(c);
   const library = c.definedIn !== undefined && LIBRARY_FILE.test(c.definedIn);
   const isLibrary = (k: string | null | undefined) => {
-    const file = k ? phase?.components[k]?.definedIn : undefined;
+    if (!k) return false;
+    if (phase?.library?.includes(k)) return true;
+    const file = phase?.components[k]?.definedIn;
     return file !== undefined && LIBRARY_FILE.test(file);
   };
 
@@ -74,7 +83,7 @@ export function hintFor(
   if (name && c.causes.state > 0 && !library) {
     const cascade = cascadeOf(name, phase);
     if (cascade.total >= 3) {
-      return `state updates here cause ${cascade.total} avoidable render(s) below (${code(cascade.top)})${where}. Make the props passed down stable so React.memo can skip them, or move this state closer to the components that use it.`;
+      return `state updates here${stateOf(c)} cause ${cascade.total} avoidable render(s) below (${code(cascade.top)})${where}. Make the props passed down stable so React.memo can skip them, or move this state closer to the components that use it.`;
     }
   }
 
@@ -119,6 +128,12 @@ export function hintFor(
     return `receives new \`children\` elements on every render${where}: that is how JSX works, and React.memo will not help. If it is expensive, stop ${owner ? `\`${owner}\`` : 'the parent'} from re-rendering, or pass the children from a component that does not re-render.`;
   }
 
+  // React.memo that never skipped a render while props really changed: pure cost.
+  if (c.uselessMemo && !library && c.updates.median > 0 && c.causes.props > 0) {
+    const changed = top(c.changedProps);
+    return `React.memo did not skip any render in these flows${where}: ${changed.length ? code(changed) : 'its props'} changed on every update, so the comparison only adds cost here. Consider removing it, unless other flows rely on it or you are about to make those props stable.`;
+  }
+
   const trigger = top(c.triggeredBy, 1)[0];
   if (c.causes.parent > 0) {
     const because = trigger ? `\`${trigger}\` updates its state` : 'its parent re-renders';
@@ -134,7 +149,17 @@ export function hintFor(
     return `re-renders when a context value changes${where}: split the context so it only reads what it needs, or select a smaller slice.`;
   }
   if (c.causes.state > 0) {
-    return `its own state changed (a setState call or new data, e.g. a query result)${where}. If it renders more often than its data changes, look for effects that set state after render.`;
+    const what = top(c.stateChanges, 1)[0];
+    if (what?.startsWith('store subscription')) {
+      const hook = what.replace(/^store subscription \(useSyncExternalStore\)\s*/, '');
+      const below = name ? cascadeOf(name, phase).total : 0;
+      // Only advise when the subscription costs avoidable renders below; otherwise the
+      // render is how the component shows new data.
+      return below > 0
+        ? `a store or router subscription changed (${hook || 'useSyncExternalStore'})${where} and re-rendered ${below} unchanged render(s) below: select only what this component needs (a primitive or a shallow-equal selector instead of a new object), or move the subscription into the child that uses it.`
+        : `a store or router subscription changed (${hook || 'useSyncExternalStore'})${where}: expected when the data it selects changes. If it renders more often than what it shows changes, select less.`;
+    }
+    return `its own state changed${what ? `: ${what}` : ' (a setState call or new data, e.g. a query result)'}${where}. If it renders more often than its data changes, look for effects that set state after render.`;
   }
   const changed = top(c.changedProps);
   if (changed.length) {
@@ -159,39 +184,65 @@ export interface RootCause {
 export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
   const comps = Object.entries(phase.components);
   const libraryKey = (k: string) => {
+    if (phase.library?.includes(k)) return true;
     const f = phase.components[k]?.definedIn;
     return f !== undefined && LIBRARY_FILE.test(f);
   };
   const fixable = (c: ComponentReport) => c.avoidableRenders.median + c.callbackRenders.median;
   const out: RootCause[] = [];
 
-  // 1. Props recreated by the same component.
-  const byCreator = new Map<string, { renders: number; affected: string[] }>();
+  // 1. Props recreated by the same component. Each render is attributed once: a
+  // component's fixable renders go to the creators of its recreated props, the
+  // creator with the most renders first, never more than the component rendered.
+  // Fixable renders already attributed per component, so no render is counted twice.
+  const used = new Map<string, number>();
+  const budget = (name: string, c: ComponentReport) => fixable(c) - (used.get(name) ?? 0);
+  const spend = (name: string, n: number) => used.set(name, (used.get(name) ?? 0) + n);
+  const byCreator = new Map<string, { renders: number; props: string[]; affected: string[] }>();
   for (const [name, c] of comps) {
-    const n = fixable(c);
-    if (!n) continue;
-    for (const key of Object.keys(c.creators)) {
+    let left = budget(name, c);
+    if (!left) continue;
+    const perCreator = new Map<string, { n: number; props: string[] }>();
+    for (const [key, n] of Object.entries(c.creators)) {
       const [prop, creator] = key.split('|') as [string, string];
       if (prop === 'children' || libraryKey(creator)) continue;
-      const id = `${creator}|${prop}`;
-      const e = byCreator.get(id) ?? { renders: 0, affected: [] };
-      e.renders += n;
+      const e = perCreator.get(creator) ?? { n: 0, props: [] };
+      e.n = Math.max(e.n, n);
+      if (!e.props.includes(prop)) e.props.push(prop);
+      perCreator.set(creator, e);
+    }
+    const ranked = [...perCreator].sort((a, b) => b[1].n - a[1].n || (a[0] < b[0] ? -1 : 1));
+    for (const [creator, { n, props }] of ranked) {
+      const take = Math.min(n, left);
+      if (take <= 0) break;
+      left -= take;
+      spend(name, take);
+      const e = byCreator.get(creator) ?? { renders: 0, props: [], affected: [] };
+      e.renders += take;
+      for (const p of props) if (!e.props.includes(p)) e.props.push(p);
       if (!e.affected.includes(name)) e.affected.push(name);
-      byCreator.set(id, e);
+      byCreator.set(creator, e);
     }
   }
-  for (const [id, e] of byCreator) {
-    const [creator, prop] = id.split('|') as [string, string];
-    const stale = comps
-      .map(([, c]) => Object.keys(c.staleMemo).find((k) => k.startsWith(`${prop}|${creator}|`)))
+  for (const [creator, e] of byCreator) {
+    const stale = e.props
+      .map((prop) =>
+        comps
+          .map(([, c]) => Object.keys(c.staleMemo).find((k) => k.startsWith(`${prop}|${creator}|`)))
+          .find(Boolean),
+      )
       .find(Boolean)
-      ?.split('|')[2];
+      ?.split('|');
+    const notMemo = e.affected.filter((k) => !phase.components[k]?.memo && !libraryKey(k));
+    const wrap = notMemo.length
+      ? `, then wrap ${code(notMemo.slice(0, 2))} in React.memo (stable props alone do not skip renders)`
+      : '';
     const fix = stale
-      ? `it is memoized, but its dependency ${stale} changes every render: stabilize that dependency`
-      : 'memoize it there (useCallback / useMemo, or hoist a constant)';
+      ? `\`${stale[0]}\` is memoized, but its dependency ${stale[2]} changes every render: stabilize that dependency${wrap}`
+      : `memoize them there (useCallback / useMemo, or hoist constants)${wrap}`;
     out.push({
       renders: e.renders,
-      text: `\`${creator}\` recreates \`${prop}\` → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
+      text: `\`${creator}\` recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
     });
   }
 
@@ -200,8 +251,11 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
   for (const [name, c] of comps) {
     for (const owner of Object.keys(c.recreatedContextFrom)) {
       if (libraryKey(owner)) continue;
+      const take = budget(name, c);
+      if (take <= 0) continue;
+      spend(name, take);
       const e = byProvider.get(owner) ?? { renders: 0, affected: [] };
-      e.renders += fixable(c);
+      e.renders += take;
       e.affected.push(name);
       byProvider.set(owner, e);
     }
@@ -220,11 +274,16 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     if (!t.causes.state || libraryKey(trigger)) continue;
     // Only renders with no other explanation (wasted): recreated props and
     // context values are already listed above as their own root causes.
-    const wasted = (c: ComponentReport) =>
-      Math.min(c.triggeredBy[trigger] ?? 0, c.wastedRenders.median);
-    const hit = comps.filter(([, c]) => wasted(c) > 0);
-    const total = hit.reduce((a, [, c]) => a + wasted(c), 0);
+    const share = new Map<string, number>();
+    for (const [k, c] of comps) {
+      const n = Math.min(c.triggeredBy[trigger] ?? 0, c.wastedRenders.median, budget(k, c));
+      if (n > 0) share.set(k, n);
+    }
+    const wasted = (k: string) => share.get(k) ?? 0;
+    const hit = comps.filter(([k]) => wasted(k) > 0);
+    const total = hit.reduce((a, [k]) => a + wasted(k), 0);
     if (total < 3) continue;
+    for (const [k, n] of share) spend(k, n);
     // Renders saved by memoizing a direct child: the child plus everything it owns below.
     const below = (root: string): number => {
       const seen = new Set<string>([root]);
@@ -239,12 +298,18 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
           }
         }
       }
-      for (const [k, c] of hit) if (seen.has(k)) sum += wasted(c);
+      for (const [k] of hit) if (seen.has(k)) sum += wasted(k);
       return sum;
     };
     const boundary = hit
       .filter(
-        ([k, c]) => ownerOf(c) === trigger && !libraryKey(k) && !c.memo && c.causes.parent > 0,
+        // Lowercase names are render functions (e.g. table cell renderers), not memo-able components.
+        ([k, c]) =>
+          ownerOf(c) === trigger &&
+          !libraryKey(k) &&
+          !c.memo &&
+          c.causes.parent > 0 &&
+          /^[A-Z]/.test(k),
       )
       .map(([k]) => [k, below(k)] as const)
       .sort((a, b) => b[1] - a[1])[0];
@@ -254,9 +319,9 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
         : '';
     out.push({
       renders: total,
-      text: `\`${trigger}\` state updates re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
+      text: `\`${trigger}\` state updates${stateOf(t)} re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
     });
   }
 
-  return out.sort((a, b) => b.renders - a.renders || (a.text < b.text ? -1 : 1)).slice(0, max);
+  return out.sort((a, b) => b.renders - a.renders || cmp(a.text, b.text)).slice(0, max);
 }

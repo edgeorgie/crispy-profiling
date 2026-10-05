@@ -8,8 +8,10 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Lab } from './Lab.js';
 
 // Replaced at build time: false = naive implementation, true = optimized one.
 declare const __FAST__: boolean;
@@ -132,6 +134,44 @@ function Derived({ n }: { n: number }) {
   return <i>{doubled}</i>;
 }
 
+// Memo probes (rendered with ?memo): one memo never helps (its prop changes on
+// every click), the other always skips.
+function CounterView({ n }: { n: number }) {
+  return <i>{n}</i>;
+}
+const UselessMemo = memo(CounterView);
+function LabelView({ text }: { text: string }) {
+  return <i>{text}</i>;
+}
+const UsefulMemo = memo(LabelView);
+
+// Store probe (rendered with ?store): a subscription through a custom hook,
+// like Redux/Zustand selectors or router location hooks.
+let storeValue = 0;
+const listeners = new Set<() => void>();
+const store = {
+  subscribe: (l: () => void) => {
+    listeners.add(l);
+    return () => listeners.delete(l);
+  },
+  get: () => storeValue,
+  bump: () => {
+    storeValue++;
+    for (const l of listeners) l();
+  },
+};
+function useCounterStore() {
+  return useSyncExternalStore(store.subscribe, store.get);
+}
+function StoreReader() {
+  const n = useCounterStore();
+  return (
+    <button id="store-bump" type="button" onClick={store.bump}>
+      store {n}
+    </button>
+  );
+}
+
 // Step probes (rendered with ?steps): a <select> and a pointer-driven slider.
 function Picker() {
   const [v, setV] = useState('a');
@@ -232,6 +272,14 @@ function App() {
         </>
       )}
       {location.search.includes('ctxvalue') && <CartShell tick={count} />}
+      {location.search.includes('store') && <StoreReader />}
+      {location.search.includes('lab') && <Lab />}
+      {location.search.includes('memo') && (
+        <>
+          <UselessMemo n={count} />
+          <UsefulMemo text="static" />
+        </>
+      )}
       {location.search.includes('steps') && (
         <>
           <Picker />

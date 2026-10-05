@@ -37,6 +37,8 @@ export interface RawComponentStats {
   triggeredBy: Record<string, number>;
   /** Components whose context value was recreated with equal content (provider owners). */
   recreatedContextFrom: Record<string, number>;
+  /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
+  stateChanges?: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), with counts. */
   providerAt?: Record<string, number>;
   /** "prop|Creator": the component that created a recreated prop value (forwarders skipped). */
@@ -62,6 +64,8 @@ export interface RawPhase {
   components: Record<string, RawComponentStats>;
   /** Component keys rendered by each commit ("\n"-joined, sorted) -> number of commits. */
   commitKeys?: Record<string, number>;
+  /** Component key -> times React.memo skipped its render while its parent rendered. */
+  memoSkips?: Record<string, number>;
 }
 
 export interface RawRun {
@@ -103,6 +107,8 @@ export interface ComponentReport {
   triggeredBy: Record<string, number>;
   /** Provider owners whose context value was recreated with equal content. */
   recreatedContextFrom: Record<string, number>;
+  /** Which state changed when the component's own state caused the render, e.g. "`query` (useState)". */
+  stateChanges: Record<string, number>;
   /** Where those providers are rendered ("file:line (Owner)"), most frequent first. */
   providerAt: string[];
   /** "prop|Creator": the component that created a recreated prop value (forwarders skipped). */
@@ -113,6 +119,13 @@ export interface ComponentReport {
   compiled: boolean;
   /** Wrapped in React.memo. */
   memo: boolean;
+  /** Renders React.memo skipped across all phases and scenarios of this report. */
+  memoSkips: number;
+  /**
+   * Wrapped in React.memo, updated at least 3 times in this report and never
+   * skipped a render in any flow: its props change every time, so the memo only adds cost.
+   */
+  uselessMemo?: true;
   /** Up to 3 places where the component is rendered ("file:line (Owner)"), most frequent first. */
   locations: string[];
   /** File where the component function is defined, when known (part of its identity). */
@@ -127,6 +140,12 @@ export interface PhaseReport {
   totalAvoidableRenders: Stat;
   totalCallbackRenders: Stat;
   components: Record<string, ComponentReport>;
+  /**
+   * Components referenced by this phase (as creators, providers, triggers or owners)
+   * that are library code, including internals hidden from `components`. Used so
+   * hints never point into libraries.
+   */
+  library?: string[];
 }
 
 export interface BudgetViolation {

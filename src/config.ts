@@ -80,13 +80,8 @@ export const ConfigSchema = z.object({
   $schema: z.string().optional(),
   baseUrl: z.url(),
   /**
-   * Start the app's dev server for you (like Playwright's webServer): crispy runs
-   * `command`, waits until `url` (default: baseUrl) answers, and stops it at the end.
-   * If something already answers there, it is reused.
-   */
-  /**
    * Sign in once before profiling (never counted in any phase). Values like
-   * "${E2E_PASSWORD}" are read from the environment.
+   * "${E2E_PASSWORD}" are read from the environment ("$${NAME}" types a literal "${NAME}").
    */
   login: z
     .object({
@@ -96,12 +91,20 @@ export const ConfigSchema = z.object({
     .optional(),
   /** Saved browser session (cookies + localStorage), e.g. written by `crispy login`. */
   storageState: z.string().optional(),
+  /**
+   * Start the app's dev server for you (like Playwright's webServer): crispy runs
+   * `command`, waits until `url` (default: baseUrl) answers, and stops it at the end,
+   * also on Ctrl-C. A server already answering there is reused locally (with a
+   * warning) but not on CI. If baseUrl never answers but the server announces another
+   * local URL serving HTML, crispy uses that one and tells you to update baseUrl.
+   */
   webServer: z
     .object({
       command: z.string().min(1),
       url: z.url().optional(),
-      timeoutMs: z.number().int().min(1000).default(120_000),
-      reuseExisting: z.boolean().default(true),
+      timeoutMs: z.number().int().min(1000).default(60_000),
+      /** Reuse a server already answering at the URL. Default: yes locally, no on CI. */
+      reuseExisting: z.boolean().optional(),
     })
     .optional(),
   runs: z.number().int().min(1).max(20).default(3),
@@ -244,9 +247,9 @@ export function exampleConfig(
         path: '/',
         // Replace with the interaction you want to guard: wait for the app, then act.
         steps: [
-          { action: 'waitFor', selector: 'button' },
+          { action: 'waitFor', selector: 'button:visible' },
           { action: 'phase', name: 'interaction' },
-          { action: 'click', selector: 'button' },
+          { action: 'click', selector: 'button:visible' },
         ],
       },
     ],
