@@ -1,6 +1,6 @@
 import type { Browser } from 'playwright-core';
 import type { CrispyConfig, CrispyConfigInput, Scenario, Step } from './config.js';
-import { authenticate, gotoApp, launchBrowser, profile, SEEDED_RANDOM } from './profiler/run.js';
+import { authenticate, gotoApp, launchBrowser, PageProfiler, profile } from './profiler/run.js';
 import { startWebServer } from './profiler/webserver.js';
 import { type RootCause, rootCauses } from './report/hints.js';
 import type { CrispyReport } from './types.js';
@@ -37,8 +37,16 @@ export const RISKY =
   '\\b(delete|remove|destroy|erase|log ?out|sign ?out|pay|buy|purchase|checkout|order|submit|send|publish|deploy|reset|discard|unsubscribe|archive|ban|block|clear|revoke|cancel subscription)\\b';
 
 interface Found {
-  actions: { kind: 'click' | 'type'; selector: string; name: string; rank: number }[];
+  actions: {
+    kind: 'click' | 'type' | 'select';
+    selector: string;
+    name: string;
+    rank: number;
+    value?: string;
+  }[];
   links: string[];
+  /** The page asks to sign in (password field or a "log in" button). */
+  login: boolean;
 }
 
 /** Runs in the page: safe interactive elements and same-origin links, in DOM order. */
@@ -99,6 +107,29 @@ function discoverInPage(risky: string): Found {
     seen.add(css);
     actions.push({ kind: 'type', selector: `${css} >> nth=0`, name, rank: inMain(el) ? 0 : 1 });
   }
+  for (const el of Array.from(document.querySelectorAll('select'))) {
+    const h = el as HTMLSelectElement;
+    if (!visible(el) || h.disabled || h.multiple) continue;
+    // The first option that is not the current one and has a value.
+    const option = Array.from(h.options).find((o) => !o.disabled && o.value && !o.selected);
+    const aria = el.getAttribute('aria-label');
+    const field = el.getAttribute('name') || el.id;
+    const css = aria
+      ? `select[aria-label=${quote(aria)}]`
+      : field
+        ? `select[${el.getAttribute('name') ? 'name' : 'id'}=${quote(field)}]`
+        : null;
+    if (!option || !css || seen.has(css)) continue;
+    seen.add(css);
+    const name = norm(aria || field);
+    actions.push({
+      kind: 'select',
+      selector: css,
+      name,
+      rank: inMain(el) ? 0 : 1,
+      value: option.value,
+    });
+  }
   const links: string[] = [];
   for (const a of Array.from(document.querySelectorAll('a[href]'))) {
     const anchor = a as HTMLAnchorElement;
@@ -113,12 +144,38 @@ function discoverInPage(risky: string): Found {
       continue;
     if (/\.[a-z0-9]{2,4}$/i.test(url.pathname)) continue; // files, not routes
     if (!links.includes(url.pathname)) links.push(url.pathname);
+    // Client-side navigation is an interaction too (route transitions re-render a lot).
+    const name = norm(anchor.getAttribute('aria-label') || anchor.innerText);
+    const key = `link|${name}`;
+    if (
+      visible(a) &&
+      name &&
+      name.length <= 40 &&
+      url.pathname !== location.pathname &&
+      !seen.has(key)
+    ) {
+      seen.add(key);
+      actions.push({
+        kind: 'click',
+        selector: `role=link[name=${quote(name)}] >> nth=0`,
+        name,
+        rank: inMain(a) ? 4 : 5,
+      });
+    }
   }
   // Stable sort: by rank, then DOM order.
   const ranked = actions
     .map((a, i) => [a, i] as const)
     .sort((x, y) => x[0].rank - y[0].rank || x[1] - y[1]);
-  return { actions: ranked.map(([a]) => a), links };
+  const login =
+    document.querySelector('input[type="password"]') !== null ||
+    Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]')).some(
+      (b) =>
+        /^(log ?in|sign ?in)$/i.test(
+          norm((b as HTMLElement).innerText || (b as HTMLInputElement).value),
+        ),
+    );
+  return { actions: ranked.map(([a]) => a), links, login };
 }
 
 const slug = (s: string) =>
@@ -152,18 +209,32 @@ async function discover(
     const context = await browser.newContext({ viewport: config.viewport, storageState: auth });
     try {
       const page = await context.newPage();
-      if (config.random === 'seeded') await page.addInitScript({ content: SEEDED_RANDOM });
-      await gotoApp(page, new URL(path, config.baseUrl).toString(), config.timeoutMs);
-      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      // Same page setup and settling as profiling (hook, seeded random, network):
+      // apps that boot asynchronously (e.g. a mock service worker first) render late.
+      const profiler = await PageProfiler.attach(page, config);
+      const url = new URL(path, config.baseUrl).toString();
+      await gotoApp(page, url, config.timeoutMs);
+      await profiler.waitForReact(url);
+      await profiler.settle('discovery');
       // A redirect (e.g. to /login) is the route that really renders.
       const at = new URL(page.url());
       const landed = `${at.pathname}${at.search}`;
       if (landed !== path && visited.has(landed)) continue;
       visited.add(landed);
       // As source: bundlers with keepNames add a `__name` helper the page does not have.
-      const found: Found = await page.evaluate(
-        `(() => { const __name = (f) => f; return (${discoverInPage.toString()})(${JSON.stringify(RISKY)}); })()`,
-      );
+      const read = (): Promise<Found> =>
+        page.evaluate(
+          `(() => { const __name = (f) => f; return (${discoverInPage.toString()})(${JSON.stringify(RISKY)}); })()`,
+        );
+      // Data can arrive after the page looks settled (options, rows): read until stable.
+      // Mock APIs often add a delay of ~2 s, so the page must stay unchanged for 2 s.
+      let found = await read();
+      for (let i = 0, same = 0; i < 4 && same < 2; i++) {
+        await page.waitForTimeout(1000);
+        const again = await read();
+        same = JSON.stringify(again) === JSON.stringify(found) ? same + 1 : 0;
+        found = again;
+      }
       let taken = 0;
       for (const action of found.actions) {
         if (taken >= options.maxActions) break;
@@ -178,7 +249,9 @@ async function discover(
         const act: Step =
           action.kind === 'click'
             ? { action: 'click', selector: action.selector }
-            : { action: 'type', selector: action.selector, value: 'abc' };
+            : action.kind === 'select'
+              ? { action: 'select', selector: action.selector, value: action.value ?? '' }
+              : { action: 'type', selector: action.selector, value: 'abc' };
         scenarios.push({
           name,
           path: landed,
@@ -193,6 +266,11 @@ async function discover(
       log(
         `[crispy] ${landed}: ${taken} interaction(s)${found.links.length ? `, ${found.links.length} link(s)` : ''}`,
       );
+      if (found.login && !config.storageState && !config.login) {
+        log(
+          `[crispy] ${landed} asks to sign in: run "npx crispy login" (saves a session to crispy.auth.json), add "storageState": "crispy.auth.json" to crispy.config.json and scan again to profile the app behind it.`,
+        );
+      }
       for (const link of found.links) if (!visited.has(link)) queue.push(link);
     } finally {
       await context.close();

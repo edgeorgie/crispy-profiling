@@ -160,7 +160,15 @@ async function main(argv: string[]): Promise<number> {
           lines.push(`${i + 1}. [${c.where}] ${c.text}`);
         }
       } else {
-        lines.push('No avoidable renders found in these interactions.');
+        const total = Object.values(result.report.scenarios).reduce((sum, sc) => {
+          const p = sc.phases.interaction;
+          return sum + (p ? p.totalAvoidableRenders.median + p.totalCallbackRenders.median : 0);
+        }, 0);
+        lines.push(
+          total
+            ? `${total} avoidable render(s) in total, spread thin: no single cause is worth fixing yet.`
+            : 'No avoidable renders in these interactions.',
+        );
       }
       lines.push(
         '',
