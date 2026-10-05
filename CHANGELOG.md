@@ -16,6 +16,8 @@ All notable changes to this project are documented here. The format follows
 - Fewer renders on a component that reads a mutable instance (a TanStack table, a form API) or
   mutable data is shown as "⚠️ check the UI" instead of 🟢 in snapshots and `compare`: a React.memo
   there freezes the UI. Snapshots mark such components `"mutable": true`.
+- A page with no scripts (another app's static page, a directory listing) fails in ~2 s with the
+  "another app" message, instead of waiting 30 s for React.
 - Every 🟢 improvement (snapshot and `compare`) now says that fewer renders is not proof the UI still
   updates; the README and the skill say the same.
 - Hints no longer suggest React.memo for a component that gets new `children` JSX on most renders

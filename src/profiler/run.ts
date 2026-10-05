@@ -306,10 +306,17 @@ async function waitForReact(page: Page, url: string, timeoutMs: number, clock: b
   const status = () =>
     inPage(page, () => {
       const s = (window as any).__CRISPY__;
-      return { react: s?.reactDetected === true, rendered: (s?.commitCount ?? 0) > 0 };
+      return {
+        react: s?.reactDetected === true,
+        rendered: (s?.commitCount ?? 0) > 0,
+        // A page with no scripts (a static page, a directory listing) never loads React.
+        scripts: document.scripts.length,
+      };
     });
+  const started = Date.now();
   for (let st = await status(); !(st.react && st.rendered); st = await status()) {
-    if (Date.now() > deadline) {
+    const noScripts = !st.react && st.scripts === 0 && Date.now() - started > 2000;
+    if (Date.now() > deadline || noScripts) {
       const errors = (pageErrors.get(page) ?? []).slice(0, 3);
       const why = errors.length
         ? `\nPage errors:\n${errors.map((e) => `  - ${e}`).join('\n')}`
