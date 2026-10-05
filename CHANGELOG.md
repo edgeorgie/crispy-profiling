@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- `compare` no longer lists the components of a scenario or phase that ran on one side only as
+  🟢 −100%: it says they were not compared (`notCompared`).
 - Hints never suggest useCallback/useMemo inside a render function (a TanStack `cell`, lowercase
   keys), where hooks break the rules of hooks: they suggest moving that markup into a component.
 - A useEffect that copies a prop into state with equal content (`setShown(items)`) is now reported

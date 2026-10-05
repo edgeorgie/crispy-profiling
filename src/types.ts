@@ -259,4 +259,6 @@ export interface CompareResult {
     headAvoidable: number;
   };
   passed: boolean;
+  /** Scenarios/phases that ran on one side only ("checkout / load (only in base)"). */
+  notCompared?: string[];
 }
