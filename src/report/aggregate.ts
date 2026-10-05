@@ -102,6 +102,8 @@ function aggregateComponent(
   if (Object.keys(masked).length) report.maskedContextFrom = masked;
   const mutable = medianOf(pick((s) => s.mutableReads ?? 0));
   if (mutable > 0) report.mutableReads = mutable;
+  const instances = medianCounts(samples, (s) => s.instanceProps);
+  if (Object.keys(instances).length) report.instanceProps = instances;
   if (timings) report.selfDurationMs = stat(pick((s) => s.selfDurationMs));
   return report;
 }

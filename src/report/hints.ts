@@ -158,7 +158,9 @@ export function hintFor(
         ? 'This is library code: fix the props where you pass them, not the component.'
         : c.memo
           ? 'It is already wrapped in React.memo, so stable props remove these renders.'
-          : 'Then wrap this component in React.memo.',
+          : Object.keys(c.instanceProps ?? {}).length
+            ? `Do not wrap it in React.memo: it receives ${code(Object.keys(c.instanceProps ?? {}).slice(0, 2))}, a mutable instance whose changes a memo would hide.`
+            : 'Then wrap this component in React.memo.',
       Object.keys(c.callbackProps).length
         ? 'If the values a callback uses really change, that render is necessary.'
         : '',
@@ -181,6 +183,10 @@ export function hintFor(
     const because = trigger ? `\`${trigger}\` updates its state` : 'its parent re-renders';
     if (library) {
       return `library component re-rendered with identical props because ${because}${where}. Nothing to change here; if it matters, stop ${owner ? `\`${owner}\`` : 'its parent'} from re-rendering.`;
+    }
+    const inst = Object.keys(c.instanceProps ?? {});
+    if (inst.length && !c.wastedRenders.median) {
+      return `re-renders with identical props because ${because}${where}, and it receives ${code(inst.slice(0, 2))}, a mutable instance (an object with methods, like a table or form instance) that stays the same object while its contents change. Do not wrap it in React.memo: it would hide those changes. If these renders matter, render it less often from its parent, or pass the values it shows as props.`;
     }
     if (c.mutableReads && !c.wastedRenders.median) {
       return `re-renders with identical props because ${because}${where}, and its output changes anyway: it reads data that changes without changing its props (a mutable object such as a table or form instance, a ref, or a global). These renders are needed — do not wrap it in React.memo (it would show stale data). To skip them, pass the values it shows as props.`;
@@ -308,7 +314,13 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     const isCallback = (prop: string) =>
       e.affected.some((k) => phase.components[k]?.callbackProps[prop]);
     if (stale && realChange(stale[2] ?? '') && !isCallback(stale[0] ?? '')) continue;
-    const notMemo = e.affected.filter((k) => !phase.components[k]?.memo && !libraryKey(k));
+    // Never suggest React.memo for a component handed a mutable instance (stale UI).
+    const notMemo = e.affected.filter(
+      (k) =>
+        !phase.components[k]?.memo &&
+        !libraryKey(k) &&
+        !Object.keys(phase.components[k]?.instanceProps ?? {}).length,
+    );
     const wrap = notMemo.length
       ? `, then wrap ${code(notMemo.slice(0, 2))} in React.memo (stable props alone do not skip renders)`
       : '';
@@ -404,6 +416,7 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
           // and must not when it reads mutable data (stale output).
           !Object.keys(c.maskedContextFrom ?? {}).length &&
           !c.mutableReads &&
+          !Object.keys(c.instanceProps ?? {}).length &&
           /^[A-Z]/.test(k),
       )
       .map(([k]) => [k, below(k)] as const)
