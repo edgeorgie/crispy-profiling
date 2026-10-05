@@ -183,6 +183,7 @@ even when `topComponents` trims the report.
 | `triggeredBy` | Components whose own state update started the cascade that re-rendered this one, with counts. Fix the trigger, not every child. |
 | `recreatedContextFrom` | Components that own a context provider whose `value` was recreated with equal content (e.g. `value={{ user, logout }}`) — memoize the value there. |
 | `memo` | `true` when the component is wrapped in `React.memo`, so hints never suggest wrapping it again. |
+| `stateChanges` | Which state changed when the component's own state caused the render: `` `query` (useState) `` when the hook is written in the component, or `store subscription (useSyncExternalStore) via `useLocation`` for store/router hooks (Redux, Zustand, routers). React DevTools only shows hook numbers. |
 | `creators` | `prop|Component`: who created each recreated prop (components that only forwarded it are skipped) — where the fix goes. |
 | `staleMemo` | `prop|Component|#2 (an object)`: the prop already comes from `useCallback`/`useMemo`, but those dependencies change on every render. |
 | `providerAt` | Where the provider of a recreated context value is rendered. |

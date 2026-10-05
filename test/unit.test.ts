@@ -22,6 +22,7 @@ function component(renders: number, updates = renders, wasted = 0): ComponentRep
     callbackRenders: s(0),
     triggeredBy: {},
     recreatedContextFrom: {},
+    stateChanges: {},
     providerAt: [],
     creators: {},
     staleMemo: {},

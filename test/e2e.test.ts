@@ -642,3 +642,30 @@ describe('apps behind a login', () => {
     expect(phases?.load?.components.Login).toBeUndefined();
   });
 });
+
+describe('named state causes', () => {
+  it('names the state hook or store subscription behind a render', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'n',
+          path: '/?store',
+          steps: [
+            { action: 'phase', name: 'own' },
+            { action: 'click', selector: '#inc' },
+            { action: 'phase', name: 'store' },
+            { action: 'click', selector: '#store-bump' },
+          ],
+        },
+      ],
+    });
+    const phases = (await profile(config)).scenarios.n?.phases;
+    expect(phases?.own?.components.App?.stateChanges).toEqual({ '`count` (useState)': 1 });
+    expect(phases?.store?.components.StoreReader?.stateChanges).toEqual({
+      'store subscription (useSyncExternalStore) via `useCounterStore`': 1,
+    });
+  });
+});

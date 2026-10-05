@@ -80,6 +80,7 @@ function aggregateComponent(
     callbackRenders: stat(pick((s) => s.callbackRenders ?? 0)),
     triggeredBy: medianCounts(samples, (s) => s.triggeredBy),
     recreatedContextFrom: medianCounts(samples, (s) => s.recreatedContextFrom),
+    stateChanges: medianCounts(samples, (s) => s.stateChanges),
     providerAt: Object.keys(medianCounts(samples, (s) => s.providerAt)).slice(0, 3),
     creators: medianCounts(samples, (s) => s.creators),
     staleMemo: medianCounts(samples, (s) => s.staleMemo),

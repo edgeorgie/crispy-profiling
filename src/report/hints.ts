@@ -30,6 +30,12 @@ function cascadeOf(name: string, phase: PhaseReport | undefined): { total: numbe
   return { total: hits.reduce((a, [, n]) => a + n, 0), top: hits.slice(0, 3).map(([k]) => k) };
 }
 
+/** " (`query` (useState))": the state that changed, when known. */
+const stateOf = (c: ComponentReport) => {
+  const what = Object.keys(c.stateChanges ?? {})[0];
+  return what ? ` (${what})` : '';
+};
+
 /** First entry of a "prop|Creator[|extra]" count map for `prop`. */
 function lookup(m: Record<string, number>, prop: string): string[] | null {
   const key = Object.keys(m).find((k) => k.startsWith(`${prop}|`));
@@ -74,7 +80,7 @@ export function hintFor(
   if (name && c.causes.state > 0 && !library) {
     const cascade = cascadeOf(name, phase);
     if (cascade.total >= 3) {
-      return `state updates here cause ${cascade.total} avoidable render(s) below (${code(cascade.top)})${where}. Make the props passed down stable so React.memo can skip them, or move this state closer to the components that use it.`;
+      return `state updates here${stateOf(c)} cause ${cascade.total} avoidable render(s) below (${code(cascade.top)})${where}. Make the props passed down stable so React.memo can skip them, or move this state closer to the components that use it.`;
     }
   }
 
@@ -134,7 +140,11 @@ export function hintFor(
     return `re-renders when a context value changes${where}: split the context so it only reads what it needs, or select a smaller slice.`;
   }
   if (c.causes.state > 0) {
-    return `its own state changed (a setState call or new data, e.g. a query result)${where}. If it renders more often than its data changes, look for effects that set state after render.`;
+    const what = top(c.stateChanges, 1)[0];
+    if (what?.startsWith('store subscription')) {
+      return `a store or router subscription changed (${what.replace(/^store subscription \(useSyncExternalStore\)( via )?/, '') || 'useSyncExternalStore'})${where}: select only what this component needs (e.g. the pathname instead of the whole location, or a primitive instead of a new object), or move the subscription into the child that uses it.`;
+    }
+    return `its own state changed${what ? `: ${what}` : ' (a setState call or new data, e.g. a query result)'}${where}. If it renders more often than its data changes, look for effects that set state after render.`;
   }
   const changed = top(c.changedProps);
   if (changed.length) {
@@ -254,7 +264,7 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
         : '';
     out.push({
       renders: total,
-      text: `\`${trigger}\` state updates re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
+      text: `\`${trigger}\` state updates${stateOf(t)} re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
     });
   }
 

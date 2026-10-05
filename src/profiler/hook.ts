@@ -249,6 +249,7 @@ export function installCrispyHook(): void {
         callbackRenders: 0,
         triggeredBy: {},
         recreatedContextFrom: {},
+        stateChanges: {},
         providerAt: {},
         creators: {},
         staleMemo: {},
@@ -349,6 +350,92 @@ export function installCrispyHook(): void {
       ms.length === 2 &&
       (ms[1] === null || Array.isArray(ms[1]))
     );
+  }
+
+  // Hooks that never have an entry in the fiber's hook list.
+  const NO_STATE_HOOKS: Record<string, true> = { useContext: true, use: true, useDebugValue: true };
+  const PRIMITIVE_HOOKS: Record<string, true> = {
+    useState: true,
+    useReducer: true,
+    useRef: true,
+    useMemo: true,
+    useCallback: true,
+    useEffect: true,
+    useLayoutEffect: true,
+    useInsertionEffect: true,
+    useImperativeHandle: true,
+    useSyncExternalStore: true,
+    useTransition: true,
+    useDeferredValue: true,
+    useId: true,
+    useOptimistic: true,
+    useActionState: true,
+    useContext: true,
+    use: true,
+    useDebugValue: true,
+  };
+  // Hook calls written in each component's own source, in order, with the
+  // variable they are assigned to: `const [query, setQuery] = useState(...)`.
+  const sourceCalls = new WeakMap<object, { hook: string; name: string | null }[]>();
+  function callsIn(type: any): { hook: string; name: string | null }[] {
+    const fn = typeof type === 'function' ? type : type && (type.render || type.type);
+    if (!fn || typeof fn !== 'function') return [];
+    let calls = sourceCalls.get(fn);
+    if (calls) return calls;
+    calls = [];
+    try {
+      const src = Function.prototype.toString.call(fn);
+      const re = /\b(use[A-Z]\w*)\)?\s*\(/g;
+      for (let m = re.exec(src); m; m = re.exec(src)) {
+        const hook = m[1] as string;
+        const before = src.slice(Math.max(0, m.index - 120), m.index);
+        const stmt = before.slice(
+          Math.max(before.lastIndexOf(';'), before.lastIndexOf('{'), before.lastIndexOf('}')) + 1,
+        );
+        const named =
+          stmt.match(/(?:const|let|var)\s*\[\s*(\w+)/) ||
+          stmt.match(/(?:const|let|var)\s+(\w+)\s*=\s*$/);
+        calls.push({ hook, name: named ? (named[1] as string) : null });
+      }
+    } catch {}
+    sourceCalls.set(fn, calls);
+    return calls;
+  }
+
+  /**
+   * Names the state that really changed in a function component, e.g.
+   * "`query` (useState)", "store subscription (useSyncExternalStore) via
+   * `useLocation`". Uses the dev-only hook types React records on each fiber.
+   */
+  function changedStateName(prev: any, next: any): string | null {
+    if (next.tag === 1) return 'class state (this.state)';
+    let a = prev.memoizedState;
+    let b = next.memoizedState;
+    if (!a || !b || typeof b !== 'object' || !('next' in b)) return null;
+    let index = -1;
+    for (let i = 0; a && b; i++, a = a.next, b = b.next) {
+      if (isEffect(a.memoizedState) || isMemoHook(b)) continue;
+      if (classify(a.memoizedState, b.memoizedState) === 3) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0) return null;
+    const types: string[] = (next._debugHookTypes || []).filter((t: string) => !NO_STATE_HOOKS[t]);
+    const kind = types[index] || 'hook';
+    const calls = callsIn(next.type);
+    const custom = calls.filter((c) => !PRIMITIVE_HOOKS[c.hook]).map((c) => c.hook);
+    const own = calls.filter((c) => !NO_STATE_HOOKS[c.hook]);
+    // Only primitives in this component: the n-th call is the n-th hook.
+    if (custom.length === 0 && own.length === types.length) {
+      const call = own[index];
+      return call?.name ? `\`${call.name}\` (${kind})` : `${kind} #${index + 1}`;
+    }
+    const uniq = custom.filter((h, i) => custom.indexOf(h) === i).slice(0, 3);
+    const via = uniq.length ? ` via ${uniq.map((h) => `\`${h}\``).join(', ')}` : '';
+    return kind === 'useSyncExternalStore'
+      ? `store subscription (useSyncExternalStore)${via}`
+      : `${kind}${via}`;
   }
 
   function stateChange(prev: any, next: any): Change {
@@ -532,7 +619,11 @@ export function installCrispyHook(): void {
     bump(e.unstableProps, p.unstable);
     bump(e.callbackProps, p.callbacks);
     if (p.changed.length) e.causes.props++;
-    if (s === 3) e.causes.state++;
+    if (s === 3) {
+      e.causes.state++;
+      const what = changedStateName(prev, next);
+      if (what) e.stateChanges[what] = (e.stateChanges[what] || 0) + 1;
+    }
     if (c === 3) e.causes.context++;
     if (s === 3) return true;
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
