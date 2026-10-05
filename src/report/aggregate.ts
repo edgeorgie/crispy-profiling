@@ -135,6 +135,12 @@ function aggregatePhase(runs: RawRun[], phase: string, config: CrispyConfig): Ph
     components: {},
   };
   report.components = Object.fromEntries(entries);
+  if (config.timings && runs.some((r) => r.cost?.[phase])) {
+    report.cost = {
+      scriptMs: stat(runs.map((r) => r.cost?.[phase]?.scriptMs ?? 0)),
+      taskMs: stat(runs.map((r) => r.cost?.[phase]?.taskMs ?? 0)),
+    };
+  }
   return report;
 }
 
