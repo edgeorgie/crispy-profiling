@@ -1,4 +1,4 @@
-import type { ComponentReport, CrispyReport, Stat } from '../types.js';
+import type { ComponentReport, CrispyReport, PhaseReport, Stat } from '../types.js';
 import { cmp } from '../util/cmp.js';
 import { LIBRARY_FILE } from '../util/paths.js';
 import { hintFor } from './hints.js';
@@ -607,6 +607,43 @@ function linkRootCauses(changes: SnapshotChange[], report: CrispyReport): void {
       root = by;
     }
     if (root !== c.component) c.rootCause = root;
+  }
+  // Rendered (directly or not) by another regressed component: part of that cause.
+  const ownerOf = (phase: PhaseReport, key: string) =>
+    /\(([^()]+)\)$/.exec(phase.components[key]?.locations[0] ?? '')?.[1];
+  const id = (c: SnapshotChange, k: string) => `${c.scenario}\0${c.phase}\0${k}`;
+  // Nearest regressed ancestor of each regression without a cause yet...
+  const parent = new Map<string, string>();
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component) continue;
+    if (c.rootCause) {
+      parent.set(id(c, c.component), c.rootCause);
+      continue;
+    }
+    const phase = report.scenarios[c.scenario]?.phases[c.phase];
+    const names = regressed.get(`${c.scenario}\0${c.phase}`);
+    if (!phase || !names) continue;
+    const seen = new Set([c.component]);
+    for (let k = ownerOf(phase, c.component); k && !seen.has(k); k = ownerOf(phase, k)) {
+      seen.add(k);
+      if (names.has(k)) {
+        parent.set(id(c, c.component), k);
+        break;
+      }
+    }
+  }
+  // ...then up to the top of that chain.
+  for (const c of changes) {
+    if (c.status !== 'regressed' || !c.component || c.rootCause) continue;
+    let root = parent.get(id(c, c.component));
+    const seen = new Set([c.component]);
+    while (root && !seen.has(root)) {
+      seen.add(root);
+      const up = parent.get(id(c, root));
+      if (!up || seen.has(up)) break;
+      root = up;
+    }
+    if (root && root !== c.component) c.rootCause = root;
   }
   // The rest: the component whose state update re-rendered them, even if its own
   // count did not change (unless they are the root of other regressions).

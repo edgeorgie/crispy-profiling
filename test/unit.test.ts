@@ -398,6 +398,25 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(strict.regressions.map((c) => c.component)).toEqual(['Icon']);
   });
 
+  it('folds a regression rendered by another regressed component into its cause (council round 3)', async () => {
+    const { snapshotToMarkdown } = await import('../src/report/snapshot.js');
+    const tree = (renders: number) => {
+      const sidebar = component(renders, renders, 0);
+      sidebar.causes.state = renders;
+      const nav = component(renders, renders, 0);
+      nav.locations = ['src/AppSidebar.tsx:12 (Sidebar)'];
+      const link = component(renders, renders, 0);
+      link.locations = ['src/Nav.tsx:4 (Nav)'];
+      return report({ interaction: phase({ Sidebar: sidebar, Nav: nav, Link: link }) });
+    };
+    const r = compareSnapshot(toSnapshot(tree(1)), tree(5));
+    expect(r.regressions.filter((c) => c.component !== 'Sidebar').map((c) => c.rootCause)).toEqual([
+      'Sidebar',
+      'Sidebar',
+    ]);
+    expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('from 1 cause');
+  });
+
   it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
     const flaky = make(10, 0);
     const item = flaky.scenarios.home?.phases.interaction?.components.Item;

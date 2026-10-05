@@ -17,6 +17,8 @@ All notable changes to this project are documented here. The format follows
   avoidable renders without a single standout cause.
 
 ### Changed
+- A regression rendered (directly or not) by another regressed component is folded into that
+  component's row: one injected `useLocation()` on shadcn-admin gives 3 causes instead of 4.
 - Snapshots leave out components defined in `node_modules` (icons, Radix parts…): about half the
   size on shadcn-admin, and fewer noisy rows. Old entries are ignored; `snapshot.includeLibraries`
   keeps them.
