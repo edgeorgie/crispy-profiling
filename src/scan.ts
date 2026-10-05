@@ -271,15 +271,20 @@ async function discover(
         found = again;
       }
       let taken = 0;
+      // List rows ("Member 1", "Member 2"…) exercise the same code: keep the first.
+      const shapes = new Set<string>();
       for (const action of found.actions) {
         if (taken >= options.maxActions) break;
         if (scanned.has(action.selector)) continue;
+        const shape = `${action.kind}:${action.name.replace(/\d+/g, '#')}`;
+        if (/\d/.test(action.name) && shapes.has(shape)) continue;
         const count = await page
           .locator(action.selector)
           .count()
           .catch(() => 0);
         if (count === 0) continue;
         scanned.add(action.selector);
+        shapes.add(shape);
         taken++;
         const base = `${routeName(landed)}-${slug(action.name) || action.kind}`;
         let name = base;

@@ -888,6 +888,8 @@ describe('crispy scan safety (red-team round 9)', () => {
       /tried to send POST .*\/api\/save \(blocked, not saved\)/,
     );
     expect(result.scenarios.some((s) => s.name.includes('add-item'))).toBe(true);
+    // List rows that differ only by a number are one scenario, not three.
+    expect(result.scenarios.filter((s) => s.name.includes('member')).length).toBe(1);
   }, 180_000);
 });
 
