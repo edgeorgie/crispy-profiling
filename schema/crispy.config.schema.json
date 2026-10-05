@@ -435,7 +435,8 @@
         "file": "crispy.snap.json",
         "tolerance": 0,
         "failOnNewAvoidable": false,
-        "failOnMoreAvoidable": false
+        "failOnMoreAvoidable": false,
+        "failOnMoreCommits": false
       },
       "type": "object",
       "properties": {
@@ -454,6 +455,10 @@
           "type": "boolean"
         },
         "failOnMoreAvoidable": {
+          "default": false,
+          "type": "boolean"
+        },
+        "failOnMoreCommits": {
           "default": false,
           "type": "boolean"
         }

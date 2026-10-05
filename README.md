@@ -109,8 +109,9 @@ When something regresses you get the component, the cause, where it is rendered 
 }
 ```
 
-Rules: any increase in commits, renders or avoidable renders fails (`snapshot.tolerance` allows
-slack), and every metric is checked independently, so an improvement never hides a regression.
+Rules: any increase in renders or avoidable renders fails (`snapshot.tolerance` allows slack), and
+every metric is checked independently, so an improvement never hides a regression. More commits are
+reported as ℹ️ but do not fail, because they vary with load timing (`snapshot.failOnMoreCommits` to fail).
 Counts that varied between runs are stored as `[min, max]` ranges and only fail outside them
 (`-u` keeps the known range instead of narrowing it). Decreases pass and suggest `-u`. New UI
 passes and is reported (record it with `-u`); if it already renders avoidably it is flagged ⚠️
@@ -185,7 +186,7 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 | `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment (`"$${NAME}"` types a literal `${NAME}`). |
 | `storageState` | — | A saved session file (cookies + localStorage), e.g. from `crispy login` for SSO/OAuth logins. Keep it out of git. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
-| `snapshot` | `crispy.snap.json`, `0`, `false`, `false` | `file` (relative to the config file), `tolerance`, `failOnNewAvoidable` and `failOnMoreAvoidable` used by `crispy test`. |
+| `snapshot` | `crispy.snap.json`, `0`, `false`, `false`, `false` | `file` (relative to the config file), `tolerance`, `failOnNewAvoidable`, `failOnMoreAvoidable` and `failOnMoreCommits` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
 **Steps:** `click`, `hover`, `fill`, `type`, `press`, `select` (a `<select>` option), `drag`

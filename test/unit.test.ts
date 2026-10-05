@@ -276,9 +276,22 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(r.changes).toEqual([]);
   });
 
-  it('fails when commits grow (R2-11)', () => {
+  it('reports more commits, and fails on them only when asked (R2-11, council round 3)', () => {
     const r = compareSnapshot(toSnapshot(make(10, 0, 2)), make(10, 0, 50));
-    expect(r.regressions.map((c) => [c.metric, c.expected, c.actual])).toEqual([
+    expect(r.passed).toBe(true);
+    expect(r.changes.map((c) => [c.metric, c.expected, c.actual, c.info])).toEqual([
+      ['commits', 2, 50, true],
+    ]);
+    const strict = compareSnapshot(
+      toSnapshot(make(10, 0, 2)),
+      make(10, 0, 50),
+      0,
+      false,
+      false,
+      false,
+      true,
+    );
+    expect(strict.regressions.map((c) => [c.metric, c.expected, c.actual])).toEqual([
       ['commits', 2, 50],
     ]);
   });
