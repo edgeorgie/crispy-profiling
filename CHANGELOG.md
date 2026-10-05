@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Snapshots count renders from recreated callbacks as avoidable, like the report does, so putting an
+  inline callback back can no longer show up as 🟢 improved. Existing snapshots may need `-u` once.
+
 ### Added
 - `mutableReads`: renders with unchanged props, state and context whose output still changed (the
   component reads a mutable object such as a TanStack table instance). They are not counted as

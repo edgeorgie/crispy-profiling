@@ -292,7 +292,8 @@ async function main(argv: string[]): Promise<number> {
               '[crispy] Use a Chrome or Chromium you already have instead: set CRISPY_CHROMIUM_PATH=/path/to/chrome, or "browser": { "channel": "chrome" } in crispy.config.json. Behind a proxy, HTTPS_PROXY also works for the download.',
             );
           }
-          done(code ?? 2);
+          // Runtime errors exit 2 (1 is reserved for regressions and budgets).
+          done(code ? 2 : 0);
         }),
       );
     }

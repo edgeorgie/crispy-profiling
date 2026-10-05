@@ -44,9 +44,11 @@ from `crispy-profiling/playwright` to the relevant test over writing a new scena
 ## First run (no `crispy.config.json` yet)
 
 1. `npx crispy-profiling install` once (or set `CRISPY_CHROMIUM_PATH` to an existing Chrome).
-2. `npx crispy-profiling scan` (MCP: `scan_app`): it starts the dev server, profiles safe
-   interactions and saves `crispy.config.json`. If it reports another app on the port, stop that
-   app or give this one its own port before trusting any number.
+2. `npx crispy-profiling scan`: it starts the dev server, profiles safe interactions and saves
+   `crispy.config.json`. (MCP `scan_app` takes the URL of a server that is already running and
+   returns the scenarios for you to save; it neither starts the server nor writes files.) If the
+   page is not this app (another project on the port), stop that app or use another port before
+   trusting any number.
 3. Fix the top root cause, then `npx crispy-profiling test` to record the snapshot.
 
 ## Workflow

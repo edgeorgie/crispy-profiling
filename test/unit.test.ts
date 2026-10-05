@@ -267,6 +267,15 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     ).toBe(false);
   });
 
+  it('counts recreated-callback renders as avoidable, so they never read as 🟢 (council round 2)', () => {
+    const before = make(10, 2);
+    const after = make(10, 0);
+    const item = after.scenarios.home?.phases.interaction?.components.Item;
+    if (item) item.callbackRenders = s(2);
+    const r = compareSnapshot(toSnapshot(before), after);
+    expect(r.changes).toEqual([]);
+  });
+
   it('fails when commits grow (R2-11)', () => {
     const r = compareSnapshot(toSnapshot(make(10, 0, 2)), make(10, 0, 50));
     expect(r.regressions.map((c) => [c.metric, c.expected, c.actual])).toEqual([
@@ -589,14 +598,30 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
     expect(hintFor(price, needed, 'Price')).toContain('wrap it in React.memo');
   });
 
+  it('does not list derived data recomputed from a real change as a root cause (council round 2)', async () => {
+    const { rootCauses } = await import('../src/report/hints.js');
+    const row = component(3, 3, 0);
+    row.unstableProps = { items: 3 };
+    row.creators = { 'items|App': 3 };
+    row.staleMemo = { 'items|App|`query` (string)': 3 };
+    row.avoidableRenders = s(3);
+    const p = phase({ Row: row, App: component(1, 1, 0) });
+    expect(
+      rootCauses(p)
+        .map((c) => c.text)
+        .join('\n'),
+    ).not.toContain('`App` recreates');
+    expect(hintFor(row, p, 'Row')).toContain('useDeferredValue');
+  });
+
   it('calls a primitive dependency a real change, not something to stabilize', () => {
     const c = at(component(3));
     c.callbackProps = { onAdd: 3 };
     c.creators = { 'onAdd|Shop': 3 };
     c.staleMemo = { 'onAdd|Shop|`query` (string)': 3 };
     const hint = hintFor(c) ?? '';
-    expect(hint).toContain('its dependency `query` (string) really changes');
-    expect(hint).toContain('that render is expected');
+    expect(hint).toContain('its dependency `query` (string) really changed');
+    expect(hint).toContain('read that value when the callback runs');
     expect(hint).not.toContain('memoize it where it is created');
   });
 

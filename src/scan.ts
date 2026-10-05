@@ -290,7 +290,8 @@ async function discover(
             ? { action: 'click', selector: action.selector }
             : action.kind === 'select'
               ? { action: 'select', selector: action.selector, value: action.value ?? '' }
-              : { action: 'type', selector: action.selector, value: 'abc' };
+              : // One common letter keeps most lists non-empty, so rows still re-render.
+                { action: 'type', selector: action.selector, value: 'e' };
         scenarios.push({
           name,
           path: landed,
