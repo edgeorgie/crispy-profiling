@@ -687,3 +687,36 @@ describe('useless React.memo', () => {
     expect(phase?.components.LabelView).toBeUndefined();
   });
 });
+
+describe('Playwright Test integration', () => {
+  it('records renders in an existing test and fails with the fix', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { renders } = await import('../src/playwright.js');
+    const { launchBrowser } = await import('../src/profiler/run.js');
+    const browser = await launchBrowser(
+      parseConfig({ baseUrl: slowUrl, scenarios: [{ name: 'x' }] }),
+    );
+    const snapshotDir = mkdtempSync(join(tmpdir(), 'crispy-pw-'));
+    const flow = async (url: string) => {
+      const page = await browser.newPage();
+      try {
+        const r = await renders(page, { snapshotDir, ci: false, config: { settleMs: 150 } });
+        await page.goto(url);
+        await r.phase('select');
+        await page.click('#inc');
+        await r.toMatchSnapshot('list');
+      } finally {
+        await page.close();
+      }
+    };
+    try {
+      await flow(fastUrl); // writes __renders__/list.snap.json
+      await flow(fastUrl); // matches
+      await expect(flow(slowUrl)).rejects.toThrow(/Row[\s\S]*`onSelect` is a new function/);
+    } finally {
+      await browser.close();
+    }
+  });
+});

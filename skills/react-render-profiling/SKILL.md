@@ -36,6 +36,9 @@ npx crispy-profiling compare .crispy/base.json .crispy/head.json
 
 Chromium is required once: `npx crispy-profiling install`.
 
+If the project already has Playwright tests, prefer adding `renders(page)` + `toMatchSnapshot()`
+from `crispy-profiling/playwright` to the relevant test over writing a new scenario.
+
 ## Workflow
 
 1. **Dev server**: if `crispy.config.json` has `webServer`, crispy starts it; otherwise start the

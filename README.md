@@ -104,6 +104,26 @@ is reported as 🔁 renamed, not as a regression.
 `crispy test` never edits the committed file on its own; the
 snapshot always covers every component (even with `topComponents`); budgets still apply.
 
+## In your Playwright tests
+
+Already have Playwright e2e tests? Guard re-renders inside them, no separate scenarios:
+
+```ts
+import { test } from '@playwright/test';
+import { renders } from 'crispy-profiling/playwright';
+
+test('search does not re-render the product list', async ({ page }) => {
+  const r = await renders(page);        // before page.goto
+  await page.goto('/');
+  await r.phase('search');
+  await page.fill('#search', 'shoes');
+  await r.toMatchSnapshot('search');    // __renders__/search.snap.json; fails with cause + fix
+});
+```
+
+The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intended changes; on CI
+(`CI` set) a missing snapshot fails. `r.report()` returns the full report for custom assertions.
+
 ## Configuration
 
 `crispy.config.json` ([JSON Schema](schema/crispy.config.schema.json)):
