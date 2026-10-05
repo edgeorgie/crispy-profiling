@@ -264,7 +264,29 @@ function App() {
   );
 }
 
-const mount = () => createRoot(document.getElementById('root') as HTMLElement).render(<App />);
+// ?auth: a login gate (token in localStorage), like apps that need a session.
+function Login() {
+  const [user, setUser] = useState('');
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (user === 'demo-user') {
+          localStorage.setItem('token', user);
+          location.reload();
+        }
+      }}
+    >
+      <input id="user" value={user} onChange={(e) => setUser(e.target.value)} />
+      <button id="login" type="submit">
+        sign in
+      </button>
+    </form>
+  );
+}
+const gated = location.search.includes('auth') && !localStorage.getItem('token');
+const mount = () =>
+  createRoot(document.getElementById('root') as HTMLElement).render(gated ? <Login /> : <App />);
 // ?lateboot: start rendering after async setup, like apps that start a mock service worker first.
 if (location.search.includes('lateboot')) setTimeout(mount, 400);
 else mount();

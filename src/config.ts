@@ -84,6 +84,18 @@ export const ConfigSchema = z.object({
    * `command`, waits until `url` (default: baseUrl) answers, and stops it at the end.
    * If something already answers there, it is reused.
    */
+  /**
+   * Sign in once before profiling (never counted in any phase). Values like
+   * "${E2E_PASSWORD}" are read from the environment.
+   */
+  login: z
+    .object({
+      path: z.string().min(1).default('/login'),
+      steps: z.array(StepSchema).min(1),
+    })
+    .optional(),
+  /** Saved browser session (cookies + localStorage), e.g. written by `crispy login`. */
+  storageState: z.string().optional(),
   webServer: z
     .object({
       command: z.string().min(1),
