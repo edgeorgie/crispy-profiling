@@ -1,0 +1,90 @@
+{
+  "name": "crispy-profiling",
+  "version": "0.1.0",
+  "description": "Deterministic React render profiling for humans, CI and AI agents. CLI + MCP server + Agent Skill.",
+  "keywords": [
+    "react",
+    "performance",
+    "profiling",
+    "re-renders",
+    "mcp",
+    "mcp-server",
+    "agent-skills",
+    "claude-code",
+    "playwright",
+    "ci"
+  ],
+  "author": "Edwin Jorge <ed.jorge1122@gmail.com> (https://github.com/edgeorgie)",
+  "license": "MIT",
+  "homepage": "https://github.com/edgeorgie/crispy-profiling#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edgeorgie/crispy-profiling.git"
+  },
+  "bugs": {
+    "url": "https://github.com/edgeorgie/crispy-profiling/issues"
+  },
+  "mcpName": "io.github.edgeorgie/crispy-profiling",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "crispy": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "schema": "tsx scripts/generate-schema.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "prepublishOnly": "npm run check",
+    "version": "tsx scripts/sync-version.ts && biome format --write .claude-plugin server.json && git add .claude-plugin/plugin.json server.json action.yml",
+    "validate:manifests": "tsx scripts/validate-server-json.ts && claude plugin validate . && claude plugin validate .claude-plugin/plugin.json",
+    "prepare": "tsup"
+  },
+  "dependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "playwright-core": "^1.63.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
+  }
+}

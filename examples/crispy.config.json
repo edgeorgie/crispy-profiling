@@ -1,0 +1,24 @@
+{
+  "$schema": "../schema/crispy.config.schema.json",
+  "baseUrl": "http://localhost:5173",
+  "runs": 3,
+  "scenarios": [
+    {
+      "name": "search",
+      "path": "/products",
+      "steps": [
+        { "action": "waitFor", "selector": "[data-testid=product-card]" },
+        { "action": "type", "selector": "#search", "value": "shoes" },
+        { "action": "phase", "name": "filter" },
+        { "action": "click", "selector": "text=Price: low to high" }
+      ],
+      "budgets": {
+        "load": { "maxCommits": 5 },
+        "interaction": {
+          "maxWastedRenders": 0,
+          "components": { "ProductCard": { "maxRenders": 20 } }
+        }
+      }
+    }
+  ]
+}

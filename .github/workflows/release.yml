@@ -1,0 +1,56 @@
+# Release flow (GitFlow, see CONTRIBUTING.md):
+#   1. release/x.y.z branch from develop; `npm version x.y.z --no-git-tag-version` + sync
+#   2. PR release/x.y.z -> main, merge with a merge commit
+#   3. tag the merge commit on main: git tag vx.y.z && git push origin vx.y.z  (triggers this workflow)
+#   4. merge main back into develop
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # GitHub release + moving the major tag of the action
+  id-token: write # npm provenance + MCP registry OIDC login
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Tag matches package.json
+        run: test "v$(jq -r .version package.json)" = "$GITHUB_REF_NAME"
+
+      - run: npm ci
+      - run: npx tsx src/cli.ts install --with-deps
+      - run: npm run check
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to the official MCP Registry
+        run: |
+          curl -sSfL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+
+      - name: Move major tag for the GitHub Action (e.g. v0)
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+          git tag -f "$major"
+          git push -f origin "refs/tags/$major"
