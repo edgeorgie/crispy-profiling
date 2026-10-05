@@ -1,24 +1,39 @@
 # Release flow (GitFlow, see CONTRIBUTING.md):
 #   1. release/x.y.z branch from develop; `npm version x.y.z --no-git-tag-version` + sync
 #   2. PR release/x.y.z -> main, merge with a merge commit
-#   3. tag the merge commit on main: git tag vx.y.z && git push origin vx.y.z  (triggers this workflow)
+#   3. publish: either push the tag (git tag vx.y.z && git push origin vx.y.z) or run this
+#      workflow from the Actions tab ("Run workflow", version x.y.z), which tags main itself
 #   4. merge main back into develop
 name: Release
 
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release from main (must match package.json), e.g. 0.1.1
+        required: true
+        type: string
 
 permissions:
-  contents: write # GitHub release + moving the major tag of the action
+  contents: write # tag + GitHub release + moving the major tag of the action
   id-token: write # npm provenance + MCP registry OIDC login
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
+          # A manual run always releases main; a tag push releases that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
@@ -27,14 +42,29 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Tag matches package.json
-        run: test "v$(jq -r .version package.json)" = "$GITHUB_REF_NAME"
+        run: test "v$(jq -r .version package.json)" = "$TAG"
+
+      - name: Create the tag (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            test "$(git rev-list -n1 "$TAG")" = "$(git rev-parse HEAD)" || { echo "$TAG exists on another commit"; exit 1; }
+          else
+            git tag "$TAG"
+            git push origin "refs/tags/$TAG"
+          fi
 
       - run: npm ci
       - run: npx tsx src/cli.ts install --with-deps
       - run: npm run check
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: |
+          if npm view "crispy-profiling@${TAG#v}" version >/dev/null 2>&1; then
+            echo "crispy-profiling@${TAG#v} is already on npm, skipping"
+          else
+            npm publish --provenance --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -47,10 +77,10 @@ jobs:
       - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --generate-notes --verify-tag
 
       - name: Move major tag for the GitHub Action (e.g. v0)
         run: |
-          major="${GITHUB_REF_NAME%%.*}"
-          git tag -f "$major"
+          major="${TAG%%.*}"
+          git tag -f "$major" "$TAG"
           git push -f origin "refs/tags/$major"

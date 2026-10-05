@@ -56,12 +56,15 @@ We use [GitFlow](https://nvie.com/posts/a-successful-git-branching-model/):
 git checkout -b release/0.2.0 develop
 npm version 0.2.0 --no-git-tag-version   # also syncs plugin.json and server.json
 git commit -am "chore(release): 0.2.0"
-# open PR release/0.2.0 -> main, merge it, then:
+# open PR release/0.2.0 -> main, merge it (merge commit), then either push the tag:
 git checkout main && git pull && git tag v0.2.0 && git push origin v0.2.0
-git checkout develop && git merge --no-ff main && git push
+# ...or run Actions → Release → "Run workflow" with version 0.2.0, which tags main itself.
+# Finally merge main back into develop with a merge commit (PR main -> develop).
 ```
 
-The tag triggers the Release workflow: npm (with provenance), MCP Registry and GitHub release.
+The Release workflow publishes to npm (with provenance), the MCP Registry and GitHub releases, and
+moves the major tag (`v0`) used by the GitHub Action. Re-running it is safe: steps that already
+happened are skipped.
 
 ## Code of conduct
 
