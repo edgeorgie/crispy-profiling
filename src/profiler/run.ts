@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import type { Browser, BrowserContext, CDPSession, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
 import { type CrispyConfig, phasesOf, type Scenario, type Step } from '../config.js';
@@ -107,10 +108,46 @@ function resolveExecutable(config: CrispyConfig): string | undefined {
   return systemChrome();
 }
 
-/** A Chrome or Chromium installed in the usual place for this OS, if any. */
-export function systemChrome(): string | undefined {
+/** Chromium builds other Playwright versions downloaded (any revision works with crispy). */
+function playwrightChromiums(): string[] {
+  const home = homedir();
+  const dirs = [
+    process.env.PLAYWRIGHT_BROWSERS_PATH,
+    process.platform === 'darwin'
+      ? join(home, 'Library', 'Caches', 'ms-playwright')
+      : process.platform === 'win32'
+        ? join(process.env.LOCALAPPDATA ?? '', 'ms-playwright')
+        : join(home, '.cache', 'ms-playwright'),
+  ].filter((d): d is string => !!d && existsSync(d));
+  const binaries =
+    process.platform === 'darwin'
+      ? [
+          'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+          'chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium',
+        ]
+      : process.platform === 'win32'
+        ? ['chrome-win/chrome.exe', 'chrome-win64/chrome.exe']
+        : ['chrome-linux/chrome', 'chrome-linux64/chrome'];
+  const found: string[] = [];
+  for (const dir of dirs) {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(dir);
+    } catch {}
+    // Newest revision first.
+    const revisions = entries
+      .map((e) => /^chromium-(\d+)$/.exec(e))
+      .filter((m): m is RegExpExecArray => !!m)
+      .sort((a, b) => Number(b[1]) - Number(a[1]));
+    for (const m of revisions) for (const b of binaries) found.push(join(dir, m[0], b));
+  }
+  return found;
+}
+
+/** Every place crispy looks for a browser when crispy install has not run. */
+export function browserCandidates(): string[] {
   const local = process.env.LOCALAPPDATA ?? '';
-  const candidates =
+  const system =
     process.platform === 'darwin'
       ? [
           '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -129,7 +166,12 @@ export function systemChrome(): string | undefined {
             '/usr/bin/chromium-browser',
             '/snap/bin/chromium',
           ];
-  return candidates.find((p) => existsSync(p));
+  return [...system, ...playwrightChromiums()];
+}
+
+/** A Chrome or Chromium already on this machine (system install or another Playwright's), if any. */
+export function systemChrome(): string | undefined {
+  return browserCandidates().find((p) => existsSync(p));
 }
 
 /** Math.random with a fixed seed (mulberry32): same sequence in every run and document. */
@@ -186,8 +228,9 @@ export async function launchBrowser(config: CrispyConfig): Promise<Browser> {
     });
   } catch (err) {
     throw new Error(
-      `Could not launch Chromium. Install it with "npx crispy install", ` +
-        `or set CRISPY_CHROMIUM_PATH / browser.executablePath / browser.channel.\n${withoutBanner((err as Error).message)}`,
+      `Could not launch Chromium. Install it with "npx crispy install", or add ` +
+        `"browser": { "executablePath": "/path/to/chrome" } to crispy.config.json (or set CRISPY_CHROMIUM_PATH). ` +
+        `Looked for an installed Chrome/Chromium in: ${browserCandidates().slice(0, 8).join(', ')}.\n${withoutBanner((err as Error).message)}`,
     );
   }
 }

@@ -260,7 +260,7 @@ crispy compare <base.json> <head.json> [--threshold 10] [--min-delta 1] [--markd
 crispy mcp                              Start the MCP server on stdio
 ```
 
-Exit codes: `0` ok · `1` budget violation or regression · `2` usage/runtime error.
+Exit codes: `0` ok · `1` budget violation, regression or failed `expect` step · `2` usage/runtime error.
 
 ## For AI agents
 

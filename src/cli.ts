@@ -429,6 +429,7 @@ main(process.argv.slice(2)).then(
   },
   (err: Error) => {
     log(`[crispy] ${err.message}`);
-    process.exitCode = 2;
+    // A failed expect step is the app's regression (exit 1), not crispy failing (exit 2).
+    process.exitCode = /expect failed:/.test(err.message) ? 1 : 2;
   },
 );

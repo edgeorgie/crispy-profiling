@@ -22,6 +22,9 @@ All notable changes to this project are documented here. The format follows
   JavaScript ms of both reports when they have `timings`.
 - MCP `test_render_snapshots` says `Status: WARN` when a component that reads mutable data renders
   less, and a failed `expect` says to undo the change rather than edit the step.
+- Without `crispy install`, crispy also finds a Chromium that another Playwright version downloaded
+  (`PLAYWRIGHT_BROWSERS_PATH`, `~/.cache/ms-playwright`…), and a launch error lists where it looked.
+- A failed `expect` step exits 1 (the app regressed), like a render regression, instead of 2.
 - A regression rendered (directly or not) by another regressed component is folded into that
   component's row: one injected `useLocation()` on shadcn-admin gives 3 causes instead of 4.
 - An unknown key in `crispy.config.json` (or in a scenario) is an error with a suggestion
