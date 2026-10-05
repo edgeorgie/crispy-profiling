@@ -30,7 +30,7 @@ export async function startWebServer(
   server: WebServerConfig,
   baseUrl: string,
   log: (line: string) => void = () => {},
-): Promise<() => Promise<void>> {
+): Promise<{ stop: () => Promise<void>; url: string }> {
   const url = server.url ?? baseUrl;
   const reuse = server.reuseExisting ?? !isCI();
   if (await isUp(url)) {
@@ -42,7 +42,7 @@ export async function startWebServer(
     log(
       `[crispy] ⚠️ reusing the server already running at ${url} — make sure it is this app's development build.`,
     );
-    return async () => {};
+    return { stop: async () => {}, url };
   }
   log(`[crispy] starting "${server.command}" and waiting for ${url}`);
   const child: ChildProcess = spawn(server.command, {
@@ -91,8 +91,29 @@ export async function startWebServer(
     signal('SIGKILL');
   };
 
+  // URLs the dev server prints ("Local: http://localhost:5174/"): when the
+  // configured one never answers but a printed one does, use it.
+  const printed = () => {
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI colors from the output
+    const text = output.join('').replace(/\x1b\[[0-9;]*m/g, '');
+    const found =
+      text.match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(?::\d+)?[^\s'"]*/g) ??
+      [];
+    return [...new Set(found.map((u) => u.replace('0.0.0.0', 'localhost')))];
+  };
   const deadline = Date.now() + server.timeoutMs;
-  while (!(await isUp(url))) {
+  let actual = url;
+  while (!(await isUp(actual))) {
+    for (const candidate of printed()) {
+      if (candidate !== actual && (await isUp(candidate))) {
+        log(
+          `[crispy] ⚠️ the dev server is at ${candidate}, not ${url}: using it. Set baseUrl to it in your config.`,
+        );
+        actual = candidate;
+        break;
+      }
+    }
+    if (actual !== url) break;
     if (exited !== null || Date.now() > deadline) {
       await stop();
       const tail = output.join('').split('\n').slice(-15).join('\n');
@@ -104,5 +125,5 @@ export async function startWebServer(
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  return stop;
+  return { stop, url: actual };
 }

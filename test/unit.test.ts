@@ -659,7 +659,7 @@ describe('zero-config setup', async () => {
     const port = 47000 + Math.floor(Math.random() * 1000);
     const url = `http://127.0.0.1:${port}`;
     const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
-    const stop = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: true }, url);
+    const { stop } = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: true }, url);
     expect(await isUp(url)).toBe(true);
     await stop();
     await new Promise((r) => setTimeout(r, 300));
@@ -749,13 +749,86 @@ describe('dev server lifecycle (R6-04, R6-07)', async () => {
     const port = 49000 + Math.floor(Math.random() * 1000);
     const url = `http://127.0.0.1:${port}`;
     const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
-    const stop = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: false }, url);
+    const { stop } = await startWebServer(
+      { command, timeoutMs: 10_000, reuseExisting: false },
+      url,
+    );
     try {
       await expect(
         startWebServer({ command, timeoutMs: 5000, reuseExisting: false }, url),
       ).rejects.toThrow(/already running/);
     } finally {
       await stop();
+    }
+  });
+});
+
+describe('real-world app detection (R6-06)', async () => {
+  const { mkdirSync, mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { detectApp } = await import('../src/detect.js');
+  const { startWebServer } = await import('../src/profiler/webserver.js');
+  const project = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), 'crispy-detect-'));
+    for (const [f, c] of Object.entries(files)) {
+      mkdirSync(join(dir, f, '..'), { recursive: true });
+      writeFileSync(join(dir, f), c);
+    }
+    return dir;
+  };
+
+  it('reads ports from vite.config and .env, and ignores ports of other processes', () => {
+    const vite = { devDependencies: { vite: '8' }, scripts: { dev: 'vite' } };
+    expect(
+      detectApp(
+        project({
+          'package.json': JSON.stringify(vite),
+          'vite.config.ts': 'export default { server: { port: 3005 } }',
+        }),
+      ).baseUrl,
+    ).toBe('http://localhost:3005');
+    expect(
+      detectApp(project({ 'package.json': JSON.stringify(vite), '.env': 'PORT=4100\n' })).baseUrl,
+    ).toBe('http://localhost:4100');
+    const both = {
+      devDependencies: { vite: '8' },
+      scripts: { dev: 'concurrently "api --port 8080" "vite"' },
+    };
+    expect(detectApp(project({ 'package.json': JSON.stringify(both) })).baseUrl).toBe(
+      'http://localhost:5173',
+    );
+  });
+
+  it('uses the workspace package manager and skips install prefixes', () => {
+    const root = project({
+      'yarn.lock': '',
+      'package.json': JSON.stringify({ devDependencies: { vite: '8' } }),
+    });
+    const app = join(root, 'app');
+    mkdirSync(app);
+    writeFileSync(
+      join(app, 'package.json'),
+      JSON.stringify({ scripts: { start: 'yarn && vite' } }),
+    );
+    expect(detectApp(app)).toEqual({
+      framework: 'vite',
+      baseUrl: 'http://localhost:5173',
+      devCommand: 'yarn vite',
+    });
+  });
+
+  it('follows the URL the dev server prints when the configured one never answers', async () => {
+    const port = 46000 + Math.floor(Math.random() * 1000);
+    const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port},()=>console.log('Local: http://localhost:${port}/'))"`;
+    const server = await startWebServer(
+      { command, timeoutMs: 10_000, reuseExisting: false },
+      'http://localhost:45999',
+    );
+    try {
+      expect(server.url).toBe(`http://localhost:${port}/`);
+    } finally {
+      await server.stop();
     }
   });
 });

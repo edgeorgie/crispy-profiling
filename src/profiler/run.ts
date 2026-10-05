@@ -553,9 +553,16 @@ export async function profile(
     : config.scenarios;
   if (scenarios.length === 0) throw new Error(`No scenarios match: ${options.only?.join(', ')}`);
 
-  const stopServer = config.webServer
-    ? await startWebServer({ ...config.webServer, cwd: options.cwd }, config.baseUrl, log)
-    : async () => {};
+  let stopServer = async () => {};
+  if (config.webServer) {
+    const server = await startWebServer(
+      { ...config.webServer, cwd: options.cwd },
+      config.baseUrl,
+      log,
+    );
+    stopServer = server.stop;
+    if (server.url !== config.baseUrl) config = { ...config, baseUrl: server.url };
+  }
   let browser: Browser;
   try {
     browser = await launchBrowser(config);
