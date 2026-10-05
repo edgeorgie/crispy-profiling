@@ -6,7 +6,9 @@ const top = (m: Record<string, number>, n = 3) => Object.keys(m).slice(0, n);
 
 /** "file:line (Owner)" → { where: " (rendered at file:line (Owner))", owner: "Owner" } */
 function site(c: ComponentReport): { where: string; owner: string | null } {
-  const loc = c.locations[0];
+  // Prefer a site in app code over one inside a library (e.g. emotion's styled wrapper).
+  const loc =
+    c.locations.find((l) => !LIBRARY_FILE.test(l.replace(/ \(.*\)$/, ''))) ?? c.locations[0];
   if (!loc) return { where: '', owner: null };
   const owner = loc.match(/ \((.+)\)$/)?.[1] ?? null;
   return { where: ` (rendered at ${loc})`, owner };
@@ -62,23 +64,35 @@ export function hintFor(
   if (!c) return undefined;
   const { where, owner } = site(c);
   const library = c.definedIn !== undefined && LIBRARY_FILE.test(c.definedIn);
+  const isLibrary = (k: string | null | undefined) => {
+    const file = k ? phase?.components[k]?.definedIn : undefined;
+    return file !== undefined && LIBRARY_FILE.test(file);
+  };
 
   // Root cause of a cascade: its state updates cause avoidable renders below.
-  if (name && c.causes.state > 0) {
+  // Library components (routers, error boundaries) are never the place to fix.
+  if (name && c.causes.state > 0 && !library) {
     const cascade = cascadeOf(name, phase);
     if (cascade.total >= 3) {
       return `state updates here cause ${cascade.total} avoidable render(s) below (${code(cascade.top)})${where}. Make the props passed down stable so React.memo can skip them, or move this state closer to the components that use it.`;
     }
   }
 
-  const contexts = top(c.recreatedContextFrom);
+  const contexts = top(c.recreatedContextFrom).filter((k) => !isLibrary(k));
   if (contexts.length) {
     const at = c.providerAt[0] ? ` (${c.providerAt[0].replace(/ \(.*\)$/, '')})` : '';
+    const stale = lookup(c.staleMemo, '(context value)');
+    if (stale?.[1]) {
+      return `reads a context whose value is already memoized in \`${stale[0]}\`${at}, but its dependency ${stale[1]} changes on every render: make that dependency stable.`;
+    }
     return `reads a context whose value is recreated on every render of ${code(contexts)}${at}: memoize the provider value there with useMemo (and useCallback for functions inside it).`;
   }
 
   const recreated = [...Object.keys(c.unstableProps), ...Object.keys(c.callbackProps)];
-  const props = [...new Set(recreated)].filter((p) => p !== 'children');
+  // Props created inside library code cannot be fixed from the app: skip them.
+  const props = [...new Set(recreated)].filter(
+    (p) => p !== 'children' && !isLibrary(lookup(c.creators, p)?.[0]),
+  );
   if (props.length) {
     const shown = props.slice(0, 4);
     const more = props.length > shown.length ? `; and ${props.length - shown.length} more` : '';
@@ -114,6 +128,9 @@ export function hintFor(
     return `re-renders with identical props because ${because}${where}: wrap it in React.memo, or move ${trigger ? `\`${trigger}\`'s` : 'the parent’s'} state closer to where it is used.`;
   }
   if (c.causes.context > 0) {
+    if (library) {
+      return `library component reading a context value that changed${where}: this render is necessary.`;
+    }
     return `re-renders when a context value changes${where}: split the context so it only reads what it needs, or select a smaller slice.`;
   }
   if (c.causes.state > 0) {
