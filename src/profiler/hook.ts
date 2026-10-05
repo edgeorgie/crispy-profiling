@@ -386,7 +386,8 @@ export function installCrispyHook(): void {
       const re = /\b(use[A-Z]\w*)["']?\]?\)?\s*\(/g;
       for (let m = re.exec(src); m; m = re.exec(src)) {
         const hook = m[1] as string;
-        const before = src.slice(Math.max(0, m.index - 120), m.index);
+        // Turbopack/webpack import identifiers can be ~200 chars: look back to the statement start.
+        const before = src.slice(Math.max(0, m.index - 600), m.index);
         const stmt = before.slice(
           Math.max(before.lastIndexOf(';'), before.lastIndexOf('{'), before.lastIndexOf('}')) + 1,
         );

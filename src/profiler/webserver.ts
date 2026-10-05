@@ -76,7 +76,7 @@ export async function startWebServer(
   const onSignal = (sig: NodeJS.Signals) => {
     signal('SIGTERM');
     setTimeout(() => signal('SIGKILL'), 1500).unref();
-    process.exit(sig === 'SIGINT' ? 130 : 143);
+    process.exit(sig === 'SIGINT' ? 130 : sig === 'SIGHUP' ? 129 : 143);
   };
   const onExit = () => signal('SIGKILL');
   const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
@@ -91,21 +91,43 @@ export async function startWebServer(
     signal('SIGKILL');
   };
 
-  // URLs the dev server prints ("Local: http://localhost:5174/"): when the
-  // configured one never answers but a printed one does, use it.
-  const printed = () => {
+  // Fallback for a wrong baseUrl: the URL the dev server announces ("Local:
+  // http://localhost:5174/"). Only after a grace period, only from announce
+  // lines, only if it serves HTML, and never when the configured port is the
+  // one being announced (it is just still starting).
+  const started = Date.now();
+  const grace = Math.min(10_000, server.timeoutMs / 3);
+  const configuredPort = new URL(url).port;
+  const announced = () => {
     // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI colors from the output
     const text = output.join('').replace(/\x1b\[[0-9;]*m/g, '');
-    const found =
-      text.match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(?::\d+)?[^\s'"]*/g) ??
-      [];
+    const lines = text
+      .split('\n')
+      .filter((l) => /\b(local|ready|started|running|listening)\b/i.test(l));
+    const found = lines.flatMap(
+      (l) =>
+        l.match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(?::\d+)?[^\s'"]*/g) ?? [],
+    );
     return [...new Set(found.map((u) => u.replace('0.0.0.0', 'localhost')))];
+  };
+  const servesHtml = async (u: string) => {
+    try {
+      const res = await fetch(u, { signal: AbortSignal.timeout(2000) });
+      await res.body?.cancel();
+      return (res.headers.get('content-type') ?? '').includes('text/html');
+    } catch {
+      return false;
+    }
   };
   const deadline = Date.now() + server.timeoutMs;
   let actual = url;
   while (!(await isUp(actual))) {
-    for (const candidate of printed()) {
-      if (candidate !== actual && (await isUp(candidate))) {
+    const candidates = Date.now() - started > grace ? announced() : [];
+    const portAnnounced = candidates.some(
+      (c) => configuredPort && new URL(c).port === configuredPort,
+    );
+    for (const candidate of portAnnounced ? [] : candidates) {
+      if (candidate !== actual && (await servesHtml(candidate))) {
         log(
           `[crispy] ⚠️ the dev server is at ${candidate}, not ${url}: using it. Set baseUrl to it in your config.`,
         );
@@ -115,11 +137,12 @@ export async function startWebServer(
     }
     if (actual !== url) break;
     if (exited !== null || Date.now() > deadline) {
+      const crashed = exited;
       await stop();
       const tail = output.join('').split('\n').slice(-15).join('\n');
       throw new Error(
-        exited !== null
-          ? `The dev server command "${server.command}" exited with code ${exited}.\n${tail}`
+        crashed !== null
+          ? `The dev server command "${server.command}" exited with code ${crashed}.\n${tail}`
           : `The dev server did not answer at ${url} within ${Math.round(server.timeoutMs / 1000)} s. Is ${url} the address it prints? Set baseUrl (or webServer.url) to it.\n${tail}`,
       );
     }

@@ -820,7 +820,7 @@ describe('real-world app detection (R6-06)', async () => {
 
   it('follows the URL the dev server prints when the configured one never answers', async () => {
     const port = 46000 + Math.floor(Math.random() * 1000);
-    const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port},()=>console.log('Local: http://localhost:${port}/'))"`;
+    const command = `node -e "require('http').createServer((q,r)=>{r.setHeader('content-type','text/html');r.end('ok')}).listen(${port},()=>console.log('Local: http://localhost:${port}/'))"`;
     const server = await startWebServer(
       { command, timeoutMs: 10_000, reuseExisting: false },
       'http://localhost:45999',
@@ -841,5 +841,44 @@ describe('environment values in steps (R6-17)', async () => {
     expect(withEnv(`pw: ${placeholder} / $${placeholder}`)).toBe(`pw: s3cret / ${placeholder}`);
     // biome-ignore lint/suspicious/noTemplateCurlyInString: crispy's own placeholder syntax
     expect(() => withEnv('${CRISPY_UNIT_MISSING}')).toThrow(/CRISPY_UNIT_MISSING is not set/);
+  });
+});
+
+describe('dev server URL fallback is safe (R7-02, R7-03)', async () => {
+  const { writeFileSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { startWebServer } = await import('../src/profiler/webserver.js');
+
+  it('keeps the configured URL when an API announces itself first', async () => {
+    const api = 44000 + Math.floor(Math.random() * 500);
+    const app = 44600 + Math.floor(Math.random() * 300);
+    const script = join(mkdtempSync(join(tmpdir(), 'crispy-ws-')), 'both.cjs');
+    writeFileSync(
+      script,
+      `const http = require('http');
+       http.createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end('{}'); })
+         .listen(${api}, () => console.log('API listening on http://localhost:${api}'));
+       setTimeout(() => http.createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('app'); })
+         .listen(${app}, () => console.log('Local: http://localhost:${app}/')), 1500);`,
+    );
+    const server = await startWebServer(
+      { command: `node ${script}`, timeoutMs: 15_000, reuseExisting: false },
+      `http://localhost:${app}`,
+    );
+    try {
+      expect(server.url).toBe(`http://localhost:${app}`);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('says the server did not answer when it times out (not that it exited)', async () => {
+    await expect(
+      startWebServer(
+        { command: 'echo booting; sleep 100', timeoutMs: 3000, reuseExisting: false },
+        'http://localhost:45998',
+      ),
+    ).rejects.toThrow(/did not answer/);
   });
 });
