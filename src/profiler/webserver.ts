@@ -1,4 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isCI } from '../util/ci.js';
 
 export interface WebServerConfig {
@@ -22,6 +24,30 @@ export async function isUp(url: string): Promise<boolean> {
 }
 
 /**
+ * The package name of the app a dev server serves, when it exposes its
+ * package.json (Vite does; Next.js does not): null when unknown.
+ */
+async function servedPackageName(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(new URL('/package.json', url), { signal: AbortSignal.timeout(2000) });
+    if (!res.ok || !/json/.test(res.headers.get('content-type') ?? '')) return null;
+    const name = ((await res.json()) as { name?: unknown }).name;
+    return typeof name === 'string' ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+function localPackageName(cwd: string | undefined): string | null {
+  try {
+    const name = JSON.parse(readFileSync(join(cwd ?? process.cwd(), 'package.json'), 'utf8')).name;
+    return typeof name === 'string' ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Starts the app's dev server (like Playwright's `webServer`) unless one is
  * already running, waits until it answers, and returns a function that stops
  * it. Output is kept and shown only if the server fails to start.
@@ -39,8 +65,16 @@ export async function startWebServer(
         `Something is already running at ${url}. Stop it so crispy can start "${server.command}", or set webServer.reuseExisting: true if it is this app.`,
       );
     }
+    // Two dev servers on the same port is common: never profile the wrong app silently.
+    const served = await servedPackageName(url);
+    const local = localPackageName(server.cwd);
+    if (served && local && served !== local) {
+      throw new Error(
+        `Another app ("${served}") is running at ${url}, not this one ("${local}"). Stop it, or give this app its own port (e.g. add --port 5199 --strictPort to webServer.command and update baseUrl).`,
+      );
+    }
     log(
-      `[crispy] ⚠️ reusing the server already running at ${url} — make sure it is this app's development build.`,
+      `[crispy] ⚠️ reusing the server already running at ${url} — ${served === local && served ? `it serves "${served}", this app` : "make sure it is this app's development build"}.`,
     );
     return { stop: async () => {}, url, reused: true };
   }

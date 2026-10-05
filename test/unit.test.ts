@@ -775,6 +775,31 @@ describe('dev server lifecycle (R6-04, R6-07)', async () => {
   });
 });
 
+describe('reuses only a server that serves this app (council round 1)', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { startWebServer } = await import('../src/profiler/webserver.js');
+  it('refuses another app on the port even when reuse is allowed', async () => {
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}`;
+    const other = `node -e "require('http').createServer((q,r)=>{r.setHeader('content-type','application/json');r.end(JSON.stringify({name:'other-app'}))}).listen(${port})"`;
+    const { stop } = await startWebServer(
+      { command: other, timeoutMs: 10_000, reuseExisting: false },
+      url,
+    );
+    const mine = mkdtempSync(join(tmpdir(), 'crispy-mine-'));
+    writeFileSync(join(mine, 'package.json'), JSON.stringify({ name: 'my-app' }));
+    try {
+      await expect(
+        startWebServer({ command: 'true', timeoutMs: 5000, reuseExisting: true, cwd: mine }, url),
+      ).rejects.toThrow(/Another app \("other-app"\) is running/);
+    } finally {
+      await stop();
+    }
+  });
+});
+
 describe('real-world app detection (R6-06)', async () => {
   const { mkdirSync, mkdtempSync, writeFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
