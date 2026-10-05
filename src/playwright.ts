@@ -115,8 +115,13 @@ export class RenderRecorder {
     );
     if (!result.passed) {
       // One remedy that fits Playwright tests (not the CLI's `crispy test --update`).
-      const report = snapshotToMarkdown(result, file).replace(/\nIf a regression is intended.*\n?$/s, '\n');
-      throw new Error(`${report}\nIf this is intended, re-run with CRISPY_UPDATE=1 and commit ${file}.`);
+      const report = snapshotToMarkdown(result, file).replace(
+        /\nIf a regression is intended.*\n?$/s,
+        '\n',
+      );
+      throw new Error(
+        `${report}\nIf this is intended, re-run with CRISPY_UPDATE=1 and commit ${file}.`,
+      );
     }
   }
 }
