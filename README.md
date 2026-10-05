@@ -17,13 +17,17 @@
 
 crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
 tells you **which components rendered, how many times, why** (props / state / context / parent) and
-**which renders were avoidable**. Render counts are deterministic, so two reports of the same scenario
-only differ when the code changed. That makes it a reliable feedback loop for:
+**which renders were avoidable**. Per-component render counts are reproducible, so two reports of the
+same scenario only differ when the code changed (commit counts and effect cascades can vary with load
+timing; snapshots store them as ranges). That makes it a reliable feedback loop for:
 
 - **AI coding agents**: an MCP server and an [Agent Skill](skills/react-render-profiling/SKILL.md)
   so Claude Code, Cursor, Codex, Copilot & co. can *measure* a re-render fix instead of guessing.
 - **CI**: render budgets and baseline comparison that fail a PR when a component starts re-rendering.
 - **You**: a CLI that answers "why does this re-render?" without opening DevTools.
+
+**Is this for me?** If your React app feels slow when you type or click, crispy shows which
+components re-render for no reason and how to fix each one.
 
 No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19 and
 validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are not tested.
@@ -37,7 +41,8 @@ npx crispy scan      # zero config: starts your dev server, finds interactions, 
 npx crispy test      # records crispy.snap.json from the scanned scenarios → commit it
 ```
 
-`crispy scan` detects Next.js/Vite, the dev URL and your dev command, visits a few routes, tries
+`crispy scan` detects Next.js/Vite, the dev URL (the port your dev server prints, e.g. `server.port`
+in `vite.config.ts`) and your dev command, visits a few routes, tries
 their safe interactions (buttons, tabs, selects, text inputs, internal links — never anything named
 delete, pay, sign out, submit…, in several languages), and prints the top root causes with the fix.
 It is read-only: requests other than GET and messages the page sends over a WebSocket never leave
@@ -60,10 +65,10 @@ re-rendering, and tells you why and how to fix it:
 For a one-off look at a flow, `npx crispy run` prints every component with its causes and a fix:
 
 ```text
-| Component | Renders | Avoidable | Callback | Causes (props/state/context/unstable/callback/parent) | Rendered at          | Why / how to fix |
-| Row       |      20 |         0 |       20 | 0/0/0/0/20/0 | `src/App.tsx:222 (App)` | `onSelect` is a new function with the same code in `App`: wrap it in useCallback… |
-| Status    |       1 |         1 |        0 | 0/0/0/1/0/0  | `src/App.tsx:178 (App)` | `style` is recreated with equal data in `App`: hoist it out of the component or wrap it in useMemo… |
-| App       |       1 |         0 |        0 | 0/1/0/0/0/0  | `src/main.tsx:12`       | state updates here cause 23 avoidable render(s) below (`Row`, `Header`, `Status`)… |
+| Component | Renders | Avoidable | Callback | Why it rendered         | Rendered at             | Why / how to fix |
+| Row       |      20 |         0 |       20 | recreated callbacks 20  | `src/App.tsx:222 (App)` | `onSelect` is a new function with the same code in `App`: wrap it in useCallback… |
+| Status    |       1 |         1 |        0 | recreated props 1       | `src/App.tsx:178 (App)` | `style` is recreated with equal data in `App`: hoist it out of the component or wrap it in useMemo… |
+| App       |       1 |         0 |        0 | own state 1             | `src/main.tsx:12`       | state updates here cause 23 avoidable render(s) below (`Row`, `Header`, `Status`)… |
 ```
 
 Every phase starts with **Root causes — fix these first**: the few components that recreate a

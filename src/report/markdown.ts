@@ -1,5 +1,21 @@
-import type { CompareResult, CrispyReport } from '../types.js';
+import type { CompareResult, ComponentReport, CrispyReport } from '../types.js';
 import { hintFor, rootCauses } from './hints.js';
+
+const CAUSE_NAMES = {
+  props: 'props changed',
+  state: 'own state',
+  context: 'context',
+  unstable: 'recreated props',
+  callback: 'recreated callbacks',
+  parent: 'parent re-rendered',
+} as const;
+
+/** "parent re-rendered 30, own state 2": only the causes that happened, in that wording. */
+const causeList = (c: ComponentReport) =>
+  (Object.keys(CAUSE_NAMES) as (keyof typeof CAUSE_NAMES)[])
+    .filter((k) => c.causes[k] > 0)
+    .map((k) => `${CAUSE_NAMES[k]} ${c.causes[k]}`)
+    .join(', ') || '—';
 
 const esc = (s: string) => s.replace(/\|/g, '\\|');
 
@@ -27,7 +43,7 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
         );
       }
       lines.push(
-        '| Component | Renders | Avoidable: unchanged inputs | Avoidable: recreated callbacks | Causes (props/state/context/unstable/callback/parent) | Rendered at | Why / how to fix |',
+        '| Component | Renders | Avoidable: unchanged inputs | Avoidable: recreated callbacks | Why it rendered | Rendered at | Why / how to fix |',
         '| --- | ---: | ---: | ---: | --- | --- | --- |',
       );
       // Top components, plus every component whose own state changed: the likely
@@ -38,7 +54,7 @@ export function reportToMarkdown(report: CrispyReport, top = 10): string {
         const flaky = c.stable ? '' : ' ⚠️';
         const hint = hintFor(c, p, name) ?? '';
         lines.push(
-          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.callbackRenders.median} | ${c.causes.props}/${c.causes.state}/${c.causes.context}/${c.causes.unstable}/${c.causes.callback}/${c.causes.parent} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} | ${esc(hint)} |`,
+          `| ${esc(name)}${flaky} | ${c.renders.median} | ${c.avoidableRenders.median} | ${c.callbackRenders.median} | ${causeList(c)} | ${c.locations.length ? c.locations.map((l) => `\`${esc(l)}\``).join(', ') : '—'} | ${esc(hint)} |`,
         );
       }
       if (entries.length > shown.length) {

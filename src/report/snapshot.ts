@@ -662,7 +662,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   }
   if (result.changes.some((c) => c.uncovered)) {
     lines.push(
-      '🟡 now avoidable: same number of renders (not a regression), but they now have a clear fix — often uncovered by a previous fix. They do not fail the test.',
+      '🟡 now avoidable: not worse. The renders are the same; you removed one cause, so the next one is visible now, with its fix. They do not fail the test.',
     );
   }
   if (result.regressions.length) {
