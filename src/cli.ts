@@ -8,6 +8,7 @@ import { parseArgs } from 'node:util';
 import { DEFAULT_CONFIG_FILE, exampleConfig, loadConfig } from './config.js';
 import { detectApp } from './detect.js';
 import { launchBrowser, profile } from './profiler/run.js';
+import { startWebServer } from './profiler/webserver.js';
 import { serializeReport } from './report/aggregate.js';
 import { compareReports } from './report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from './report/markdown.js';
@@ -98,28 +99,46 @@ async function main(argv: string[]): Promise<number> {
         args: rest,
         options: {
           config: { type: 'string', short: 'c', default: DEFAULT_CONFIG_FILE },
-          path: { type: 'string', default: '/' },
+          path: { type: 'string' },
           out: { type: 'string' },
         },
       });
       const config = await loadConfig(values.config);
-      const out = resolve(
-        dirname(resolve(values.config)),
-        values.out ?? config.storageState ?? 'crispy.auth.json',
-      );
-      const browser = await launchBrowser({
-        ...config,
-        browser: { ...config.browser, headless: false },
-      });
-      const context = await browser.newContext({ viewport: config.viewport });
-      const page = await context.newPage();
-      await page.goto(new URL(values.path, config.baseUrl).toString());
-      log('[crispy] sign in in the browser window, then close the window to save the session.');
-      await page.waitForEvent('close', { timeout: 0 });
-      await context.storageState({ path: out });
-      await browser.close();
+      const dir = dirname(resolve(values.config));
+      const out = resolve(dir, values.out ?? config.storageState ?? 'crispy.auth.json');
+      const server = config.webServer
+        ? await startWebServer({ ...config.webServer, cwd: dir }, config.baseUrl, log)
+        : { stop: async () => {}, url: config.baseUrl };
+      try {
+        let browser: Awaited<ReturnType<typeof launchBrowser>>;
+        try {
+          browser = await launchBrowser({
+            ...config,
+            browser: { ...config.browser, headless: false },
+          });
+        } catch (err) {
+          throw /display|DISPLAY|headed/i.test((err as Error).message)
+            ? new Error(
+                'crispy login opens a browser window and needs a display. Run it on your machine (not in CI or a container) and commit nothing: keep the session file local or in a CI secret.',
+              )
+            : err;
+        }
+        try {
+          const context = await browser.newContext({ viewport: config.viewport });
+          const page = await context.newPage();
+          const path = values.path ?? config.login?.path ?? '/';
+          await page.goto(new URL(path, server.url).toString());
+          log('[crispy] sign in in the browser window, then close the window to save the session.');
+          await page.waitForEvent('close', { timeout: 0 });
+          await context.storageState({ path: out });
+        } finally {
+          await browser.close().catch(() => {});
+        }
+      } finally {
+        await server.stop();
+      }
       log(
-        `[crispy] session saved to ${out}. Add "storageState": "${relative(dirname(resolve(values.config)), out)}" to your config, ` +
+        `[crispy] session saved to ${out}. Add "storageState": "${relative(dir, out)}" to your config, ` +
           'and keep the file out of git (it contains your cookies).',
       );
       return 0;
