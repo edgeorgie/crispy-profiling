@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Read-only mode (`crispy scan`, `readOnly`) also drops messages the page sends over a WebSocket
+  (chat, realtime mutations) and reports them like blocked requests. Dev-server hot-reload sockets
+  (Vite, webpack, Next.js) still work.
 - Snapshots count renders from recreated callbacks as avoidable, like the report does, so putting an
   inline callback back can no longer show up as 🟢 improved. Existing snapshots may need `-u` once.
 

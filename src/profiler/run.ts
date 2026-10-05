@@ -38,7 +38,10 @@ function explainReused(err: unknown, url: string | undefined): Error {
   return e;
 }
 
-/** Aborts writes and closes popups in a context (read-only profiling). */
+/** Dev-server hot reload sockets (Vite, webpack, Next.js), never blocked. */
+const HMR_SOCKET = /webpack-hmr|sockjs-node|__vite|vite-hmr|[?&]token=|^\/ws\/?$|^\/_next\//i;
+
+/** Aborts writes (requests and WebSocket sends) and closes popups (read-only profiling). */
 export async function guardContext(
   context: BrowserContext,
   onBlocked: (what: string) => void,
@@ -50,6 +53,24 @@ export async function guardContext(
     onBlocked(`${req.method()} ${u.origin}${u.pathname}`);
     return route.abort('blockedbyclient');
   });
+  // WebSockets: the app's sockets connect and receive, but what the page sends is
+  // dropped (a chat message, a realtime mutation). Dev-server HMR sockets pass through.
+  const reported = new Set<string>();
+  await context.routeWebSocket(
+    (u) => !HMR_SOCKET.test(u.pathname + u.search),
+    (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage(() => {
+        const u = new URL(ws.url());
+        const what = `WebSocket send ${u.origin}${u.pathname}`;
+        if (!reported.has(what)) {
+          reported.add(what);
+          onBlocked(what);
+        }
+      });
+      server.onMessage((m) => ws.send(m));
+    },
+  );
   context.on('page', (popup) => {
     if (context.pages().length > 1) {
       onBlocked(`window.open ${popup.url()}`);

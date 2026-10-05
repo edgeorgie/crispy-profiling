@@ -949,6 +949,29 @@ describe('readOnly configs (council round 1)', () => {
     await profile(config);
     expect(writes).toEqual([]);
   });
+
+  it('drops what the page sends over a WebSocket', async () => {
+    const blocked: string[] = [];
+    writes.length = 0;
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 300,
+      readOnly: true,
+      scenarios: [
+        {
+          name: 'live',
+          path: '/?trap',
+          steps: [{ action: 'click', selector: 'text=Send message' }],
+        },
+      ],
+    });
+    await profile(config, { onBlockedRequest: (_s, what) => blocked.push(what) });
+    expect(blocked.some((b) => b.startsWith('WebSocket send ws://') && b.endsWith('/live'))).toBe(
+      true,
+    );
+    expect(writes).toEqual([]);
+  });
 });
 
 describe('mutable reads (council round 1, expert)', () => {
