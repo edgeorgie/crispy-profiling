@@ -23,7 +23,11 @@ export type Count = number | [number, number];
 export interface PhaseSnapshot {
   commits: Count;
   /** `file` = where the component is defined; used to match it if its key changes. */
-  components: Record<string, { renders: Count; avoidable: Count; file?: string }>;
+  /**
+   * `mutable`: the component reads a mutable instance (a table or form API) or data
+   * that changes without its props. Fewer renders there may mean a frozen UI.
+   */
+  components: Record<string, { renders: Count; avoidable: Count; file?: string; mutable?: true }>;
 }
 
 const lo = (c: Count) => (Array.isArray(c) ? c[0] : c);
@@ -56,6 +60,8 @@ export interface SnapshotChange {
    * clear, fixable cause (often uncovered by a previous fix). Reported, not failing.
    */
   uncovered?: true;
+  /** Fewer renders on a `mutable` component: check that the UI still updates. */
+  suspect?: true;
   /**
    * The component whose state updates re-rendered this regressed one: the highest
    * regressed ancestor in the cascade, else its direct trigger. Fix the root first.
@@ -104,6 +110,9 @@ export function toSnapshot(report: CrispyReport): RenderSnapshot {
           // Avoidable = unchanged inputs + recreated callbacks (as in the report header).
           avoidable: toCount(fixableStat(r)),
           ...(r.definedIn && { file: r.definedIn }),
+          ...((Object.keys(r.instanceProps ?? {}).length > 0 || (r.mutableReads ?? 0) > 0) && {
+            mutable: true as const,
+          }),
         };
       }
       phases[phase] = { commits: toCount(p.commits), components };
@@ -134,8 +143,9 @@ export function serializeSnapshot(snapshot: RenderSnapshot): string {
         comps.forEach(([c, v], ci) => {
           const comma = ci < comps.length - 1 ? ',' : '';
           const file = v.file ? `, "file": ${q(v.file)}` : '';
+          const mutable = v.mutable ? ', "mutable": true' : '';
           out.push(
-            `          ${q(c)}: { "renders": ${q(v.renders)}, "avoidable": ${q(v.avoidable)}${file} }${comma}`,
+            `          ${q(c)}: { "renders": ${q(v.renders)}, "avoidable": ${q(v.avoidable)}${file}${mutable} }${comma}`,
           );
         });
         out.push('        }');
@@ -396,6 +406,7 @@ export function compareSnapshot(
           continue;
         }
         const base = { scenario, phase, component };
+        const before = changes.length;
         check(
           base,
           'renders',
@@ -415,6 +426,8 @@ export function compareSnapshot(
           tolerance,
           !rendersUp && !failOnMoreAvoidable,
         );
+        if (e.mutable)
+          for (const c of changes.slice(before)) if (c.status === 'improved') c.suspect = true;
       }
     }
   }
@@ -469,6 +482,8 @@ export function keepRanges(next: RenderSnapshot, previous: RenderSnapshot): Rend
         if (!o) continue;
         c.renders = union(c.renders, o.renders);
         c.avoidable = union(c.avoidable, o.avoidable);
+        // Sticky: after a memo the component may no longer render to show it.
+        if (o.mutable) c.mutable = true;
       }
     }
   }
@@ -633,7 +648,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   const valuesOf = (c: SnapshotChange) =>
     `${c.expected === null && c.actual !== null ? '0' : fmt(c.expected)} → ${fmt(c.actual)}${c.flaky ? ' (varies between runs)' : ''}`;
   const row = (c: SnapshotChange) =>
-    `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${valuesOf(c)} | ${c.hint ?? ''} |`;
+    `| ${c.warning ? '⚠️ new' : c.uncovered ? '🟡 now avoidable' : c.suspect ? '⚠️ check the UI' : `${ICON[c.status]} ${c.status}`} | ${c.scenario} / ${c.phase} | ${c.renamedFrom ? `${c.renamedFrom} → ` : ''}${c.component ?? '—'} | ${c.metric} | ${valuesOf(c)} | ${c.hint ?? ''} |`;
   const blocking = new Set(result.regressions);
   for (const group of groupRegressions(sorted.filter((c) => blocking.has(c)))) {
     // The root's own row with the biggest increase (else the group's biggest).
@@ -661,6 +676,11 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   if (result.improvements.length) {
     lines.push(`Improvements found: run \`crispy test --update\` to lock them into \`${file}\`.`);
     lines.push(GREEN_CAVEAT);
+  }
+  if (result.changes.some((c) => c.suspect)) {
+    lines.push(
+      '⚠️ check the UI: fewer renders on a component that reads a mutable instance (a table or form API) or data that changes without its props. A React.memo there hides those changes: make sure the screen still updates before accepting it.',
+    );
   }
   if (result.changes.some((c) => c.uncovered)) {
     lines.push(

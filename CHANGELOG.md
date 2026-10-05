@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format follows
   avoidable renders without a single standout cause.
 
 ### Changed
+- Fewer renders on a component that reads a mutable instance (a TanStack table, a form API) or
+  mutable data is shown as "⚠️ check the UI" instead of 🟢 in snapshots and `compare`: a React.memo
+  there freezes the UI. Snapshots mark such components `"mutable": true`.
 - Every 🟢 improvement (snapshot and `compare`) now says that fewer renders is not proof the UI still
   updates; the README and the skill say the same.
 - Hints no longer suggest React.memo for a component that gets new `children` JSX on most renders

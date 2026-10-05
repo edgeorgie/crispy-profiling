@@ -242,6 +242,8 @@ export interface ComponentDiff {
   baseAvoidable: number;
   headAvoidable: number;
   status: 'regressed' | 'improved' | 'unchanged' | 'added';
+  /** Improved, but the base reads a mutable instance or mutable data: check the UI. */
+  suspect?: true;
 }
 
 export interface CompareResult {
