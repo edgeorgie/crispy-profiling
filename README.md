@@ -145,6 +145,8 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
 | `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
 | `webServer` | — | `{ "command": "npm run dev" }`: crispy starts your dev server, waits for `baseUrl` (or `url`) and stops it afterwards; a server already running there is reused. `crispy init` fills it in. |
+| `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment. |
+| `storageState` | — | A saved session file (cookies + localStorage), e.g. from `crispy login` for SSO/OAuth logins. Keep it out of git. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
 | `snapshot` | `crispy.snap.json`, `0`, `false` | `file` (relative to the config file), `tolerance` and `failOnNewAvoidable` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
@@ -199,8 +201,9 @@ Profile the **development** build: production builds minify component names.
 ## CLI
 
 ```text
-crispy init [--base-url <url>]          Create crispy.config.json
+crispy init [--base-url <url>]          Create crispy.config.json (detects framework, URL, dev command)
 crispy install [--with-deps]            Download the Chromium build crispy uses
+crispy login [-c file] [--path /login]  Sign in by hand in a browser window and save the session
 crispy run [-c file] [-o file] [-s scenario...] [--markdown file] [--no-fail]
 crispy test [-c file] [-u|--update] [--ci] [-s scenario...] [--markdown file]
 crispy compare <base.json> <head.json> [--threshold 10] [--min-delta 1] [--markdown file] [--json file] [--no-fail]
@@ -244,15 +247,20 @@ to a fix (`React.memo`, `useCallback`, `useMemo`, context splitting, state coloc
 ## CI (GitHub Action)
 
 ```yaml
-- run: npm run dev -- --port 5173 & npx -y wait-on http://localhost:5173
-- uses: edgeorgie/crispy-profiling@v0   # runs `crispy test --ci` against crispy.snap.json
-  with:
-    config: crispy.config.json
+permissions:
+  contents: read
+  pull-requests: write   # lets crispy comment on the PR
+steps:
+  - uses: actions/checkout@v7
+  - uses: actions/setup-node@v7
+    with: { node-version: 22 }
+  - run: npm ci
+  - uses: edgeorgie/crispy-profiling@v0   # starts your dev server (webServer) and runs `crispy test --ci`
 ```
 
 The step fails when any component renders more than the committed snapshot allows (or a budget is
-exceeded), and the job summary lists each regression with its cause, where it is rendered and the
-suggested fix. `command: run` (with an optional `baseline` report) is available for budget-only or
+exceeded). The job summary — and one PR comment, updated on every push — lists each regression with
+its cause, where it is rendered and the suggested fix (`comment: false` to disable). `command: run` (with an optional `baseline` report) is available for budget-only or
 baseline-comparison setups. Full workflow: [`examples/github-workflow.yml`](examples/github-workflow.yml).
 
 ## Programmatic API
