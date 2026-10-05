@@ -95,6 +95,12 @@ export function compareToMarkdown(result: CompareResult, top = 20): string {
     `Total renders: ${t.baseRenders} → ${t.headRenders} · Avoidable: ${t.baseAvoidable} → ${t.headAvoidable}`,
     '',
   ];
+  if (result.notCompared?.length) {
+    lines.push(
+      `⚠️ Not compared (ran on one side only): ${result.notCompared.map(esc).join(', ')}. Profile the same scenarios on both sides.`,
+      '',
+    );
+  }
   const interesting = result.diffs.filter((d) => d.status !== 'unchanged').slice(0, top);
   if (interesting.length === 0) {
     lines.push('No component changed its render count.');

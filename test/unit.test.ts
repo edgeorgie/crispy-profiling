@@ -236,6 +236,19 @@ describe('budget validation (C-17)', () => {
   });
 });
 
+describe('compare with a missing scenario (council round 3)', () => {
+  it('lists it as not compared instead of -100% improvements', async () => {
+    const { compareReports } = await import('../src/report/compare.js');
+    const { compareToMarkdown } = await import('../src/report/markdown.js');
+    const base = report({ interaction: phase({ Item: component(10) }) });
+    const head = report({});
+    const r = compareReports(base, head);
+    expect(r.improvements).toEqual([]);
+    expect(r.notCompared).toEqual(['home / interaction (only in base)']);
+    expect(compareToMarkdown(r)).toContain('Not compared (ran on one side only)');
+  });
+});
+
 describe('render snapshot comparison (round-2 fixes)', async () => {
   const { compareSnapshot, toSnapshot } = await import('../src/report/snapshot.js');
   const make = (renders: number, avoidable: number, commits = 1) => {
