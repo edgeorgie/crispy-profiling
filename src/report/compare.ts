@@ -1,6 +1,12 @@
 import type { CompareOptions } from '../config.js';
 import type { CompareResult, ComponentDiff, CrispyReport } from '../types.js';
 import { cmp } from '../util/cmp.js';
+import { detectRenames, phaseSnapshot } from './snapshot.js';
+
+/** Avoidable as everywhere else: unchanged inputs + recreated callbacks. */
+const avoidableOf = (
+  c: { avoidableRenders?: { median: number }; callbackRenders?: { median: number } } | undefined,
+) => (c?.avoidableRenders?.median ?? 0) + (c?.callbackRenders?.median ?? 0);
 
 const DEFAULTS: CompareOptions = { rendersIncreasePct: 10, minRendersDelta: 1 };
 
@@ -26,7 +32,7 @@ export function compareReports(
 ): CompareResult {
   const opts = { ...DEFAULTS, ...options };
   const diffs: ComponentDiff[] = [];
-  const totals = {
+  const totals: CompareResult['totals'] = {
     baseRenders: 0,
     headRenders: 0,
     baseWasted: 0,
@@ -58,20 +64,30 @@ export function compareReports(
       totals.headRenders += hp?.totalRenders.median ?? 0;
       totals.baseWasted += bp?.totalWastedRenders.median ?? 0;
       totals.headWasted += hp?.totalWastedRenders.median ?? 0;
-      totals.baseAvoidable += bp?.totalAvoidableRenders?.median ?? 0;
-      totals.headAvoidable += hp?.totalAvoidableRenders?.median ?? 0;
-      const names = [
-        ...new Set([...Object.keys(bp?.components ?? {}), ...Object.keys(hp?.components ?? {})]),
-      ].sort(cmp);
+      totals.baseAvoidable +=
+        (bp?.totalAvoidableRenders?.median ?? 0) + (bp?.totalCallbackRenders?.median ?? 0);
+      totals.headAvoidable +=
+        (hp?.totalAvoidableRenders?.median ?? 0) + (hp?.totalCallbackRenders?.median ?? 0);
+      if (bp.cost && hp.cost) {
+        totals.baseMs = (totals.baseMs ?? 0) + bp.cost.scriptMs.median;
+        totals.headMs = (totals.headMs ?? 0) + hp.cost.scriptMs.median;
+      }
+      // The same component under a new key (React.memo often renames `Row` to `Row2`).
+      const renames = detectRenames(phaseSnapshot(bp, true), phaseSnapshot(hp, true), true);
+      const renamedTo = new Map([...renames].map(([from, to]) => [to, from]));
+      const names = [...new Set([...Object.keys(bp.components), ...Object.keys(hp.components)])]
+        .filter((k) => !renames.has(k))
+        .sort(cmp);
       for (const component of names) {
-        const bc = bp?.components[component];
+        const from = renamedTo.get(component);
+        const bc = bp.components[from ?? component];
         const hc = hp?.components[component];
         const baseRenders = bc?.renders.median ?? 0;
         const headRenders = hc?.renders.median ?? 0;
         const delta = headRenders - baseRenders;
         const deltaPct = baseRenders === 0 ? null : Math.round((delta / baseRenders) * 10000) / 100;
-        const baseAvoidable = bc?.avoidableRenders?.median ?? 0;
-        const headAvoidable = hc?.avoidableRenders?.median ?? 0;
+        const baseAvoidable = avoidableOf(bc);
+        const headAvoidable = avoidableOf(hc);
         const grew = (b: number, h: number) =>
           h - b >= opts.minRendersDelta &&
           (b === 0 || ((h - b) / b) * 100 > opts.rendersIncreasePct);
@@ -99,6 +115,7 @@ export function compareReports(
           baseAvoidable,
           headAvoidable,
           status,
+          ...(from && { renamedFrom: from }),
           ...(status === 'improved' && mutable && { suspect: true as const }),
         });
       }

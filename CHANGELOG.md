@@ -17,6 +17,11 @@ All notable changes to this project are documented here. The format follows
   avoidable renders without a single standout cause.
 
 ### Changed
+- `compare` follows renamed components (`Row` → `Row2` after a React.memo) instead of showing them as
+  new and -100%, counts recreated-callback renders as avoidable (as snapshots do), and shows the
+  JavaScript ms of both reports when they have `timings`.
+- MCP `test_render_snapshots` says `Status: WARN` when a component that reads mutable data renders
+  less, and a failed `expect` says to undo the change rather than edit the step.
 - A regression rendered (directly or not) by another regressed component is folded into that
   component's row: one injected `useLocation()` on shadcn-admin gives 3 causes instead of 4.
 - An unknown key in `crispy.config.json` (or in a scenario) is an error with a suggestion

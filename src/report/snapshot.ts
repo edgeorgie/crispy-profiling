@@ -98,6 +98,25 @@ function fixableStat(c: ComponentReport): Stat {
 /** Defined in node_modules: its counts follow the app component that renders it. */
 const isLibrary = (file: string | undefined) => file !== undefined && LIBRARY_FILE.test(file);
 
+/** One phase's expected counts. */
+export function phaseSnapshot(p: PhaseReport, includeLibraries = false): PhaseSnapshot {
+  const components: PhaseSnapshot['components'] = {};
+  for (const c of Object.keys(p.components).sort(cmp)) {
+    const r = p.components[c] as ComponentReport;
+    if (!includeLibraries && isLibrary(r.definedIn)) continue;
+    components[c] = {
+      renders: toCount(r.renders),
+      // Avoidable = unchanged inputs + recreated callbacks (as in the report header).
+      avoidable: toCount(fixableStat(r)),
+      ...(r.definedIn && { file: r.definedIn }),
+      ...((Object.keys(r.instanceProps ?? {}).length > 0 || (r.mutableReads ?? 0) > 0) && {
+        mutable: true as const,
+      }),
+    };
+  }
+  return { commits: toCount(p.commits), components };
+}
+
 export function toSnapshot(report: CrispyReport, includeLibraries = false): RenderSnapshot {
   const scenarios: RenderSnapshot['scenarios'] = {};
   for (const name of Object.keys(report.scenarios).sort(cmp)) {
@@ -107,21 +126,7 @@ export function toSnapshot(report: CrispyReport, includeLibraries = false): Rend
     for (const phase of Object.keys(s.phases)) {
       const p = s.phases[phase];
       if (!p) continue;
-      const components: PhaseSnapshot['components'] = {};
-      for (const c of Object.keys(p.components).sort(cmp)) {
-        const r = p.components[c] as ComponentReport;
-        if (!includeLibraries && isLibrary(r.definedIn)) continue;
-        components[c] = {
-          renders: toCount(r.renders),
-          // Avoidable = unchanged inputs + recreated callbacks (as in the report header).
-          avoidable: toCount(fixableStat(r)),
-          ...(r.definedIn && { file: r.definedIn }),
-          ...((Object.keys(r.instanceProps ?? {}).length > 0 || (r.mutableReads ?? 0) > 0) && {
-            mutable: true as const,
-          }),
-        };
-      }
-      phases[phase] = { commits: toCount(p.commits), components };
+      phases[phase] = phaseSnapshot(p, includeLibraries);
     }
     scenarios[name] = phases;
   }
@@ -238,7 +243,19 @@ const knownIn = (phases: Record<string, PhaseSnapshot> | undefined) =>
  * Pure renames: a snapshot component missing now and a new component defined in
  * the same file with identical counts. Returns snapshot key -> current key.
  */
-function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, string> {
+/**
+ * `loose`: also when the counts changed (`compare`, where a fix often renames the
+ * component it memoized); only an unambiguous candidate with the same name or file.
+ */
+export function detectRenames(
+  exp: PhaseSnapshot,
+  current: PhaseSnapshot,
+  loose = false,
+): Map<string, string> {
+  const matches = (
+    a: { renders: Count; avoidable: Count },
+    b: { renders: Count; avoidable: Count },
+  ) => loose || (sameCount(a.renders, b.renders) && sameCount(a.avoidable, b.avoidable));
   const renames = new Map<string, string>();
   const added = Object.keys(current.components).filter((k) => !exp.components[k]);
   const taken = () => [...renames.values()];
@@ -249,11 +266,7 @@ function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, 
     const candidates = added.filter((k) => {
       const c = current.components[k];
       return (
-        c !== undefined &&
-        baseName(k) === baseName(old) &&
-        !taken().includes(k) &&
-        sameCount(c.renders, e.renders) &&
-        sameCount(c.avoidable, e.avoidable)
+        c !== undefined && baseName(k) === baseName(old) && !taken().includes(k) && matches(c, e)
       );
     });
     if (candidates.length === 1) renames.set(old, candidates[0] as string);
@@ -266,11 +279,7 @@ function detectRenames(exp: PhaseSnapshot, current: PhaseSnapshot): Map<string, 
     const candidates = added.filter((k) => {
       const c = current.components[k];
       return (
-        c !== undefined &&
-        c.file === e.file &&
-        ![...renames.values()].includes(k) &&
-        sameCount(c.renders, e.renders) &&
-        sameCount(c.avoidable, e.avoidable)
+        c !== undefined && c.file === e.file && ![...renames.values()].includes(k) && matches(c, e)
       );
     });
     // Ambiguous (several identical candidates): don't guess.

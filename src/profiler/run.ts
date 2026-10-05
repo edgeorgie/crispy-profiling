@@ -478,7 +478,7 @@ async function runStep(
             ? `text "${step.text}"`
             : 'a visible element';
       throw new Error(
-        `expect failed: "${step.selector}" should show ${want}, found ${seen}. The UI did not update as expected.`,
+        `expect failed: "${step.selector}" should show ${want}, found ${seen}. The UI did not update as expected: if a change just made it render less (e.g. a React.memo), undo that change rather than the expect step.`,
       );
     }
   }

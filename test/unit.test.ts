@@ -236,6 +236,34 @@ describe('budget validation (C-17)', () => {
   });
 });
 
+describe('compare for agents (council round 4)', () => {
+  it('follows renames, counts callback renders as avoidable and reports ms', async () => {
+    const { compareReports } = await import('../src/report/compare.js');
+    const { compareToMarkdown } = await import('../src/report/markdown.js');
+    const row = component(10, 10, 0);
+    row.callbackRenders = s(10);
+    row.definedIn = 'src/Row.tsx';
+    const base = report({ interaction: phase({ Row: row }) });
+    const bp = base.scenarios.home?.phases.interaction;
+    if (bp) {
+      bp.totalCallbackRenders = s(10);
+      bp.cost = { scriptMs: s(120), taskMs: s(150) } as never;
+    }
+    const memoRow = { ...component(10, 10, 0), definedIn: 'src/Row.tsx', memo: true };
+    const head = report({ interaction: phase({ Row2: memoRow }) });
+    const hp = head.scenarios.home?.phases.interaction;
+    if (hp) hp.cost = { scriptMs: s(48), taskMs: s(60) } as never;
+    const r = compareReports(base, head);
+    expect(
+      r.diffs.map((d) => [d.component, d.renamedFrom, d.baseAvoidable, d.headAvoidable]),
+    ).toEqual([['Row2', 'Row', 10, 0]]);
+    expect(r.totals.baseAvoidable).toBe(10);
+    const md = compareToMarkdown(r);
+    expect(md).toContain('Row → Row2');
+    expect(md).toContain('JavaScript: 120 → 48 ms (-60%');
+  });
+});
+
 describe('compare with a missing scenario (council round 3)', () => {
   it('lists it as not compared instead of -100% improvements', async () => {
     const { compareReports } = await import('../src/report/compare.js');
