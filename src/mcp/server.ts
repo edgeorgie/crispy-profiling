@@ -5,6 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { loadConfig, parseConfig, StepSchema } from '../config.js';
 import { profile } from '../profiler/run.js';
+import { localPackageName, servedPackageName } from '../profiler/webserver.js';
 import { serializeReport } from '../report/aggregate.js';
 import { compareReports } from '../report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../report/markdown.js';
@@ -29,6 +30,20 @@ async function saveReport(report: CrispyReport, outFile?: string): Promise<strin
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, serializeReport(report));
   return `\n\nFull JSON report written to ${abs}`;
+}
+
+/**
+ * Agents run the MCP server in their project: refuse a URL that serves another
+ * app (Vite exposes its package.json), so numbers never come from the wrong app.
+ */
+async function assertThisApp(url: string): Promise<void> {
+  const served = await servedPackageName(url);
+  const local = localPackageName(process.cwd());
+  if (served && local && served !== local) {
+    throw new Error(
+      `${new URL(url).origin} serves "${served}", not this project ("${local}"). Start this app's dev server (on its own port if another app uses this one) and pass its URL.`,
+    );
+  }
 }
 
 export function createServer(): McpServer {
@@ -58,6 +73,7 @@ export function createServer(): McpServer {
     async ({ url, steps, runs, top, outFile }) => {
       try {
         const u = new URL(url);
+        await assertThisApp(url);
         const config = parseConfig({
           baseUrl: u.origin,
           runs,
@@ -89,6 +105,7 @@ export function createServer(): McpServer {
     async ({ url, maxRoutes, maxActions }) => {
       try {
         const u = new URL(url);
+        await assertThisApp(url);
         const config = parseConfig({ baseUrl: u.origin, scenarios: [{ name: 'scan' }] });
         const result = await scan(config, {
           path: `${u.pathname}${u.search}`,
