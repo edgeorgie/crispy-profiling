@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Hints never suggest useCallback/useMemo inside a render function (a TanStack `cell`, lowercase
+  keys), where hooks break the rules of hooks: they suggest moving that markup into a component.
 - A useEffect that copies a prop into state with equal content (`setShown(items)`) is now reported
   as an effect cascade instead of a recreated prop.
 - The first `crispy test` no longer says "No avoidable re-renders 🎉" when the snapshot it wrote has

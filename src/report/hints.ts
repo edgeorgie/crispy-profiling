@@ -91,11 +91,20 @@ function propFix(c: ComponentReport, prop: string, owner: string | null): string
   if (stale?.[1]) {
     return depFix(`\`${prop}\`${inCreator}`, stale[1], !!c.callbackProps[prop]);
   }
+  // Hooks are not allowed in a render function (a TanStack `cell`, a `.map` callback).
+  if (creator && renderFunction(creator)) {
+    return c.unstableProps[prop]
+      ? `\`${prop}\` is recreated with equal data${inCreator}, a render function where hooks are not allowed: hoist it out if it is constant, or move that markup into its own component and useMemo it there`
+      : `\`${prop}\` is a new function with the same code${inCreator}, a render function where hooks are not allowed: move that markup into its own component and useCallback it there, or pass one stable handler from the component that owns the data`;
+  }
   if (c.unstableProps[prop]) {
     return `\`${prop}\` is recreated with equal data${inCreator}: hoist it out of the component or wrap it in useMemo`;
   }
   return `\`${prop}\` is a new function with the same code${inCreator}: wrap it in useCallback with the values it uses as dependencies`;
 }
+
+/** Lowercase keys (`cell`, `cell#2`) are render functions, not components: no hooks there. */
+const renderFunction = (key: string) => /^[a-z]/.test(key);
 
 /**
  * Explains why a component re-rendered and what to change, pointing at the root
@@ -337,13 +346,15 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       : '';
     const fix = stale
       ? `${depFix(`\`${stale[0]}\``, stale[2] ?? '', isCallback(stale[0] ?? ''))}${realChange(stale[2] ?? '') ? '' : wrap}`
-      : `${
-          e.props.every(isCallback)
-            ? 'wrap them in useCallback there'
-            : e.props.some(isCallback)
-              ? 'wrap the functions in useCallback and the objects in useMemo there (or hoist constants out of the component)'
-              : 'hoist them out of the component if they are constant, else wrap them in useMemo there'
-        }${wrap}`;
+      : renderFunction(creator)
+        ? `\`${creator}\` is a render function where hooks are not allowed: move that markup into its own component and memoize the values there (or hoist constants)${wrap}`
+        : `${
+            e.props.every(isCallback)
+              ? 'wrap them in useCallback there'
+              : e.props.some(isCallback)
+                ? 'wrap the functions in useCallback and the objects in useMemo there (or hoist constants out of the component)'
+                : 'hoist them out of the component if they are constant, else wrap them in useMemo there'
+          }${wrap}`;
     // Where the values are passed: the first affected component rendered by the creator.
     const at = e.affected
       .flatMap((k) => phase.components[k]?.locations ?? [])
