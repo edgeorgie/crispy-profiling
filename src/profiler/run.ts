@@ -28,6 +28,17 @@ function resolveExecutable(config: CrispyConfig): string | undefined {
   return undefined;
 }
 
+/** Math.random with a fixed seed (mulberry32): same sequence in every run and document. */
+const SEEDED_RANDOM = `(() => {
+  let s = 0x2f6b9c1d;
+  Math.random = function random() {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+})();`;
+
 /** Drops Playwright's boxed "run npx playwright install" banner: crispy has its own command. */
 const withoutBanner = (message: string) =>
   message
@@ -179,11 +190,32 @@ const settle = (ctx: SettleContext, label: string) =>
   ctx.config.clock ? settleWithClock(ctx, label) : settleRealTime(ctx, label);
 
 /** Polled from Node: in-page rAF/timer polling would stall under a fake clock. */
+/** Uncaught page errors, so "React was not detected" can say why. */
+const pageErrors = new WeakMap<Page, string[]>();
+
+/**
+ * Waits until React is loaded and has committed its first render: apps that
+ * boot asynchronously (e.g. start a mock service worker first) render after
+ * the load event, and those renders belong to the `load` phase.
+ */
 async function waitForReact(page: Page, url: string, timeoutMs: number, clock: boolean) {
   const deadline = Date.now() + timeoutMs;
-  while (!(await page.evaluate(() => (window as any).__CRISPY__?.reactDetected === true))) {
+  const status = () =>
+    page.evaluate(() => {
+      const s = (window as any).__CRISPY__;
+      return { react: s?.reactDetected === true, rendered: (s?.commitCount ?? 0) > 0 };
+    });
+  for (let st = await status(); !(st.react && st.rendered); st = await status()) {
     if (Date.now() > deadline) {
-      throw new Error(`React was not detected on ${url}. Is it a React (>=16) app?`);
+      const errors = (pageErrors.get(page) ?? []).slice(0, 3);
+      const why = errors.length
+        ? `\nPage errors:\n${errors.map((e) => `  - ${e}`).join('\n')}`
+        : '';
+      throw new Error(
+        st.react
+          ? `React loaded on ${url} but never rendered.${why}`
+          : `React was not detected on ${url}. Is it a React (>=16) app in development mode?${why}`,
+      );
     }
     if (clock) await page.clock.runFor(POLL_MS);
     await page.waitForTimeout(POLL_MS);
@@ -228,8 +260,30 @@ async function runStep(
       if (step.selector) return page.press(step.selector, step.key, opts);
       return page.keyboard.press(step.key);
     case 'waitFor':
-      await page.waitForSelector(step.selector, opts);
+      await page.waitForSelector(step.selector, { ...opts, state: step.state ?? 'visible' });
       return;
+    case 'select':
+      await page.selectOption(step.selector, step.value, opts);
+      return;
+    case 'drag': {
+      const from = await page.locator(step.selector).first().boundingBox({ timeout: timeoutMs });
+      if (!from) throw new Error(`drag: "${step.selector}" is not visible`);
+      const x = from.x + from.width / 2;
+      const y = from.y + from.height / 2;
+      let tx = x + (step.dx ?? 0);
+      let ty = y + (step.dy ?? 0);
+      if (step.to) {
+        const to = await page.locator(step.to).first().boundingBox({ timeout: timeoutMs });
+        if (!to) throw new Error(`drag: target "${step.to}" is not visible`);
+        tx = to.x + to.width / 2;
+        ty = to.y + to.height / 2;
+      }
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(tx, ty, { steps: step.steps ?? 10 });
+      await page.mouse.up();
+      return;
+    }
     case 'wait':
       return page.waitForTimeout(step.ms);
     case 'scroll':
@@ -253,17 +307,25 @@ async function runStep(
 
 /** Maps every raw "url:line:col (Owner)" location to original "file:line (Owner)". */
 async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Promise<void> {
+  // "@owner:Key (Owner)" (React <= 19.0, no owner stacks) → "<owner's file> (Owner)".
+  const place = async (loc: string): Promise<string | null> => {
+    const owner = loc.match(/^@owner:(.+?)( \(.*\))$/);
+    if (!owner) return sourceMaps.rewriteLocation(loc);
+    const file = raw.definitions?.[owner[1] as string];
+    return file ? `${file}${owner[2]}` : null;
+  };
   for (const phase of Object.values(raw.phases)) {
     for (const c of Object.values(phase.components)) {
       const next: Record<string, number> = {};
       for (const [loc, n] of Object.entries(c.locations ?? {})) {
-        const mapped = await sourceMaps.rewriteLocation(loc);
-        next[mapped] = (next[mapped] ?? 0) + n;
+        const mapped = await place(loc);
+        if (mapped) next[mapped] = (next[mapped] ?? 0) + n;
       }
       c.locations = next;
       const providers: Record<string, number> = {};
       for (const [loc, n] of Object.entries(c.providerAt ?? {})) {
-        const mapped = await sourceMaps.rewriteLocation(loc);
+        const mapped = await place(loc);
+        if (!mapped) continue;
         providers[mapped] = (providers[mapped] ?? 0) + n;
       }
       c.providerAt = providers;
@@ -281,6 +343,9 @@ export async function runScenarioOnce(
     const page = await context.newPage();
     const warnings: string[] = [];
     const ctx: SettleContext = { page, network: new NetworkTracker(page), config, warnings };
+    const errors: string[] = [];
+    pageErrors.set(page, errors);
+    page.on('pageerror', (err) => errors.push(err.message.split('\n')[0] ?? err.message));
     // A fixed start time keeps Date-dependent output identical between runs.
     if (config.clock) {
       // install() lets time flow; pausing makes it advance only through runFor().
@@ -292,6 +357,7 @@ export async function runScenarioOnce(
     if (config.cpuThrottle > 1) {
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: config.cpuThrottle });
     }
+    if (config.random === 'seeded') await page.addInitScript({ content: SEEDED_RANDOM });
     await page.addInitScript({ content: crispyHookSource() });
     const url = new URL(scenario.path, config.baseUrl).toString();
     await gotoApp(page, url, config.timeoutMs);

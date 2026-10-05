@@ -132,6 +132,32 @@ function Derived({ n }: { n: number }) {
   return <i>{doubled}</i>;
 }
 
+// Step probes (rendered with ?steps): a <select> and a pointer-driven slider.
+function Picker() {
+  const [v, setV] = useState('a');
+  return (
+    <select id="pick" value={v} onChange={(e) => setV(e.target.value)}>
+      <option value="a">A</option>
+      <option value="b">B</option>
+    </select>
+  );
+}
+function Slider() {
+  const [x, setX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  return (
+    <div
+      id="slider"
+      style={{ width: 200, height: 20, background: '#ddd' }}
+      onPointerDown={() => setDragging(true)}
+      onPointerUp={() => setDragging(false)}
+      onPointerMove={(e) => dragging && setX(Math.round(e.clientX))}
+    >
+      {x}
+    </div>
+  );
+}
+
 // Context value probes (rendered with ?ctxvalue).
 const CartContext = createContext({ count: 0, add: () => {} });
 function CartBadge() {
@@ -143,8 +169,14 @@ const MemoBox = memo(function Swatch(_: { style: { color: string } }) {
 });
 function CartProvider({ children }: { children: ReactNode }) {
   const [count, setCount] = useState(0);
+  // Unrelated state: re-renders the provider (and recreates its value) without
+  // re-creating `children`, so consumers re-render only because of the context.
+  const [, setBump] = useState(0);
   return (
     <CartContext.Provider value={{ count, add: () => setCount((c) => c + 1) }}>
+      <button id="cart-bump" type="button" onClick={() => setBump((b) => b + 1)}>
+        bump
+      </button>
       {children}
     </CartContext.Provider>
   );
@@ -200,6 +232,12 @@ function App() {
         </>
       )}
       {location.search.includes('ctxvalue') && <CartShell tick={count} />}
+      {location.search.includes('steps') && (
+        <>
+          <Picker />
+          <Slider />
+        </>
+      )}
       {location.search.includes('iframe') && <iframe src="/?child" title="child" />}
       {location.search.includes('dupes') && (
         <>
@@ -226,4 +264,7 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root') as HTMLElement).render(<App />);
+const mount = () => createRoot(document.getElementById('root') as HTMLElement).render(<App />);
+// ?lateboot: start rendering after async setup, like apps that start a mock service worker first.
+if (location.search.includes('lateboot')) setTimeout(mount, 400);
+else mount();

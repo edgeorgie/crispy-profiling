@@ -199,7 +199,12 @@ export function installCrispyHook(): void {
       return `${String(src.fileName)}:${src.lineNumber}:${src.columnNumber ?? 1}${suffix}`;
     }
     const dbg = fiber._debugStack;
-    if (!dbg || typeof dbg !== 'object') return null;
+    if (!dbg || typeof dbg !== 'object') {
+      // React <= 19.0 has no owner stacks: record the owner's key, the runner
+      // replaces it with the file where the owner is defined.
+      const o = fiber._debugOwner;
+      return o && o.type !== undefined && owner ? `@owner:${keyOf(o)}${suffix}` : null;
+    }
     if (locationCache.has(dbg)) return locationCache.get(dbg) as string | null;
     let found: string | null = null;
     const stack = dbg.stack;
@@ -390,17 +395,20 @@ export function installCrispyHook(): void {
   }
 
   /** Name of the component that renders the provider of `context` above `fiber`. */
-  function providerOwner(fiber: any, context: any): { owner: string; at: string | null } | null {
+  function providerOwner(
+    fiber: any,
+    context: any,
+  ): { owner: string; at: string | null; provider: any } | null {
     let f = fiber.return;
     while (f) {
       // ContextProvider fiber: type is the context (React 19) or {_context} (<= 18).
       if (f.tag === 10 && (f.type === context || f.type?._context === context)) {
         const at = locationOf(f);
         const owner = ownerName(f);
-        if (owner) return { owner, at };
+        if (owner) return { owner, at, provider: f };
         let up = f.return;
         while (up && !COMPONENT_TAGS[up.tag]) up = up.return;
-        return up ? { owner: nameOf(up), at } : null;
+        return up ? { owner: nameOf(up), at, provider: f } : null;
       }
       f = f.return;
     }
@@ -510,7 +518,11 @@ export function installCrispyHook(): void {
     addDuration(e, next);
     const p = propChanges(prev, next);
     const s = stateChange(prev, next);
-    const c = contextChange(prev, next);
+    const raw = contextChange(prev, next);
+    // A parent that creates a new element re-renders a non-memo child anyway: a
+    // recreated context value is then not the reason, the parent is.
+    const forced = !isMemo(next) && prev.memoizedProps !== next.memoizedProps;
+    const c = forced && raw !== 3 ? 0 : raw;
     const bump = (map: any, keys: string[]) => {
       for (const k of keys) map[k] = (map[k] || 0) + 1;
     };
@@ -524,11 +536,21 @@ export function installCrispyHook(): void {
     if (c === 3) e.causes.context++;
     if (s === 3) return true;
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
-    for (const ctx of recreatedContexts) {
+    for (const ctx of c ? recreatedContexts : []) {
       const found = providerOwner(next, ctx);
       if (!found) continue;
       e.recreatedContextFrom[found.owner] = (e.recreatedContextFrom[found.owner] || 0) + 1;
       if (found.at) e.providerAt[found.at] = (e.providerAt[found.at] || 0) + 1;
+      // The value may already be memoized, with dependencies that change.
+      const ownerFiber = found.provider._debugOwner;
+      const value = found.provider.memoizedProps?.value;
+      if (ownerFiber && ownerFiber.type !== undefined && COMPONENT_TAGS[ownerFiber.tag]) {
+        const deps = changedMemoDeps(ownerFiber, value);
+        if (deps) {
+          const id = `(context value)|${keyOf(ownerFiber)}|${deps}`;
+          e.staleMemo[id] = (e.staleMemo[id] || 0) + 1;
+        }
+      }
     }
     // For recreated props: which component created the value (owners that only
     // forwarded it are skipped), and whether it came from a useCallback/useMemo
