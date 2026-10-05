@@ -179,6 +179,10 @@ export function hintFor(
     if (library) {
       return `library component re-rendered with identical props because ${because}${where}. Nothing to change here; if it matters, stop ${owner ? `\`${owner}\`` : 'its parent'} from re-rendering.`;
     }
+    const masked = top(c.maskedContextFrom ?? {}).filter((k) => !isLibrary(k));
+    if (masked.length) {
+      return `re-renders with identical props because ${because}${where}, and it reads a context whose value ${code(masked)} recreates on every render: React.memo alone will not skip it. Memoize that provider value (useMemo) first, then wrap it in React.memo.`;
+    }
     return `re-renders with identical props because ${because}${where}: wrap it in React.memo, or move ${trigger ? `\`${trigger}\`'s` : 'the parent’s'} state closer to where it is used.`;
   }
   if (c.causes.context > 0) {
@@ -375,6 +379,8 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
           !libraryKey(k) &&
           !c.memo &&
           c.causes.parent > 0 &&
+          // React.memo cannot skip it while it reads a recreated context value.
+          !Object.keys(c.maskedContextFrom ?? {}).length &&
           /^[A-Z]/.test(k),
       )
       .map(([k]) => [k, below(k)] as const)

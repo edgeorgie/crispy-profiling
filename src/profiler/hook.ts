@@ -757,6 +757,16 @@ export function installCrispyHook(): void {
       return true;
     }
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
+    // The parent re-renders this component anyway, but it also reads a context value
+    // recreated with equal content: React.memo alone would not skip it.
+    if (forced && (raw === 1 || raw === 2)) {
+      for (const ctx of recreatedContexts) {
+        const found = providerOwner(next, ctx);
+        if (!found) continue;
+        if (!e.maskedContextFrom) e.maskedContextFrom = {};
+        e.maskedContextFrom[found.owner] = (e.maskedContextFrom[found.owner] || 0) + 1;
+      }
+    }
     for (const ctx of c ? recreatedContexts : []) {
       const found = providerOwner(next, ctx);
       if (!found) continue;

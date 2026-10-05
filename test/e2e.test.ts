@@ -535,6 +535,11 @@ describe('root-cause hints (R3-04, R3-05)', () => {
     expect(hintFor(ctx?.components.CartBadge, ctx, 'CartBadge')).toContain('`CartProvider`');
     // When the parent re-creates the element anyway, context is not blamed (R5-02).
     expect(c?.CartBadge?.recreatedContextFrom).toEqual({});
+    // ...but React.memo alone would not help it: it says so (council round 1).
+    expect(c?.CartBadge?.maskedContextFrom).toEqual({ CartProvider: 1 });
+    expect(hintFor(c?.CartBadge, phase, 'CartBadge')).toContain(
+      'React.memo alone will not skip it',
+    );
     expect(c?.Swatch?.memo).toBe(true);
     expect(hintFor(c?.Swatch, phase, 'Swatch')).toContain('already wrapped in React.memo');
     // App's count update started the cascade.
