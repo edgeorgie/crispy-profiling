@@ -78,7 +78,7 @@ export async function runSnapshotTest(
   // Snapshots always cover every component, even when `topComponents` trims reports.
   const report = await profile(
     { ...config, topComponents: 0 },
-    { only: options.only, log: options.log },
+    { only: options.only, log: options.log, cwd: options.baseDir },
   );
   const extra = budgetsMarkdown(report);
   const budgetsFail = report.violations.length > 0;

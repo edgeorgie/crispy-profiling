@@ -87,7 +87,10 @@ export function createServer(): McpServer {
     async ({ configPath, scenarios, outFile, top }) => {
       try {
         const config = await loadConfig(configPath);
-        const report = await profile(config, { only: scenarios });
+        const report = await profile(config, {
+          only: scenarios,
+          cwd: dirname(resolve(configPath)),
+        });
         return text(reportToMarkdown(report, top) + (await saveReport(report, outFile)));
       } catch (err) {
         return fail(err);

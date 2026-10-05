@@ -7,12 +7,15 @@ import type { CrispyReport, RawRun } from '../types.js';
 import { resolveDefinitions, trackScripts } from './definitions.js';
 import { crispyHookSource } from './hook.js';
 import { SourceMapResolver } from './sourcemaps.js';
+import { startWebServer } from './webserver.js';
 
 export interface RunOptions {
   /** Only run the scenarios with these names. */
   only?: string[];
   /** Called with human-readable progress messages. */
   log?: (msg: string) => void;
+  /** Directory where `webServer.command` runs (default: the current directory). */
+  cwd?: string;
 }
 
 const DEFAULT_PHASE_AFTER_LOAD = 'interaction';
@@ -453,7 +456,16 @@ export async function profile(
     : config.scenarios;
   if (scenarios.length === 0) throw new Error(`No scenarios match: ${options.only?.join(', ')}`);
 
-  const browser = await launchBrowser(config);
+  const stopServer = config.webServer
+    ? await startWebServer({ ...config.webServer, cwd: options.cwd }, config.baseUrl, log)
+    : async () => {};
+  let browser: Browser;
+  try {
+    browser = await launchBrowser(config);
+  } catch (err) {
+    await stopServer();
+    throw err;
+  }
   try {
     const results: { scenario: Scenario; runs: RawRun[] }[] = [];
     for (const scenario of scenarios) {
@@ -467,5 +479,6 @@ export async function profile(
     return buildReport(results, config);
   } finally {
     await browser.close();
+    await stopServer();
   }
 }

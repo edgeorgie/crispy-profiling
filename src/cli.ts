@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { DEFAULT_CONFIG_FILE, exampleConfig, loadConfig } from './config.js';
+import { detectApp } from './detect.js';
 import { profile } from './profiler/run.js';
 import { serializeReport } from './report/aggregate.js';
 import { compareReports } from './report/compare.js';
@@ -90,13 +91,19 @@ async function main(argv: string[]): Promise<number> {
         log(`${DEFAULT_CONFIG_FILE} already exists, not overwriting.`);
         return 2;
       }
+      const app = detectApp(process.cwd());
+      const baseUrl = values['base-url'] ?? app.baseUrl;
       await write(
         DEFAULT_CONFIG_FILE,
-        `${JSON.stringify(exampleConfig(values['base-url']), null, 2)}\n`,
+        `${JSON.stringify(exampleConfig(baseUrl, app.devCommand), null, 2)}\n`,
       );
+      const found = app.framework === 'unknown' ? '' : ` (${app.framework} app at ${baseUrl})`;
       log(
-        `Created ${DEFAULT_CONFIG_FILE}. Edit the scenario steps, start your dev server, then run ` +
-          `"crispy test" to record crispy.snap.json (commit it) or "crispy run" for a one-off report.`,
+        `Created ${DEFAULT_CONFIG_FILE}${found}. ` +
+          (app.devCommand
+            ? `crispy will start your dev server with "${app.devCommand}". `
+            : 'Start your dev server first. ') +
+          `Edit the scenario steps, then run "npx crispy test" to record crispy.snap.json (commit it).`,
       );
       return 0;
     }
@@ -121,7 +128,11 @@ async function main(argv: string[]): Promise<number> {
         },
       });
       const config = await loadConfig(values.config);
-      const report = await profile(config, { only: values.scenario, log });
+      const report = await profile(config, {
+        only: values.scenario,
+        log,
+        cwd: dirname(resolve(values.config)),
+      });
       await write(values.out, serializeReport(report));
       log(`[crispy] report written to ${values.out}`);
       const md = reportToMarkdown(report);
