@@ -680,6 +680,40 @@ export function installCrispyHook(): void {
     return fiber.tag === 15 || fiber.return?.tag === 14;
   }
 
+  /** Whether a component's rendered output (its host subtree, a few levels deep) changed. */
+  function outputChanged(fiber: any): boolean {
+    const stack: [any, number][] = [];
+    for (let c = fiber.child; c; c = c.sibling) stack.push([c, 0]);
+    let seen = 0;
+    while (stack.length && seen++ < 200) {
+      const [f, depth] = stack.pop() as [any, number];
+      const prev = f.alternate;
+      if (!prev) return true; // something new was rendered
+      const a = prev.memoizedProps;
+      const b = f.memoizedProps;
+      if (a !== b) {
+        if (typeof b !== 'object' || b === null || typeof a !== 'object' || a === null) {
+          if (!Object.is(a, b)) return true; // text changed
+        } else {
+          for (const k in b) {
+            if (k === 'children') {
+              const x = a[k];
+              const y = b[k];
+              if ((typeof y === 'string' || typeof y === 'number') && !Object.is(x, y)) return true;
+              continue;
+            }
+            if (typeof b[k] !== 'function' && classify(a[k], b[k]) === 3) return true;
+          }
+        }
+      }
+      // Child components judge their own renders; only follow host elements.
+      if (depth < 4 && !COMPONENT_TAGS[f.tag]) {
+        for (let c = f.child; c; c = c.sibling) stack.push([c, depth + 1]);
+      }
+    }
+    return false;
+  }
+
   /** Changed prop keys, split by how they changed. */
   function propChanges(
     prev: any,
@@ -809,8 +843,14 @@ export function installCrispyHook(): void {
       e.avoidableRenders++;
     } else {
       e.causes.parent++;
-      e.wastedRenders++;
-      e.avoidableRenders++;
+      // Same props, state and context, but different output: it reads data that
+      // changes without changing its inputs (a mutable object like a table or form
+      // instance, a ref, a global). Not avoidable: React.memo would show stale output.
+      if (outputChanged(next)) e.mutableReads = (e.mutableReads || 0) + 1;
+      else {
+        e.wastedRenders++;
+        e.avoidableRenders++;
+      }
     }
     return false;
   }

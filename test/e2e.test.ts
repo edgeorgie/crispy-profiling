@@ -950,3 +950,30 @@ describe('readOnly configs (council round 1)', () => {
     expect(writes).toEqual([]);
   });
 });
+
+describe('mutable reads (council round 1, expert)', () => {
+  it('never calls renders that show changing mutable data avoidable', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'm',
+          path: '/?mutable',
+          steps: [
+            { action: 'click', selector: '#mutable-next' },
+            { action: 'click', selector: '#mutable-next' },
+          ],
+        },
+      ],
+    });
+    const p = (await profile(config)).scenarios.m?.phases.interaction;
+    const pagination = p?.components.Pagination;
+    expect(pagination?.mutableReads).toBe(2);
+    expect(pagination?.wastedRenders.median).toBe(0);
+    expect(hintFor(pagination, p, 'Pagination')).toContain('do not wrap it in React.memo');
+    // A sibling with truly unchanged output is still a wasted render.
+    expect(p?.components.Static?.wastedRenders.median).toBe(2);
+  });
+});

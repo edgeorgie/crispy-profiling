@@ -179,6 +179,9 @@ export function hintFor(
     if (library) {
       return `library component re-rendered with identical props because ${because}${where}. Nothing to change here; if it matters, stop ${owner ? `\`${owner}\`` : 'its parent'} from re-rendering.`;
     }
+    if (c.mutableReads && !c.wastedRenders.median) {
+      return `re-renders with identical props because ${because}${where}, and its output changes anyway: it reads data that changes without changing its props (a mutable object such as a table or form instance, a ref, or a global). These renders are needed — do not wrap it in React.memo (it would show stale data). To skip them, pass the values it shows as props.`;
+    }
     const masked = top(c.maskedContextFrom ?? {}).filter((k) => !isLibrary(k));
     if (masked.length) {
       return `re-renders with identical props because ${because}${where}, and it reads a context whose value ${code(masked)} recreates on every render: React.memo alone will not skip it. Memoize that provider value (useMemo) first, then wrap it in React.memo.`;
@@ -379,8 +382,10 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
           !libraryKey(k) &&
           !c.memo &&
           c.causes.parent > 0 &&
-          // React.memo cannot skip it while it reads a recreated context value.
+          // React.memo cannot skip it while it reads a recreated context value,
+          // and must not when it reads mutable data (stale output).
           !Object.keys(c.maskedContextFrom ?? {}).length &&
+          !c.mutableReads &&
           /^[A-Z]/.test(k),
       )
       .map(([k]) => [k, below(k)] as const)
