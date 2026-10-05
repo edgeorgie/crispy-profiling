@@ -798,8 +798,45 @@ describe('effect cascades', () => {
     expect(cascades('async')).toEqual({ TimerThenEffect: doubled });
     const c = p?.effect?.components.EffectDerived;
     expect(hintFor(c, p?.effect, 'EffectDerived')).toMatch(
-      /sets state \(`doubled` \(useState\)\) in a useEffect right after rendering, 2 time/,
+      /a useEffect here sets `doubled` \(useState\) right after rendering, 2 time/,
     );
     for (const id of ids.slice(2)) expect(cascades(id), id).toEqual({});
+  });
+});
+
+describe('effect cascades: attribution (red-team round 8)', () => {
+  it('blames the component whose effect ran, also across lists and stores', async () => {
+    const ids = ['prop', 'rows', 'store'];
+    const steps = ids.flatMap((x) => [
+      { action: 'phase' as const, name: x },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+    ]);
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'r8', path: '/?round8', steps }],
+    });
+    const p = (await profile(config)).scenarios.r8?.phases;
+    const cascades = (phase: string) =>
+      Object.fromEntries(
+        Object.entries(p?.[phase]?.components ?? {})
+          .filter(([, c]) => c.effectCascades)
+          .map(([name, c]) => [name, [c.effectCascades, c.cascadeCommits]]),
+      );
+    expect(cascades('load')).toEqual({});
+    // R8-02: the child that calls the setter, not the parent that owns the state.
+    expect(cascades('prop')).toEqual({
+      Doubler: [{ '`total` (useState) in `ParentOfDoubler` (via a prop)': 2 }, 2],
+    });
+    // R8-01: a new row mounting does not hide the existing rows' cascades.
+    expect(cascades('rows')).toEqual({ ListRow: [{ '`label` (useState)': 5 }, 2] }); // 2 + 3 rows
+    // R8-03: the component that writes the store in its effect.
+    expect(cascades('store')).toEqual({
+      EffectStoreWriter: [{ 'a store read by `EffectStoreReader`': 2 }, 2],
+    });
+    const hint = hintFor(p?.prop?.components.Doubler, p?.prop, 'Doubler');
+    expect(hint).toMatch(/call the parent's setter in the event handler/);
   });
 });

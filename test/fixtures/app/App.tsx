@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Cascade } from './Cascade.js';
+import { Cascade, CascadeRound8 } from './Cascade.js';
 import { Lab } from './Lab.js';
 
 // Replaced at build time: false = naive implementation, true = optimized one.
@@ -276,6 +276,7 @@ function App() {
       {location.search.includes('store') && <StoreReader />}
       {location.search.includes('lab') && <Lab />}
       {location.search.includes('cascade') && <Cascade />}
+      {location.search.includes('round8') && <CascadeRound8 />}
       {location.search.includes('memo') && (
         <>
           <UselessMemo n={count} />

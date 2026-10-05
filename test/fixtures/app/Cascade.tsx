@@ -1,5 +1,12 @@
 // Effect cascades (setState right after a render, in an effect). Rendered with ?cascade.
-import { useDeferredValue, useEffect, useLayoutEffect, useState, useTransition } from 'react';
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from 'react';
 
 // Derived state synced in an effect: every click commits twice.
 function EffectDerived() {
@@ -106,6 +113,87 @@ export function Cascade() {
       <LayoutDerived />
       <RenderDerived />
       <NotCascades />
+    </>
+  );
+}
+
+// Red-team round 8 cases.
+// A child's effect calls the parent's setter: the child is the place to fix.
+function Doubler({ value, onDouble }: { value: number; onDouble: (n: number) => void }) {
+  useEffect(() => onDouble(value * 2), [value, onDouble]);
+  return <span>{value}</span>;
+}
+function ParentOfDoubler() {
+  const [value, setValue] = useState(1);
+  const [total, setTotal] = useState(2);
+  return (
+    <div>
+      <button id="cascade-prop" type="button" onClick={() => setValue(value + 1)}>
+        {total}
+      </button>
+      <Doubler value={value} onDouble={setTotal} />
+    </div>
+  );
+}
+
+// New rows mount while the existing rows' effects cascade.
+function ListRow({ total }: { total: number }) {
+  const [label, setLabel] = useState('');
+  useEffect(() => setLabel(`of ${total}`), [total]);
+  return <li>{label}</li>;
+}
+function RowList() {
+  const [n, setN] = useState(2);
+  return (
+    <div>
+      <button id="cascade-rows" type="button" onClick={() => setN(n + 1)}>
+        add
+      </button>
+      <ul>
+        {Array.from({ length: n }, (_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed list
+          <ListRow key={i} total={n} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// A store (zustand/redux-like) written in an effect.
+let storeValue = 0;
+const listeners = new Set<() => void>();
+const store = {
+  get: () => storeValue,
+  set: (v: number) => {
+    storeValue = v;
+    for (const f of listeners) f();
+  },
+  subscribe: (f: () => void) => {
+    listeners.add(f);
+    return () => listeners.delete(f);
+  },
+};
+function EffectStoreWriter() {
+  const [q, setQ] = useState(0);
+  useEffect(() => store.set(q * 2), [q]);
+  return (
+    <button id="cascade-store" type="button" onClick={() => setQ(q + 1)}>
+      {q}
+    </button>
+  );
+}
+function EffectStoreReader() {
+  const v = useSyncExternalStore(store.subscribe, store.get);
+  return <span>{v}</span>;
+}
+
+export function CascadeRound8() {
+  return (
+    <>
+      <ParentOfDoubler />
+      <RowList />
+      <EffectStoreWriter />
+      <EffectStoreReader />
     </>
   );
 }

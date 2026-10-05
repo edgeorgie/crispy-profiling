@@ -7,9 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- Effect cascades: `effectCascades` counts state set in a `useEffect` right after a render (an
-  extra commit each time), named per state, with a hint and a root cause ("compute it during render
-  or set it in the event handler"). React 18 and 19.
+- Effect cascades: `effectCascades` names the state a `useEffect` sets right after a render (its
+  own, a parent's through a setter prop, or a store), blamed on the component whose effect ran,
+  with the extra commits and renders it costs, a hint and a root cause ranked above the
+  `React.memo` advice it would otherwise produce. `createRoot` on React 18 and 19.
 
 ## [0.1.0] - 2026-10-05
 

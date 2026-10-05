@@ -641,7 +641,9 @@ export function installCrispyHook(): void {
   function recordMount(fiber: any): void {
     if (!COMPONENT_TAGS[fiber.tag]) return;
     const e = entry(fiber);
-    currentMounts[keyOf(fiber)] = true;
+    commitRenders++;
+    commitRenderKeys.push(e);
+    currentMountSet.add(fiber);
     e.renders++;
     e.mounts++;
     addDuration(e, fiber);
@@ -656,6 +658,9 @@ export function installCrispyHook(): void {
     const e = entry(next);
     e.renders++;
     e.updates++;
+    commitRenders++;
+    commitRenderKeys.push(e);
+    if (firedPassive(next)) currentFirers.push(next);
     addDuration(e, next);
     const p = propChanges(prev, next);
     const s = stateChange(prev, next);
@@ -681,15 +686,7 @@ export function installCrispyHook(): void {
     }
     if (c === 3) e.causes.context++;
     if (s === 3) {
-      // Set by a useEffect right after the previous commit (not right after this
-      // component mounted: mount-time effects like "mounted" flags are often needed).
-      // Store subscriptions are skipped: any effect anywhere (e.g. a router's) may
-      // have written to the store, so this component is not the place to fix.
-      const store = what !== null && what.indexOf('useSyncExternalStore') >= 0;
-      if (cascadeCommit && !store && !lastMounts[keyOf(next)]) {
-        const k = what || 'state';
-        e.effectCascades[k] = (e.effectCascades[k] || 0) + 1;
-      }
+      if (cascadeCommit) cascadeOwners.push({ fiber: next, key: keyOf(next), what });
       return true;
     }
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
@@ -830,28 +827,138 @@ export function installCrispyHook(): void {
    * Effect cascades. A passive effect that sets state schedules a DefaultLane
    * update, which is already pending when React reports the commit (React 19
    * flushes effects of discrete updates first) or right after the effects ran
-   * (onPostCommitFiberRoot). Layout-effect updates use SyncLane (measuring the
-   * DOM is a legitimate reason), transitions and deferred values use their own
-   * lanes, so neither is counted. User input in between also clears the mark.
+   * (onPostCommitFiberRoot, React 18). The next commit of that root is then
+   * attributed to the components whose passive effects ran in the previous
+   * commit: the owner of the state when its own effect ran, else the child whose
+   * effect ran (a setter passed as a prop); a store change goes to the only effect
+   * that ran. Layout effects (SyncLane: measuring the DOM),
+   * transitions and deferred values use other lanes; effects of components that
+   * just mounted, legacy roots and React <= 17 are skipped.
    */
-  const EFFECT_LANES = 0b110000; // DefaultHydrationLane | DefaultLane
-  const cascadeNext = new WeakSet<object>();
-  let cascadeCommit = false;
-  let inputEvents = 0;
-  const inputAtCommit = new WeakMap<object, number>();
-  for (const t of ['pointerdown', 'keydown', 'input', 'change', 'submit', 'wheel']) {
+  // React 19 added SyncHydrationLane, shifting the lanes: DefaultLane is 16 in
+  // React 18 and 32 in 19. Store updates (useSyncExternalStore) always use SyncLane.
+  function laneBits(): { sync: number; def: number } | null {
+    const major = Number.parseInt(String(state.reactVersion || ''), 10);
+    if (major === 18) return { sync: 1, def: 16 };
+    if (major >= 19) return { sync: 2, def: 32 };
+    return null;
+  }
+  const HOOK_HAS_EFFECT = 1;
+  const HOOK_PASSIVE = 8;
+  /** Root -> lanes left pending right after its last commit or its effects. */
+  const cascadeNext = new WeakMap<object, number>();
+  let cascadeCommit = 0;
+  let cascadeOwners: { fiber: any; key: string; what: string | null }[] = [];
+  let commitRenders = 0;
+  /** Entries of the renders in this commit (one per render). */
+  let commitRenderKeys: any[] = [];
+  let currentFirers: any[] = [];
+  const firersByRoot = new WeakMap<object, any[]>();
+  let currentMountSet = new WeakSet<object>();
+  const mountsByRoot = new WeakMap<object, WeakSet<object>>();
+  // Timers and input between a commit and its deferred effects can schedule the
+  // same lane: then the next commit is not only the effects' work.
+  let outsideEvents = 0;
+  const outsideAtCommit = new WeakMap<object, number>();
+  for (const t of ['pointerdown', 'keydown', 'input', 'change', 'submit', 'wheel', 'message']) {
     try {
-      w.addEventListener(t, () => inputEvents++, true);
+      w.addEventListener(t, () => outsideEvents++, true);
     } catch {}
   }
-  let currentMounts: Record<string, true> = {};
-  let lastMounts: Record<string, true> = {};
-  const mountsByRoot = new WeakMap<object, Record<string, true>>();
+  for (const name of ['setTimeout', 'setInterval', 'requestAnimationFrame']) {
+    const original = w[name];
+    if (typeof original !== 'function') continue;
+    w[name] = function (this: any, cb: any, ...rest: any[]) {
+      const wrapped =
+        typeof cb === 'function'
+          ? function (this: any, ...args: any[]) {
+              outsideEvents++;
+              return cb.apply(this, args);
+            }
+          : cb;
+      return original.call(this, wrapped, ...rest);
+    };
+  }
+
+  /** A passive effect of this function component ran in this commit (deps changed). */
+  function firedPassive(fiber: any): boolean {
+    const last = fiber.updateQueue?.lastEffect;
+    if (!last?.next) return false;
+    const first = last.next;
+    let e = first;
+    do {
+      if ((e.tag & (HOOK_HAS_EFFECT | HOOK_PASSIVE)) === (HOOK_HAS_EFFECT | HOOK_PASSIVE))
+        return true;
+      e = e.next;
+    } while (e && e !== first);
+    return false;
+  }
+
+  const same = (a: any, b: any) => a === b || a === b.alternate;
+  function inside(fiber: any, ancestor: any): boolean {
+    for (let x = fiber; x; x = x.return) if (same(x, ancestor)) return true;
+    return false;
+  }
+
+  /** Attributes the state changes of a flagged commit to the effects that set them. */
+  function blameCascade(firers: any[], mounted: WeakSet<object> | undefined): void {
+    const bits = laneBits();
+    if (!firers.length || !bits) return;
+    const viaState = (cascadeCommit & bits.def) !== 0;
+    const hits: { fiber: any; label: string }[] = [];
+    let store = false;
+    for (const o of cascadeOwners) {
+      // Effects of a component that just mounted ("mounted" flags, SSR) are expected.
+      if (
+        mounted &&
+        (mounted.has(o.fiber) || (o.fiber.alternate && mounted.has(o.fiber.alternate)))
+      )
+        continue;
+      const what = o.what || 'state';
+      // A store write is SyncLane; other state set in a passive effect is DefaultLane
+      // (SyncLane there comes from layout effects, which may measure the DOM).
+      if (what.indexOf('useSyncExternalStore') >= 0) {
+        // Any effect may have written the store: only blame when one effect ran.
+        if (!store && firers.length === 1)
+          hits.push({ fiber: firers[0], label: `a store read by \`${o.key}\`` });
+        store = true;
+        continue;
+      }
+      if (!viaState) continue;
+      const own = firers.filter((f) => same(f, o.fiber));
+      if (own.length) {
+        hits.push({ fiber: own[0], label: what });
+        continue;
+      }
+      // A child's effect calling a setter it got as a prop. Nothing else is guessed:
+      // events crispy cannot see (e.g. an image loading) may have set the state.
+      const below = firers.filter((f) => inside(f, o.fiber));
+      if (below.length === 1)
+        hits.push({ fiber: below[0], label: `${what} in \`${o.key}\` (via a prop)` });
+    }
+    // Renders in an extra commit are not also another root cause's (React.memo advice).
+    if (hits.length)
+      for (const e of commitRenderKeys) e.inEffectCascades = (e.inEffectCascades || 0) + 1;
+    const counted = new Set<string>();
+    for (const h of hits) {
+      const key = keyOf(h.fiber);
+      const e = phaseData().components[key] || entry(h.fiber);
+      if (!e.effectCascades) e.effectCascades = {};
+      e.effectCascades[h.label] = (e.effectCascades[h.label] || 0) + 1;
+      if (!counted.has(key)) {
+        counted.add(key);
+        e.cascadeCommits = (e.cascadeCommits || 0) + 1;
+        e.cascadeRenders = (e.cascadeRenders || 0) + commitRenders;
+      }
+    }
+  }
 
   function onPostCommit(root: any): void {
     try {
-      if (!root || inputAtCommit.get(root) !== inputEvents) return;
-      if ((root.pendingLanes & EFFECT_LANES) !== 0) cascadeNext.add(root);
+      const bits = laneBits();
+      if (!bits || !root || root.tag !== 1 || outsideAtCommit.get(root) !== outsideEvents) return;
+      const pending = root.pendingLanes & (bits.sync | bits.def);
+      if (pending) cascadeNext.set(root, (cascadeNext.get(root) || 0) | pending);
     } catch (err) {
       noteError(err);
     }
@@ -859,10 +966,15 @@ export function installCrispyHook(): void {
 
   function onCommit(root: any): void {
     roots.add(root);
-    cascadeCommit = cascadeNext.has(root) && inputAtCommit.get(root) === inputEvents;
+    // Concurrent roots only (createRoot): legacy roots and React <= 17 use other lanes.
+    const concurrent = root.tag === 1;
+    cascadeCommit = concurrent ? cascadeNext.get(root) || 0 : 0;
     cascadeNext.delete(root);
-    lastMounts = mountsByRoot.get(root) || {};
-    currentMounts = {};
+    cascadeOwners = [];
+    currentFirers = [];
+    currentMountSet = new WeakSet<object>();
+    commitRenders = 0;
+    commitRenderKeys = [];
     try {
       const current = root.current;
       const prev = current.alternate;
@@ -888,9 +1000,13 @@ export function installCrispyHook(): void {
       } else {
         updateSubtree(current, prev, null);
       }
-      mountsByRoot.set(root, currentMounts);
-      inputAtCommit.set(root, inputEvents);
-      if ((root.pendingLanes & EFFECT_LANES) !== 0) cascadeNext.add(root);
+      if (cascadeCommit) blameCascade(firersByRoot.get(root) || [], mountsByRoot.get(root));
+      firersByRoot.set(root, currentFirers);
+      mountsByRoot.set(root, currentMountSet);
+      outsideAtCommit.set(root, outsideEvents);
+      const bits = laneBits();
+      const pending = bits && concurrent ? root.pendingLanes & (bits.sync | bits.def) : 0;
+      if (pending) cascadeNext.set(root, pending);
       state.lastCommitNames = Object.keys(currentCommitNames).sort();
       // Which components each commit rendered, so commits can be counted after
       // framework internals are filtered out (deduplicated by component set).
