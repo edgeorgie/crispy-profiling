@@ -238,7 +238,7 @@ Profile the **development** build: production builds minify component names.
 ```text
 crispy scan [url] [--routes 3] [--actions 5] [--allow-writes]  Zero config: find, profile and save interactions
 crispy init [--base-url <url>]          Create crispy.config.json (detects framework, URL, dev command)
-crispy install [--with-deps]            Download the Chromium build crispy uses
+crispy install [--with-deps] [--verbose]  Download the Chromium build crispy uses (--verbose: full download log)
 crispy login [-c file] [--path /login]  Sign in by hand in a browser window and save the session
 crispy run [-c file] [-o file] [-s scenario...] [--markdown file] [--no-fail]
 crispy test [-c file] [-u|--update] [--ci] [-s scenario...] [--markdown file]
