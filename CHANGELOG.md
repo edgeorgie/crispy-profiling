@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - A regression rendered (directly or not) by another regressed component is folded into that
   component's row: one injected `useLocation()` on shadcn-admin gives 3 causes instead of 4.
+- An unknown key in `crispy.config.json` (or in a scenario) is an error with a suggestion
+  (`unknown key "readonly" (did you mean "readOnly"?)`) instead of being silently ignored.
 - Snapshots leave out components defined in `node_modules` (icons, Radix parts…): about half the
   size on shadcn-admin, and fewer noisy rows. Old entries are ignored; `snapshot.includeLibraries`
   keeps them.

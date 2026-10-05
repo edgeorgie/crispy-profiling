@@ -249,6 +249,21 @@ describe('compare with a missing scenario (council round 3)', () => {
   });
 });
 
+describe('config typos (council round 3)', () => {
+  it('rejects unknown keys and suggests the right one', async () => {
+    const { parseConfig } = await import('../src/config.js');
+    expect(() =>
+      parseConfig({
+        baseUrl: 'http://localhost:5173',
+        readonly: true,
+        scenarios: [{ name: 'a', step: [] }],
+      }),
+    ).toThrow(
+      /unknown key "readonly" \(did you mean "readOnly"\?\)[\s\S]*"step" in scenario "a" \(did you mean "steps"\?\)/,
+    );
+  });
+});
+
 describe('render snapshot comparison (round-2 fixes)', async () => {
   const { compareSnapshot, toSnapshot } = await import('../src/report/snapshot.js');
   const make = (renders: number, avoidable: number, commits = 1) => {

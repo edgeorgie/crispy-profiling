@@ -219,7 +219,52 @@ export function phasesOf(scenario: Scenario): string[] {
   return phases;
 }
 
+/** Edit distance, to suggest the key a typo meant. */
+function distance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0] as number;
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = row[j] as number;
+      row[j] = Math.min(
+        (row[j] as number) + 1,
+        (row[j - 1] as number) + 1,
+        prev + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      prev = tmp;
+    }
+  }
+  return row[b.length] as number;
+}
+
+/** Unknown keys are dropped by the schema: a typo (`readonly`) would be silently ignored. */
+function unknownKeys(value: unknown, known: string[], where: string): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  return Object.keys(value)
+    .filter((k) => !known.includes(k))
+    .map((k) => {
+      const near = known
+        .map((n) => [n, n.toLowerCase() === k.toLowerCase() ? 0 : distance(n, k)] as const)
+        .filter(([, d]) => d <= 2)
+        .sort((a, b) => a[1] - b[1])[0]?.[0];
+      return `unknown key "${k}"${where}${near ? ` (did you mean "${near}"?)` : ''}`;
+    });
+}
+
 export function parseConfig(input: unknown): CrispyConfig {
+  const problems = unknownKeys(input, Object.keys(ConfigSchema.shape), '');
+  const scenarios = (input as { scenarios?: unknown })?.scenarios;
+  if (Array.isArray(scenarios)) {
+    for (const s of scenarios) {
+      const name = (s as { name?: unknown })?.name;
+      problems.push(
+        ...unknownKeys(s, Object.keys(ScenarioSchema.shape), ` in scenario "${String(name)}"`),
+      );
+    }
+  }
+  if (problems.length)
+    throw new Error(`Invalid crispy config:\n${problems.map((p) => `✖ ${p}`).join('\n')}`);
   const result = ConfigSchema.safeParse(input);
   if (!result.success) {
     throw new Error(`Invalid crispy config:\n${z.prettifyError(result.error)}`);
