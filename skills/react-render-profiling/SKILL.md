@@ -20,6 +20,7 @@ Prefer the MCP tools when they are available (server `crispy-profiling`):
 | Tool | Use it to |
 | --- | --- |
 | `test_render_snapshots` | **Start here** when the project has a `crispy.config.json`: check counts against the committed `crispy.snap.json` (snapshot tests for re-renders). |
+| `scan_app` | **No config yet?** Finds safe interactions on a few routes, profiles them and returns the top root causes plus scenarios you can save as `crispy.config.json`. |
 | `profile_url` | Profile one URL (+ optional steps). Pass `outFile` to keep the JSON. |
 | `run_scenarios` | Run the scenarios of a `crispy.config.json` (with budgets). |
 | `compare_reports` | Diff a baseline report against a new one. |
@@ -28,7 +29,8 @@ Prefer the MCP tools when they are available (server `crispy-profiling`):
 Otherwise use the CLI (`npx crispy-profiling <command>`):
 
 ```bash
-npx crispy-profiling init --base-url http://localhost:5173   # creates crispy.config.json
+npx crispy-profiling scan        # no config yet: finds and profiles interactions, saves crispy.config.json
+npx crispy-profiling init --base-url http://localhost:5173   # creates crispy.config.json to edit by hand
 npx crispy-profiling test        # writes crispy.snap.json the first time, then guards it
 npx crispy-profiling run -o .crispy/base.json                # one-off report with fix hints
 npx crispy-profiling compare .crispy/base.json .crispy/head.json
