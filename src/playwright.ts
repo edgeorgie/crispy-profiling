@@ -13,6 +13,13 @@ import {
   toSnapshot,
 } from './report/snapshot.js';
 import type { CrispyReport } from './types.js';
+import { isCI } from './util/ci.js';
+
+/**
+ * Any Playwright `Page` (from @playwright/test or playwright-core, any version):
+ * typed structurally so versions do not clash.
+ */
+export type PlaywrightPage = { url(): string; goto: (...args: never[]) => unknown };
 
 export interface RendersOptions {
   /** Config options (clock, random, includeInternals, snapshot.tolerance…); baseUrl is not needed. */
@@ -35,14 +42,23 @@ export interface RendersOptions {
  *   await page.fill('#q', 'shoes');
  *   await r.toMatchSnapshot('search');       // fails with the cause and the fix
  */
-export async function renders(page: Page, options: RendersOptions = {}): Promise<RenderRecorder> {
+export async function renders(
+  page: PlaywrightPage,
+  options: RendersOptions = {},
+): Promise<RenderRecorder> {
+  const p = page as unknown as Page;
+  if (p.url() !== 'about:blank') {
+    throw new Error(
+      'crispy: call renders(page) before page.goto(): it must install its hook before React loads.',
+    );
+  }
   const config = parseConfig({
     baseUrl: 'http://localhost',
     runs: 1,
     ...options.config,
     scenarios: [{ name: 'test' }],
   });
-  const profiler = await PageProfiler.attach(page, config);
+  const profiler = await PageProfiler.attach(p, config);
   return new RenderRecorder(profiler, config, options);
 }
 
@@ -78,7 +94,7 @@ export class RenderRecorder {
     const report = await this.report(name);
     const file = resolve(this.options.snapshotDir ?? '__renders__', `${name}.snap.json`);
     const update = this.options.update ?? process.env.CRISPY_UPDATE === '1';
-    const ci = this.options.ci ?? !!process.env.CI;
+    const ci = this.options.ci ?? isCI();
     if (!existsSync(file) || update) {
       if (!existsSync(file) && ci && !update) {
         throw new Error(
@@ -98,9 +114,9 @@ export class RenderRecorder {
       this.config.snapshot.failOnNewAvoidable,
     );
     if (!result.passed) {
-      throw new Error(
-        `${snapshotToMarkdown(result, file)}\nIf this is intended, run with CRISPY_UPDATE=1 and commit ${file}.`,
-      );
+      // One remedy that fits Playwright tests (not the CLI's `crispy test --update`).
+      const report = snapshotToMarkdown(result, file).replace(/\nIf a regression is intended.*\n?$/s, '\n');
+      throw new Error(`${report}\nIf this is intended, re-run with CRISPY_UPDATE=1 and commit ${file}.`);
     }
   }
 }

@@ -41,7 +41,8 @@
     },
     "./playwright": {
       "types": "./dist/playwright.d.ts",
-      "import": "./dist/playwright.js"
+      "import": "./dist/playwright.js",
+      "require": "./dist/playwright.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -53,7 +54,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
@@ -65,7 +66,7 @@
     "prepublishOnly": "npm run check",
     "version": "tsx scripts/sync-version.ts && biome format --write .claude-plugin server.json && git add .claude-plugin/plugin.json server.json action.yml",
     "validate:manifests": "tsx scripts/validate-server-json.ts && claude plugin validate . && claude plugin validate .claude-plugin/plugin.json",
-    "prepare": "tsup"
+    "prepare": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup"
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",
