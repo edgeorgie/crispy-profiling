@@ -253,6 +253,7 @@ export function installCrispyHook(): void {
         providerAt: {},
         creators: {},
         staleMemo: {},
+        effectCascades: {},
         memo: false,
         compiled: false,
         locations: {},
@@ -640,6 +641,7 @@ export function installCrispyHook(): void {
   function recordMount(fiber: any): void {
     if (!COMPONENT_TAGS[fiber.tag]) return;
     const e = entry(fiber);
+    currentMounts[keyOf(fiber)] = true;
     e.renders++;
     e.mounts++;
     addDuration(e, fiber);
@@ -671,13 +673,25 @@ export function installCrispyHook(): void {
     bump(e.unstableProps, p.unstable);
     bump(e.callbackProps, p.callbacks);
     if (p.changed.length) e.causes.props++;
+    let what: string | null = null;
     if (s === 3) {
       e.causes.state++;
-      const what = changedStateName(prev, next);
+      what = changedStateName(prev, next);
       if (what) e.stateChanges[what] = (e.stateChanges[what] || 0) + 1;
     }
     if (c === 3) e.causes.context++;
-    if (s === 3) return true;
+    if (s === 3) {
+      // Set by a useEffect right after the previous commit (not right after this
+      // component mounted: mount-time effects like "mounted" flags are often needed).
+      // Store subscriptions are skipped: any effect anywhere (e.g. a router's) may
+      // have written to the store, so this component is not the place to fix.
+      const store = what !== null && what.indexOf('useSyncExternalStore') >= 0;
+      if (cascadeCommit && !store && !lastMounts[keyOf(next)]) {
+        const k = what || 'state';
+        e.effectCascades[k] = (e.effectCascades[k] || 0) + 1;
+      }
+      return true;
+    }
     if (trigger) e.triggeredBy[trigger] = (e.triggeredBy[trigger] || 0) + 1;
     for (const ctx of c ? recreatedContexts : []) {
       const found = providerOwner(next, ctx);
@@ -812,8 +826,43 @@ export function installCrispyHook(): void {
     return false;
   };
 
+  /**
+   * Effect cascades. A passive effect that sets state schedules a DefaultLane
+   * update, which is already pending when React reports the commit (React 19
+   * flushes effects of discrete updates first) or right after the effects ran
+   * (onPostCommitFiberRoot). Layout-effect updates use SyncLane (measuring the
+   * DOM is a legitimate reason), transitions and deferred values use their own
+   * lanes, so neither is counted. User input in between also clears the mark.
+   */
+  const EFFECT_LANES = 0b110000; // DefaultHydrationLane | DefaultLane
+  const cascadeNext = new WeakSet<object>();
+  let cascadeCommit = false;
+  let inputEvents = 0;
+  const inputAtCommit = new WeakMap<object, number>();
+  for (const t of ['pointerdown', 'keydown', 'input', 'change', 'submit', 'wheel']) {
+    try {
+      w.addEventListener(t, () => inputEvents++, true);
+    } catch {}
+  }
+  let currentMounts: Record<string, true> = {};
+  let lastMounts: Record<string, true> = {};
+  const mountsByRoot = new WeakMap<object, Record<string, true>>();
+
+  function onPostCommit(root: any): void {
+    try {
+      if (!root || inputAtCommit.get(root) !== inputEvents) return;
+      if ((root.pendingLanes & EFFECT_LANES) !== 0) cascadeNext.add(root);
+    } catch (err) {
+      noteError(err);
+    }
+  }
+
   function onCommit(root: any): void {
     roots.add(root);
+    cascadeCommit = cascadeNext.has(root) && inputAtCommit.get(root) === inputEvents;
+    cascadeNext.delete(root);
+    lastMounts = mountsByRoot.get(root) || {};
+    currentMounts = {};
     try {
       const current = root.current;
       const prev = current.alternate;
@@ -839,6 +888,9 @@ export function installCrispyHook(): void {
       } else {
         updateSubtree(current, prev, null);
       }
+      mountsByRoot.set(root, currentMounts);
+      inputAtCommit.set(root, inputEvents);
+      if ((root.pendingLanes & EFFECT_LANES) !== 0) cascadeNext.add(root);
       state.lastCommitNames = Object.keys(currentCommitNames).sort();
       // Which components each commit rendered, so commits can be counted after
       // framework internals are filtered out (deduplicated by component set).
@@ -865,6 +917,11 @@ export function installCrispyHook(): void {
       onCommit(root);
       return original.call(this, id, root, ...rest);
     };
+    const originalPost = existing.onPostCommitFiberRoot;
+    existing.onPostCommitFiberRoot = function (id: any, root: any, ...rest: any[]) {
+      onPostCommit(root);
+      return originalPost?.call(this, id, root, ...rest);
+    };
     const originalInject = existing.inject;
     existing.inject = function (renderer: any) {
       state.reactDetected = true;
@@ -888,7 +945,9 @@ export function installCrispyHook(): void {
         onCommit(root);
       },
       onCommitFiberUnmount() {},
-      onPostCommitFiberRoot() {},
+      onPostCommitFiberRoot(_id: any, root: any) {
+        onPostCommit(root);
+      },
       onScheduleFiberRoot(_id: any, root: any) {
         if (root) roots.add(root);
       },

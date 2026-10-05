@@ -90,6 +90,8 @@ function aggregateComponent(
     locations: Object.keys(medianCounts(samples, (s) => s.locations)).slice(0, 3),
     stable: renders.min === renders.max,
   };
+  const cascades = medianCounts(samples, (s) => s.effectCascades);
+  if (Object.keys(cascades).length) report.effectCascades = cascades;
   if (timings) report.selfDurationMs = stat(pick((s) => s.selfDurationMs));
   return report;
 }

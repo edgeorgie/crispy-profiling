@@ -37,6 +37,14 @@ const stateOf = (c: ComponentReport) => {
   return what ? ` (${what})` : '';
 };
 
+/** Extra commits caused by state set in a useEffect, and the state's name. */
+export function effectCascade(c: ComponentReport): { total: number; state: string | null } {
+  const m = c.effectCascades ?? {};
+  const total = Object.values(m).reduce((a, n) => a + n, 0);
+  const state = Object.keys(m).find((k) => k !== 'state') ?? null;
+  return { total, state };
+}
+
 /** First entry of a "prop|Creator[|extra]" count map for `prop`. */
 function lookup(m: Record<string, number>, prop: string): string[] | null {
   const key = Object.keys(m).find((k) => k.startsWith(`${prop}|`));
@@ -77,6 +85,12 @@ export function hintFor(
     const file = phase?.components[k]?.definedIn;
     return file !== undefined && LIBRARY_FILE.test(file);
   };
+
+  // State set in a useEffect right after a render: an extra commit every time.
+  const effect = effectCascade(c);
+  if (effect.total > 0 && !library) {
+    return `sets state${effect.state ? ` (${effect.state})` : ''} in a useEffect right after rendering, ${effect.total} time(s)${where}: each one is an extra commit that renders it and its children again. Compute the value during render (useMemo if it is expensive) or set it in the event handler that changes its input.`;
+  }
 
   // Root cause of a cascade: its state updates cause avoidable renders below.
   // Library components (routers, error boundaries) are never the place to fix.
@@ -320,6 +334,16 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     out.push({
       renders: total,
       text: `\`${trigger}\` state updates${stateOf(t)} re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
+    });
+  }
+
+  // 4. State set in a useEffect right after a render: one extra commit each time.
+  for (const [name, c] of comps) {
+    const effect = effectCascade(c);
+    if (!effect.total || libraryKey(name)) continue;
+    out.push({
+      renders: effect.total,
+      text: `\`${name}\` sets ${effect.state ?? 'state'} in a useEffect right after rendering → ${effect.total} extra commit(s): compute it during render, or set it in the event handler.`,
     });
   }
 

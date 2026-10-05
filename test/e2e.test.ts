@@ -770,3 +770,36 @@ describe('named state causes: ground truth (R6-01, R6-02)', () => {
     expect(names('e', 'CustomThenState')).toEqual(['`label` (useState)']);
   });
 });
+
+describe('effect cascades', () => {
+  it('counts state set by a useEffect right after a render, nothing else', async () => {
+    const ids = ['effect', 'async', 'layout', 'none', 'transition', 'deferred', 'timer', 'mount'];
+    const steps = ids.flatMap((x) => [
+      { action: 'phase' as const, name: x },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+      { action: 'click' as const, selector: `#cascade-${x}` },
+    ]);
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'cascade', path: '/?cascade', steps }],
+    });
+    const p = (await profile(config)).scenarios.cascade?.phases;
+    const cascades = (phase: string) =>
+      Object.fromEntries(
+        Object.entries(p?.[phase]?.components ?? {})
+          .filter(([, c]) => c.effectCascades)
+          .map(([name, c]) => [name, c.effectCascades]),
+      );
+    expect(cascades('load')).toEqual({});
+    const doubled = { '`doubled` (useState)': 2 };
+    expect(cascades('effect')).toEqual({ EffectDerived: doubled });
+    expect(cascades('async')).toEqual({ TimerThenEffect: doubled });
+    const c = p?.effect?.components.EffectDerived;
+    expect(hintFor(c, p?.effect, 'EffectDerived')).toMatch(
+      /sets state \(`doubled` \(useState\)\) in a useEffect right after rendering, 2 time/,
+    );
+    for (const id of ids.slice(2)) expect(cascades(id), id).toEqual({});
+  });
+});

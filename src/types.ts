@@ -45,6 +45,8 @@ export interface RawComponentStats {
   creators?: Record<string, number>;
   /** "prop|Creator|#2 (an object)": the prop comes from useCallback/useMemo whose deps changed. */
   staleMemo?: Record<string, number>;
+  /** State set by a useEffect right after the previous commit (an extra commit), by state name. */
+  effectCascades?: Record<string, number>;
   /** Compiled by React Compiler. */
   compiled?: boolean;
   /** Wrapped in React.memo. */
@@ -115,6 +117,12 @@ export interface ComponentReport {
   creators: Record<string, number>;
   /** "prop|Creator|#2 (an object)": the prop comes from useCallback/useMemo whose dependencies changed. */
   staleMemo: Record<string, number>;
+  /**
+   * State set by a useEffect right after the previous commit, by state name, e.g.
+   * {"`doubled` (useState)": 2}: each one costs an extra commit (derive the value
+   * during render instead). Omitted when empty.
+   */
+  effectCascades?: Record<string, number>;
   /** Compiled by React Compiler. */
   compiled: boolean;
   /** Wrapped in React.memo. */
