@@ -523,12 +523,18 @@ describe('root-cause hints (R3-04, R3-05)', () => {
       settleMs: 150,
       scenarios: [
         { name: 'c', path: '/?ctxvalue', steps: [{ action: 'click', selector: '#inc' }] },
+        { name: 'ctx', path: '/?ctxvalue', steps: [{ action: 'click', selector: '#cart-bump' }] },
       ],
     });
-    const phase = (await profile(config)).scenarios.c?.phases.interaction;
+    const report = await profile(config);
+    const phase = report.scenarios.c?.phases.interaction;
     const c = phase?.components;
-    expect(c?.CartBadge?.recreatedContextFrom).toEqual({ CartProvider: 1 });
-    expect(hintFor(c?.CartBadge, phase, 'CartBadge')).toContain('`CartProvider`');
+    // The provider re-renders alone: its recreated value is the only reason.
+    const ctx = report.scenarios.ctx?.phases.interaction;
+    expect(ctx?.components.CartBadge?.recreatedContextFrom).toEqual({ CartProvider: 1 });
+    expect(hintFor(ctx?.components.CartBadge, ctx, 'CartBadge')).toContain('`CartProvider`');
+    // When the parent re-creates the element anyway, context is not blamed (R5-02).
+    expect(c?.CartBadge?.recreatedContextFrom).toEqual({});
     expect(c?.Swatch?.memo).toBe(true);
     expect(hintFor(c?.Swatch, phase, 'Swatch')).toContain('already wrapped in React.memo');
     // App's count update started the cascade.
@@ -544,5 +550,70 @@ describe('first-run errors (R4-19)', () => {
       scenarios: [{ name: 'x' }],
     });
     await expect(profile(config)).rejects.toThrow(/Is the dev server running\?/);
+  });
+});
+
+describe('empty phases (R5-01)', () => {
+  it('records a phase with no renders, so renders there later fail the snapshot', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'quiet',
+          steps: [
+            { action: 'phase', name: 'idle' },
+            { action: 'wait', ms: 50 },
+          ],
+        },
+      ],
+    });
+    const idle = (await profile(config)).scenarios.quiet?.phases.idle;
+    expect(idle?.commits.median).toBe(0);
+    expect(idle?.components).toEqual({});
+  });
+});
+
+describe('async boot (R5-10)', () => {
+  it('waits for the first render of apps that boot asynchronously', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        { name: 'late', path: '/?lateboot', steps: [{ action: 'click', selector: '#inc' }] },
+      ],
+    });
+    const phases = (await profile(config)).scenarios.late?.phases;
+    expect(phases?.load?.components.App?.mounts.median).toBe(1);
+    expect(phases?.interaction?.components.App?.updates.median).toBe(1);
+  });
+});
+
+describe('select and drag steps (R5-07)', () => {
+  it('profiles choosing an option and dragging with the pointer', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 's',
+          path: '/?steps',
+          steps: [
+            { action: 'phase', name: 'pick' },
+            { action: 'select', selector: '#pick', value: 'b' },
+            { action: 'phase', name: 'drag' },
+            { action: 'drag', selector: '#slider', dx: 60, steps: 5 },
+            { action: 'waitFor', selector: '#nothing-here', state: 'detached' },
+          ],
+        },
+      ],
+    });
+    const phases = (await profile(config)).scenarios.s?.phases;
+    expect(phases?.pick?.components.Picker?.updates.median).toBe(1);
+    // pointer down + 5 moves + up, each a state update.
+    expect(phases?.drag?.components.Slider?.updates.median).toBeGreaterThanOrEqual(5);
   });
 });

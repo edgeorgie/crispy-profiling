@@ -13,7 +13,23 @@ export const StepSchema = z.discriminatedUnion('action', [
     delayMs: z.number().int().min(0).max(1000).optional(),
   }),
   z.object({ action: z.literal('press'), key: z.string().min(1), selector: z.string().optional() }),
-  z.object({ action: z.literal('waitFor'), selector: z.string().min(1) }),
+  z.object({
+    action: z.literal('waitFor'),
+    selector: z.string().min(1),
+    /** Default `visible`; `hidden`/`detached` wait for something to go away (e.g. a spinner). */
+    state: z.enum(['visible', 'hidden', 'attached', 'detached']).optional(),
+  }),
+  z.object({ action: z.literal('select'), selector: z.string().min(1), value: z.string() }),
+  z.object({
+    action: z.literal('drag'),
+    selector: z.string().min(1),
+    /** Drop target, or an offset in pixels from the start point. */
+    to: z.string().min(1).optional(),
+    dx: z.number().optional(),
+    dy: z.number().optional(),
+    /** Intermediate pointer moves (each can render). Default 10. */
+    steps: z.number().int().min(1).max(200).optional(),
+  }),
   z.object({ action: z.literal('wait'), ms: z.number().int().min(0).max(60_000) }),
   z.object({ action: z.literal('scroll'), y: z.number(), selector: z.string().optional() }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
@@ -81,6 +97,12 @@ export const ConfigSchema = z.object({
    * Date, performance). Makes apps with polling/animations deterministic.
    */
   clock: z.boolean().default(false),
+  /**
+   * `seeded` (default) replaces Math.random with a fixed-seed generator, so apps
+   * that generate fake data, IDs or animations randomly render the same way in
+   * every run. `native` keeps the browser's Math.random.
+   */
+  random: z.enum(['seeded', 'native']).default('seeded'),
   /**
    * Slow the CPU down by this factor (Chrome DevTools throttling), e.g. 4 to
    * simulate a slow CI runner or a low-end device. Counts should not change.

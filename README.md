@@ -136,10 +136,13 @@ snapshot always covers every component (even with `topComponents`); budgets stil
 | `viewport` | `1280×800` | Browser viewport. |
 | `browser` | headless | `executablePath`, `channel` (e.g. `"chrome"`), `headless`. `CRISPY_CHROMIUM_PATH` also works. |
 | `includeInternals` | `false` | Show framework/library internals (components defined in `node_modules` that only library code renders, e.g. Next.js router internals). Library components your code renders directly are always shown. |
+| `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
 | `snapshot` | `crispy.snap.json`, `0`, `false` | `file` (relative to the config file), `tolerance` and `failOnNewAvoidable` used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
-**Steps:** `click`, `hover`, `fill`, `type`, `press`, `scroll`, `waitFor`, `wait`, `goto`, `phase`.
+**Steps:** `click`, `hover`, `fill`, `type`, `press`, `select` (a `<select>` option), `drag`
+(`selector` to `to`, or by `dx`/`dy`, with pointer `steps`), `scroll`, `waitFor` (`state`:
+`visible`, `hidden`, `attached`, `detached`), `wait`, `goto`, `phase`.
 `type` presses one key at a time and waits for React to finish (including deferred values and
 transitions) before the next key, so concurrent features give the same counts on fast and slow CPUs.
 Renders before the first step are recorded in phase `load`; renders during steps go to

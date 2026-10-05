@@ -41,7 +41,7 @@ Chromium is required once: `npx crispy-profiling install`.
 1. **Start the dev server** (development build, so component names are readable). Confirm the
    URL responds.
 2. **Describe the slow interaction as steps** (`click`, `fill`, `type`, `press`, `hover`,
-   `scroll`, `waitFor`, `wait`, `goto`, `phase`). Renders before the first step go to
+   `select`, `drag`, `scroll`, `waitFor`, `wait`, `goto`, `phase`). Renders before the first step go to
    phase `load`; renders during steps go to `interaction` unless you name phases with
    `{ "action": "phase", "name": "..." }`.
 3. **Capture a baseline** before touching code: `crispy test` (records `crispy.snap.json` if it
