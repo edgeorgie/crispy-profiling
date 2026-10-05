@@ -832,3 +832,14 @@ describe('real-world app detection (R6-06)', async () => {
     }
   });
 });
+
+describe('environment values in steps (R6-17)', async () => {
+  const { withEnv } = await import('../src/profiler/run.js');
+  it('reads environment placeholders and keeps escaped ones literal', () => {
+    process.env.CRISPY_UNIT_SECRET = 's3cret';
+    const placeholder = '$' + '{CRISPY_UNIT_SECRET}';
+    expect(withEnv(`pw: ${placeholder} / $${placeholder}`)).toBe(`pw: s3cret / ${placeholder}`);
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: crispy's own placeholder syntax
+    expect(() => withEnv('${CRISPY_UNIT_MISSING}')).toThrow(/CRISPY_UNIT_MISSING is not set/);
+  });
+});

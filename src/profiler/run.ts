@@ -44,8 +44,10 @@ const SEEDED_RANDOM = `(() => {
 })();`;
 
 /** `${NAME}` in typed values comes from the environment, so credentials stay out of the config. */
-const withEnv = (value: string) =>
-  value.replace(/\$\{(\w+)\}/g, (_, name: string) => {
+/** `$${NAME}` types a literal `${NAME}`. */
+export const withEnv = (value: string) =>
+  value.replace(/(\$?)\$\{(\w+)\}/g, (match, escaped: string, name: string) => {
+    if (escaped) return match.slice(1);
     const v = process.env[name];
     if (v === undefined)
       throw new Error(`Environment variable ${name} is not set (used in a step value).`);
