@@ -49,7 +49,7 @@ It is read-only: requests other than GET and messages the page sends over a WebS
 the browser (hot-reload sockets excepted), and an interaction that tried to
 send one is reported and not saved (`--allow-writes` for apps with disposable data). Point it at a
 development or preview build, not production. It saves what it ran as
-`crispy.config.json`, so `crispy test` guards those flows from then on. Add `.crispy/` (reports) to `.gitignore`; commit `crispy.config.json` and `crispy.snap.json`. On shadcn-admin it found
+`crispy.config.json`, so `crispy test` guards those flows from then on. It adds `.crispy/` (reports) to `.gitignore`; commit `crispy.config.json` and `crispy.snap.json`. On shadcn-admin it found
 the first root causes in 2.5 minutes without a single line of config. Prefer writing the steps
 yourself? `npx crispy init` creates a config to edit.
 

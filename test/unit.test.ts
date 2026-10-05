@@ -837,8 +837,8 @@ describe('root causes never double count (R6-03)', async () => {
     expect(causes.find((c) => c.text.includes('`Grid` recreates'))?.text).toContain(
       '`Grid` recreates `style`, `onPick` → 4 avoidable render(s) in `Row`',
     );
-    // 4 renders: listed, but marked as optional.
-    expect(causes.find((c) => c.text.includes('`Grid` recreates'))?.minor).toBe(true);
+    // 4 renders, but a large share of this small phase: not optional.
+    expect(causes.find((c) => c.text.includes('`Grid` recreates'))?.minor).toBeUndefined();
   });
 });
 

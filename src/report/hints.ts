@@ -252,7 +252,7 @@ export interface RootCause {
    * times their share of the phase's renders. Only with `timings: true`.
    */
   ms?: number;
-  /** Fewer than 10 renders, or under 2% of the phase's renders: worth it only if the rest is done. */
+  /** Under 2% of the phase's renders, or under 10 and under 20%: worth it only if the rest is done. */
   minor?: true;
 }
 
@@ -337,10 +337,21 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       : '';
     const fix = stale
       ? `${depFix(`\`${stale[0]}\``, stale[2] ?? '', isCallback(stale[0] ?? ''))}${realChange(stale[2] ?? '') ? '' : wrap}`
-      : `memoize them there (useCallback / useMemo, or hoist constants)${wrap}`;
+      : `${
+          e.props.every(isCallback)
+            ? 'wrap them in useCallback there'
+            : e.props.some(isCallback)
+              ? 'wrap the functions in useCallback and the objects in useMemo there (or hoist constants out of the component)'
+              : 'hoist them out of the component if they are constant, else wrap them in useMemo there'
+        }${wrap}`;
+    // Where the values are passed: the first affected component rendered by the creator.
+    const at = e.affected
+      .flatMap((k) => phase.components[k]?.locations ?? [])
+      .find((l) => l.endsWith(`(${creator})`))
+      ?.replace(/ \(.*\)$/, '');
     out.push({
       renders: e.renders,
-      text: `\`${creator}\` recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
+      text: `\`${creator}\`${at ? ` (${at})` : ''} recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
     });
   }
 
@@ -454,7 +465,9 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     }
   }
   for (const c of out) {
-    if (c.renders < 10 || c.renders < total * 0.02) {
+    // Few renders that are also a small share of the phase (a 5-render <h1>), not a
+    // small flow where those few renders are most of the work.
+    if (c.renders < total * 0.02 || (c.renders < 10 && c.renders < total * 0.2)) {
       c.minor = true;
       c.text = `Optional (low impact, ${c.renders} render(s)): ${c.text}`;
     }
