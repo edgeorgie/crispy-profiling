@@ -7,8 +7,13 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/edgeorgie/crispy-profiling/badge)](https://scorecard.dev/viewer/?uri=github.com/edgeorgie/crispy-profiling)
 
-> **Status: proof of concept.** It works end to end on the test app; we are now validating it on
-> real-world React apps. Feedback and case studies are the most valuable contribution right now.
+![crispy test catches a PR that re-renders 20 rows, explains why and verifies the fix](https://raw.githubusercontent.com/edgeorgie/crispy-profiling/develop/docs/demo.gif)
+
+> **Status: early (0.x), improving every week.** Validated on five open-source apps (Redux
+> Essentials, Next.js App Router Playground, Excalidraw, shadcn-admin, react-admin): it found a
+> fixable re-render problem in each. See [Known limitations](#known-limitations) and the
+> [changelog](CHANGELOG.md). Bug reports, wrong hints and case studies are the most valuable
+> contribution right now.
 
 crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
 tells you **which components rendered, how many times, why** (props / state / context / parent) and
@@ -20,8 +25,8 @@ only differ when the code changed. That makes it a reliable feedback loop for:
 - **CI**: render budgets and baseline comparison that fail a PR when a component starts re-rendering.
 - **You**: a CLI that answers "why does this re-render?" without opening DevTools.
 
-No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19; React
-16.8–18 expose the same hook and should work, but are not covered by tests yet.
+No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19 and
+validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are not tested.
 
 ## Quick start
 
@@ -254,6 +259,46 @@ import { compareReports, parseConfig, profile } from 'crispy-profiling';
 const config = parseConfig({ baseUrl: 'http://localhost:5173', scenarios: [{ name: 'home' }] });
 const report = await profile(config);
 ```
+
+## How it compares
+
+Use the tools together: they answer different questions.
+
+| Tool | What it is for | Where crispy fits |
+| --- | --- | --- |
+| [React DevTools Profiler](https://react.dev/learn/react-developer-tools) | Interactive, manual profiling in your browser | crispy runs the same kind of analysis headless, on scripted interactions, every time |
+| [React Scan](https://github.com/aidenybai/react-scan) | Visual highlighting of re-renders while you use the app; also has a programmatic `onRender` API | crispy turns render counts into committed snapshots that fail CI, with a fix hint per component |
+| [why-did-you-render](https://github.com/welldone-software/why-did-you-render) | Console notifications in development about avoidable re-renders (Babel setup) | crispy needs no app changes and reports per interaction, deterministically |
+| [React Doctor](https://www.react.doctor) | Static analysis (lint rules) of the codebase with a score | crispy observes what actually rendered at runtime; static findings and runtime proof complement each other |
+| [React Compiler](https://react.dev/learn/react-compiler) | Automatic memoization at build time | crispy shows what the compiler did not cover (e.g. dependencies that change every render) and verifies the result |
+
+What crispy adds: **deterministic counts** (same code → same report), **snapshots in CI**,
+**root-cause hints** (who creates the unstable value, which dependency changes) and **verification**
+(the fix shows up as 🟢 improved).
+
+## Known limitations
+
+- **Development builds only.** Production builds strip component names and the debug information
+  crispy uses for causes and locations.
+- **Render counts are not milliseconds.** crispy finds avoidable renders deterministically; whether
+  they matter depends on how expensive the components are. Use `timings: true` (not reproducible)
+  to see self time, LCP and long tasks.
+- **Web only, Chromium only.** No React Native; other browsers are not needed for render counts.
+- **Scenarios are written by hand** (selectors and steps). `crispy init` creates a starting point.
+- **Hints are heuristics.** In our validation on real apps most hints pointed at the right
+  component, but not all were directly actionable; [report a wrong hint](https://github.com/edgeorgie/crispy-profiling/issues/new?template=wrong_hint.yml)
+  with the report attached and we will fix it.
+- **Apps with real network timing** can vary between runs: counts are stored as ranges, randomness
+  is seeded and one extra commit is tolerated, but very timing-dependent flows may need `waitFor`
+  steps or `clock: true`.
+
+## How this is built
+
+crispy-profiling is developed with AI coding agents (Claude Code) under human direction, with the
+same rules as any contribution: atomic commits, tests, CI on Node 20/22/24 and review. Every
+milestone is checked by an independent agent acting as a hostile reviewer and validated on real
+open-source apps; every number in this README and in the changelog can be reproduced with the
+commands shown. Found something wrong? Please [open an issue](https://github.com/edgeorgie/crispy-profiling/issues/new).
 
 ## How it works
 
