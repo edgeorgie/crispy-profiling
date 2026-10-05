@@ -436,7 +436,8 @@
         "tolerance": 0,
         "failOnNewAvoidable": false,
         "failOnMoreAvoidable": false,
-        "failOnMoreCommits": false
+        "failOnMoreCommits": false,
+        "includeLibraries": false
       },
       "type": "object",
       "properties": {
@@ -459,6 +460,10 @@
           "type": "boolean"
         },
         "failOnMoreCommits": {
+          "default": false,
+          "type": "boolean"
+        },
+        "includeLibraries": {
           "default": false,
           "type": "boolean"
         }

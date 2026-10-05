@@ -95,7 +95,10 @@ function fixableStat(c: ComponentReport): Stat {
   };
 }
 
-export function toSnapshot(report: CrispyReport): RenderSnapshot {
+/** Defined in node_modules: its counts follow the app component that renders it. */
+const isLibrary = (file: string | undefined) => file !== undefined && LIBRARY_FILE.test(file);
+
+export function toSnapshot(report: CrispyReport, includeLibraries = false): RenderSnapshot {
   const scenarios: RenderSnapshot['scenarios'] = {};
   for (const name of Object.keys(report.scenarios).sort(cmp)) {
     const s = report.scenarios[name];
@@ -107,6 +110,7 @@ export function toSnapshot(report: CrispyReport): RenderSnapshot {
       const components: PhaseSnapshot['components'] = {};
       for (const c of Object.keys(p.components).sort(cmp)) {
         const r = p.components[c] as ComponentReport;
+        if (!includeLibraries && isLibrary(r.definedIn)) continue;
         components[c] = {
           renders: toCount(r.renders),
           // Avoidable = unchanged inputs + recreated callbacks (as in the report header).
@@ -300,8 +304,11 @@ export function compareSnapshot(
   failOnMoreAvoidable = false,
   /** Commit counts vary with load timing: by default more commits are reported, not failed. */
   failOnMoreCommits = false,
+  /** Also compare components defined in node_modules (off: they follow their app parent). */
+  includeLibraries = false,
 ): SnapshotResult {
-  const current = toSnapshot(report);
+  const current = toSnapshot(report, includeLibraries);
+  if (!includeLibraries) snapshot = withoutLibraries(snapshot);
   const changes: SnapshotChange[] = [];
 
   /**
@@ -397,7 +404,9 @@ export function compareSnapshot(
 
       const names = [
         ...new Set([...Object.keys(exp.components), ...Object.keys(reportPhase?.components ?? {})]),
-      ].sort(cmp);
+      ]
+        .filter((k) => includeLibraries || !isLibrary(reportPhase?.components[k]?.definedIn))
+        .sort(cmp);
       for (const component of names) {
         const e = exp.components[component];
         const full = reportPhase?.components[component];
@@ -506,8 +515,22 @@ export function keepRanges(next: RenderSnapshot, previous: RenderSnapshot): Rend
  * Snapshot to write: the current counts, but without silently accepting
  * regressions — used to record new scenarios/phases/components on a normal run.
  */
-export function mergeAdditions(snapshot: RenderSnapshot, report: CrispyReport): RenderSnapshot {
-  const current = toSnapshot(report);
+/** A copy without node_modules components (snapshots recorded before they were left out). */
+function withoutLibraries(snapshot: RenderSnapshot): RenderSnapshot {
+  const out: RenderSnapshot = JSON.parse(JSON.stringify(snapshot));
+  for (const phases of Object.values(out.scenarios))
+    for (const p of Object.values(phases))
+      for (const [k, c] of Object.entries(p.components))
+        if (isLibrary(c.file)) delete p.components[k];
+  return out;
+}
+
+export function mergeAdditions(
+  snapshot: RenderSnapshot,
+  report: CrispyReport,
+  includeLibraries = false,
+): RenderSnapshot {
+  const current = toSnapshot(report, includeLibraries);
   const merged: RenderSnapshot = JSON.parse(JSON.stringify(snapshot));
   for (const [scenario, phases] of Object.entries(current.scenarios)) {
     const target = merged.scenarios[scenario];

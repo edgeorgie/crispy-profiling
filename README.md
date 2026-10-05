@@ -186,7 +186,7 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 | `login` | — | `{ "path": "/login", "steps": [...] }`: sign in once before profiling (never counted). Use `"${E2E_PASSWORD}"` to read secrets from the environment (`"$${NAME}"` types a literal `${NAME}`). |
 | `storageState` | — | A saved session file (cookies + localStorage), e.g. from `crispy login` for SSO/OAuth logins. Keep it out of git. |
 | `random` | `seeded` | `Math.random` returns the same sequence in every run, so fake data, IDs and animations render the same way. `native` keeps the browser's. |
-| `snapshot` | `crispy.snap.json`, `0`, `false`, `false`, `false` | `file` (relative to the config file), `tolerance`, `failOnNewAvoidable`, `failOnMoreAvoidable` and `failOnMoreCommits` used by `crispy test`. |
+| `snapshot` | `crispy.snap.json`, `0`, `false`, `false`, `false`, `false` | `file` (relative to the config file), `tolerance`, `failOnNewAvoidable`, `failOnMoreAvoidable`, `failOnMoreCommits` and `includeLibraries` (also record components defined in `node_modules`, such as icons; off because their counts follow the app component that renders them) used by `crispy test`. |
 | `compare` | `10%`, `1` | `rendersIncreasePct` and `minRendersDelta` used by `compare`. |
 
 **Steps:** `click`, `hover`, `fill`, `type`, `press`, `select` (a `<select>` option), `drag`

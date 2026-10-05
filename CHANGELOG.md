@@ -15,6 +15,9 @@ All notable changes to this project are documented here. The format follows
   avoidable renders without a single standout cause.
 
 ### Changed
+- Snapshots leave out components defined in `node_modules` (icons, Radix parts…): about half the
+  size on shadcn-admin, and fewer noisy rows. Old entries are ignored; `snapshot.includeLibraries`
+  keeps them.
 - A root cause under 10 renders is optional only if it is also under 20% of the phase's renders.
 - Root causes say where the values are created (`src/App.tsx:36`) and give the fix for their kind
   (useCallback for functions, hoist or useMemo for objects) instead of a generic "useCallback / useMemo".
