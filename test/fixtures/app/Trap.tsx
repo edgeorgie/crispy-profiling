@@ -14,6 +14,11 @@ export function Trap() {
       <button type="button" onClick={() => setN(n + 1)}>
         Add item {n}
       </button>
+      {[1, 2, 3].map((m) => (
+        <button key={m} type="button" onClick={() => setN(n + m)}>
+          Member {m}
+        </button>
+      ))}
       <button type="button" onClick={() => post('eliminar')}>
         Eliminar
       </button>

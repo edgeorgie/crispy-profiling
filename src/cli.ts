@@ -206,7 +206,7 @@ async function main(argv: string[]): Promise<number> {
         '',
         hasConfig
           ? `Scenarios saved to crispy.scan.json (your ${DEFAULT_CONFIG_FILE} was not touched): copy the ones you want into it.`
-          : `Scenarios saved to ${DEFAULT_CONFIG_FILE}. Next: "npx crispy test" records crispy.snap.json; commit both and CI fails on new re-renders.`,
+          : `Scenarios saved to ${DEFAULT_CONFIG_FILE}. Next: "npx crispy test" records crispy.snap.json; commit both and CI fails on new re-renders. (crispy test runs each scenario 3 times, "runs" in the config; the scan ran it twice to be quick.)`,
         'Full report: .crispy/scan.json',
       );
       process.stdout.write(`${lines.join('\n')}\n`);

@@ -9,6 +9,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - `crispy install` prints one line while it downloads and, on failure, a short reason instead of
   Playwright's repeated progress lines and stack trace (`--verbose` shows them).
+- `crispy scan` keeps one scenario for list rows that differ only by a number ("Member 1",
+  "Member 2"…), and says that `crispy test` runs each scenario 3 times.
 - Read-only mode (`crispy scan`, `readOnly`) also drops messages the page sends over a WebSocket
   (chat, realtime mutations) and reports them like blocked requests. Dev-server hot-reload sockets
   (Vite, webpack, Next.js) still work.
