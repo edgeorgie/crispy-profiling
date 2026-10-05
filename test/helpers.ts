@@ -42,6 +42,15 @@ export async function buildFixture(): Promise<Record<'slow' | 'fast', string>> {
   return out;
 }
 
+/** A port the OS just reported free (better than a random range other processes may use). */
+export async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((done) => probe.listen(0, done));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((done) => probe.close(() => done()));
+  return port;
+}
+
 /** Requests other than GET/HEAD that reached a fixture server (read-only checks). */
 export const writes: string[] = [];
 

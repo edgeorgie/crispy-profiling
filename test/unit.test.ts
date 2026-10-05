@@ -5,6 +5,7 @@ import { compareReports } from '../src/report/compare.js';
 import { compareToMarkdown, reportToMarkdown } from '../src/report/markdown.js';
 import type { ComponentReport, CrispyReport, PhaseReport, RawRun } from '../src/types.js';
 import { cmpNatural } from '../src/util/cmp.js';
+import { freePort } from './helpers.js';
 
 const s = (n: number) => ({ median: n, min: n, max: n });
 
@@ -656,7 +657,7 @@ describe('zero-config setup', async () => {
   });
 
   it('starts the dev server, waits for it and stops it', async () => {
-    const port = 47000 + Math.floor(Math.random() * 1000);
+    const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
     const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
     const { stop } = await startWebServer({ command, timeoutMs: 10_000, reuseExisting: true }, url);
@@ -727,7 +728,7 @@ describe('dev server lifecycle (R6-04, R6-07)', async () => {
   const { isUp, startWebServer } = await import('../src/profiler/webserver.js');
 
   it('stops the dev server when crispy is interrupted', async () => {
-    const port = 48000 + Math.floor(Math.random() * 1000);
+    const port = await freePort();
     const child = spawn(
       process.execPath,
       ['--import', 'tsx', 'test/fixtures/start-server.ts', String(port)],
@@ -746,7 +747,7 @@ describe('dev server lifecycle (R6-04, R6-07)', async () => {
   }, 30_000);
 
   it('refuses to profile whatever already runs on the port unless reuse is allowed', async () => {
-    const port = 49000 + Math.floor(Math.random() * 1000);
+    const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
     const command = `node -e "require('http').createServer((q,r)=>r.end('ok')).listen(${port})"`;
     const { stop } = await startWebServer(
@@ -824,11 +825,11 @@ describe('real-world app detection (R6-06)', async () => {
   });
 
   it('follows the URL the dev server prints when the configured one never answers', async () => {
-    const port = 46000 + Math.floor(Math.random() * 1000);
+    const port = await freePort();
     const command = `node -e "require('http').createServer((q,r)=>{r.setHeader('content-type','text/html');r.end('ok')}).listen(${port},()=>console.log('Local: http://localhost:${port}/'))"`;
     const server = await startWebServer(
       { command, timeoutMs: 10_000, reuseExisting: false },
-      'http://localhost:45999',
+      `http://localhost:${await freePort()}`,
     );
     try {
       expect(server.url).toBe(`http://localhost:${port}/`);
@@ -856,8 +857,8 @@ describe('dev server URL fallback is safe (R7-02, R7-03)', async () => {
   const { startWebServer } = await import('../src/profiler/webserver.js');
 
   it('keeps the configured URL when an API announces itself first', async () => {
-    const api = 44000 + Math.floor(Math.random() * 500);
-    const app = 44600 + Math.floor(Math.random() * 300);
+    const api = await freePort();
+    const app = await freePort();
     const script = join(mkdtempSync(join(tmpdir(), 'crispy-ws-')), 'both.cjs');
     writeFileSync(
       script,
@@ -882,7 +883,7 @@ describe('dev server URL fallback is safe (R7-02, R7-03)', async () => {
     await expect(
       startWebServer(
         { command: 'echo booting; sleep 100', timeoutMs: 3000, reuseExisting: false },
-        'http://localhost:45998',
+        `http://localhost:${await freePort()}`,
       ),
     ).rejects.toThrow(/did not answer/);
   });
