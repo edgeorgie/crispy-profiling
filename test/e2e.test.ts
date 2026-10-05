@@ -955,6 +955,30 @@ describe('readOnly configs (council round 1)', () => {
     expect(writes).toEqual([]);
   });
 
+  it('is read-only by default and lists what it blocked (decision D2)', async () => {
+    writes.length = 0;
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [
+        {
+          name: 'save',
+          path: '/?trap',
+          steps: [{ action: 'click', selector: 'text=Save changes' }],
+        },
+      ],
+    });
+    const report = await profile(config);
+    expect(writes).toEqual([]);
+    expect(
+      report.scenarios.save?.warnings.some((w) => /read-only: blocked POST .*\/api\/save/.test(w)),
+    ).toBe(true);
+    // Opting out lets the write through.
+    await profile(parseConfig({ ...config, readOnly: false }));
+    expect(writes).toEqual(['POST /api/save']);
+  });
+
   it('drops what the page sends over a WebSocket', async () => {
     const blocked: string[] = [];
     writes.length = 0;
