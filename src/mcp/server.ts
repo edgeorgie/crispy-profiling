@@ -80,15 +80,22 @@ export function createServer(): McpServer {
         runs: z.number().int().min(1).max(10).default(1),
         top: z.number().int().min(1).max(100).default(15).describe('Components shown per phase'),
         outFile: z.string().optional().describe('Optional path to write the full JSON report'),
+        timings: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Also measure JavaScript ms per phase (varies between runs, unlike render counts): use it to tell the user how much faster an interaction got.',
+          ),
       },
     },
-    async ({ url, steps, runs, top, outFile }) => {
+    async ({ url, steps, runs, top, outFile, timings }) => {
       try {
         const u = new URL(url);
         await assertThisApp(url);
         const config = parseConfig({
           baseUrl: u.origin,
           runs,
+          timings,
           scenarios: [{ name: 'page', path: `${u.pathname}${u.search}${u.hash}`, steps }],
         });
         const report = await profile(config);
@@ -216,7 +223,7 @@ export function createServer(): McpServer {
           baseDir: dirname(resolve(configPath)),
         });
         return text(
-          `${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
+          `Status: ${outcome.exitCode === 0 ? 'PASS' : 'FAIL'}\n\n${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
         );
       } catch (err) {
         return fail(err);

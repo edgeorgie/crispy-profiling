@@ -21,6 +21,8 @@ All notable changes to this project are documented here. The format follows
   component's row: one injected `useLocation()` on shadcn-admin gives 3 causes instead of 4.
 - An unknown key in `crispy.config.json` (or in a scenario) is an error with a suggestion
   (`unknown key "readonly" (did you mean "readOnly"?)`) instead of being silently ignored.
+- MCP `test_render_snapshots` starts with `Status: PASS` or `Status: FAIL`, and `profile_url` takes
+  `timings: true` to report JavaScript ms per phase (the skill says how to use it for before/after).
 - Snapshots leave out components defined in `node_modules` (icons, Radix parts…): about half the
   size on shadcn-admin, and fewer noisy rows. Old entries are ignored; `snapshot.includeLibraries`
   keeps them.
