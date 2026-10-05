@@ -108,7 +108,7 @@ export function compareToMarkdown(result: CompareResult, top = 20): string {
   for (const d of interesting) {
     const pct = d.deltaPct === null ? '' : ` (${d.deltaPct > 0 ? '+' : ''}${d.deltaPct}%)`;
     lines.push(
-      `| ${icon[d.status]} ${d.status} | ${esc(d.scenario)} / ${esc(d.phase)} | ${esc(d.component)} | ${d.baseRenders} → ${d.headRenders} | ${d.delta > 0 ? '+' : ''}${d.delta}${pct} | ${d.baseAvoidable} → ${d.headAvoidable} |`,
+      `| ${d.suspect ? '⚠️ check the UI' : `${icon[d.status]} ${d.status}`} | ${esc(d.scenario)} / ${esc(d.phase)} | ${esc(d.component)} | ${d.baseRenders} → ${d.headRenders} | ${d.delta > 0 ? '+' : ''}${d.delta}${pct} | ${d.baseAvoidable} → ${d.headAvoidable} |`,
     );
   }
   if (interesting.some((d) => d.status === 'improved')) lines.push('', GREEN_CAVEAT);

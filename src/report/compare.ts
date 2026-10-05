@@ -77,6 +77,8 @@ export function compareReports(
           status = 'regressed';
         else if (delta < 0 || headAvoidable < baseAvoidable) status = 'improved';
         else status = 'unchanged';
+        const mutable =
+          !!bc && (Object.keys(bc.instanceProps ?? {}).length > 0 || (bc.mutableReads ?? 0) > 0);
         diffs.push({
           scenario,
           phase,
@@ -90,6 +92,7 @@ export function compareReports(
           baseAvoidable,
           headAvoidable,
           status,
+          ...(status === 'improved' && mutable && { suspect: true as const }),
         });
       }
     }

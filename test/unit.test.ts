@@ -310,6 +310,25 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(md).toContain('Parent, which re-renders Child, Grand');
   });
 
+  it('flags fewer renders on a mutable-instance reader instead of 🟢 (council round 3)', async () => {
+    const { keepRanges, serializeSnapshot, snapshotToMarkdown } = await import(
+      '../src/report/snapshot.js'
+    );
+    const before = make(6, 0);
+    const item = before.scenarios.home?.phases.interaction?.components.Item;
+    if (item) item.instanceProps = { table: 6 };
+    const snap = toSnapshot(before);
+    expect(serializeSnapshot(snap)).toContain('"mutable": true');
+    const r = compareSnapshot(snap, make(0, 0));
+    expect(r.improvements.map((c) => c.suspect)).toEqual([true]);
+    expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('⚠️ check the UI');
+    // Accepting the drop keeps the flag, though the component no longer renders.
+    expect(
+      keepRanges(toSnapshot(make(0, 0)), snap).scenarios.home?.interaction?.components.Item
+        ?.mutable,
+    ).toBe(true);
+  });
+
   it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
     const flaky = make(10, 0);
     const item = flaky.scenarios.home?.phases.interaction?.components.Item;
