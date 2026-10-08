@@ -125,8 +125,9 @@ rendered and a suggested fix — apply it and run again. The MCP tool is read-on
 user confirms the new counts are intended, pass `update: true` with
 `confirm: "accept-render-changes"` (CLI: `npx crispy-profiling test -u`). **Never accept a snapshot change on
 your own to make the test pass** — that hides the regression the test exists to catch; show the
-user the diff and ask. If there is no snapshot yet, `crispy test` creates one: tell the user to
-commit it.
+user the diff and ask. If there is no snapshot yet, the CLI `crispy test` creates one; over MCP,
+`test_render_snapshots` only reports it missing, so record the baseline *before* you change code
+(`update: true`; a first snapshot only stores the current counts, so it needs no `confirm`) and tell the user to commit it.
 
 ## Budgets (prevent regressions)
 

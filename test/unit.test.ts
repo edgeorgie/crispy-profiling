@@ -290,6 +290,31 @@ describe('config typos (council round 3)', () => {
       /unknown key "readonly" \(did you mean "readOnly"\?\)[\s\S]*"step" in scenario "a" \(did you mean "steps"\?\)/,
     );
   });
+
+  it('rejects typos inside steps instead of ignoring them (round 5)', async () => {
+    const { parseConfig } = await import('../src/config.js');
+    const config = (steps: unknown[]) => ({
+      baseUrl: 'http://localhost:5173',
+      scenarios: [{ name: 'a', steps }],
+    });
+    // A misspelled key on an expect step used to pass, so a frozen UI went green.
+    expect(() => parseConfig(config([{ action: 'expect', selector: '#n', cuont: 3 }]))).toThrow(
+      /unknown key "cuont" in "expect" in scenario "a" \(step 1\) \(did you mean "count"\?\)/,
+    );
+    expect(() => parseConfig(config([{ action: 'clik', selector: '#go' }]))).toThrow(
+      /unknown action "clik" in scenario "a" \(step 1\) \(did you mean "click"\?\)/,
+    );
+    expect(() => parseConfig(config([{ action: 'banana' }]))).toThrow(/use one of click, /);
+    // Valid steps still parse.
+    expect(() =>
+      parseConfig(
+        config([
+          { action: 'click', selector: '#go' },
+          { action: 'phase', name: 'x' },
+        ]),
+      ),
+    ).not.toThrow();
+  });
 });
 
 describe('render snapshot comparison (round-2 fixes)', async () => {
@@ -390,7 +415,12 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(serializeSnapshot(snap)).toContain('"mutable": true');
     const r = compareSnapshot(snap, make(0, 0));
     expect(r.improvements.map((c) => c.suspect)).toEqual([true]);
-    expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('⚠️ check the UI');
+    const md = snapshotToMarkdown(r, 'crispy.snap.json');
+    expect(md).toContain('⚠️ check the UI');
+    // No green heading and no "lock it in" nudge next to a possibly frozen UI.
+    expect(md).toContain('⚠️ no render regressions, but check the UI');
+    expect(md).not.toContain('✅ no render regressions');
+    expect(md).not.toContain('Improvements found');
     // Accepting the drop keeps the flag, though the component no longer renders.
     expect(
       keepRanges(toSnapshot(make(0, 0)), snap).scenarios.home?.interaction?.components.Item
@@ -1297,5 +1327,30 @@ describe('source names instead of bundler names (council round 4)', async () => 
   it('leaves runs without source names untouched', () => {
     const input = [run({ Member2: 8 })];
     expect(applySourceNames(input)).toBe(input);
+  });
+});
+
+describe('read-only WebSocket guard (council round 5)', async () => {
+  const { isHotReloadSocket } = await import('../src/profiler/run.js');
+  it('exempts only the dev servers hot-reload sockets', () => {
+    for (const hot of [
+      '/?token=aB3dE5gH7jK9',
+      '/_next/webpack-hmr',
+      '/sockjs-node/123/x/websocket',
+    ]) {
+      expect(isHotReloadSocket(hot), hot).toBe(true);
+    }
+    // An app's own sockets stay guarded, even on common names or with a token in the query.
+    for (const app of [
+      '/ws',
+      '/ws/',
+      '/socket',
+      '/socket.io/?EIO=4',
+      '/chat?token=abc',
+      '/live',
+      '/',
+    ]) {
+      expect(isHotReloadSocket(app), app).toBe(false);
+    }
   });
 });

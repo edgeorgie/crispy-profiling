@@ -8,8 +8,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.3.0] - 2026-10-08
 
+### Security
+- The read-only WebSocket guard no longer exempts a bare `/ws` (or any `?token=` URL): an app's own
+  `/ws` endpoint received messages from a "read-only" run. Only the dev servers' hot-reload sockets
+  (Vite's `/?token=…`, `/_next/…`, webpack-hmr, sockjs-node) pass through. The README says that the
+  connection itself is still opened and only what the page sends is dropped.
+
+### Docs
+- README CI section: commit the baseline snapshot first, what `@v0` means and how to pin it, what
+  happens on fork PRs, and what to do when the job is red.
+
+### Fixed
+- A typo inside a step (`"cuont"` on an `expect`, `"clik"` as the action) is now an error with a
+  "did you mean" suggestion. It used to be ignored, so an `expect` that checked nothing let a
+  frozen UI pass.
+
 ### Changed
 - Built and tested against playwright-core 1.64.
+- Reusing a dev server that is already running no longer prints a warning when crispy checked it
+  serves this very app; the warning stays when it could not verify that.
+- A snapshot test whose only changes are "⚠️ check the UI" rows no longer shows the green
+  "no render regressions" heading or the "lock the improvements in" nudge: it says to check the UI.
+- With no snapshot yet, the tip says to record the baseline first (MCP: `update: true`) before
+  fixing, instead of promising a 🟢 that cannot appear; the skill says the same.
 - `crispy init` writes a load-only starter scenario instead of clicking the first visible button
   (which could be "log out"); the message points to `crispy scan` for finding interactions.
 - Components show the name written in the source instead of the one the bundler produced:
