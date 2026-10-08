@@ -563,6 +563,9 @@ async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Pro
  */
 export class PageProfiler {
   private definitions: Record<string, string> = {};
+  /** key -> name written in the source, when the bundler renamed the function. */
+  private sourceNames: Record<string, string> = {};
+  private conflictingNames = new Set<string>();
   private ambiguous = new Set<string>();
   /** Main-thread CPU per phase (CDP Performance metrics), only with `timings`. */
   private cost: Record<string, { scriptMs: number; taskMs: number }> = {};
@@ -680,8 +683,15 @@ export class PageProfiler {
       this.cdp,
       this.scripts,
       this.sourceMaps,
-    ).catch(() => ({}));
-    for (const [k, f] of Object.entries(found)) {
+    ).catch(() => ({ files: {}, names: {} }));
+    for (const [k, n] of Object.entries(found.names)) {
+      if (this.conflictingNames.has(k)) continue;
+      if (this.sourceNames[k] !== undefined && this.sourceNames[k] !== n) {
+        delete this.sourceNames[k];
+        this.conflictingNames.add(k);
+      } else this.sourceNames[k] = n;
+    }
+    for (const [k, f] of Object.entries(found.files)) {
       if (this.ambiguous.has(k)) continue;
       if (this.definitions[k] === undefined) this.definitions[k] = f;
       else if (this.definitions[k] !== f) {
@@ -715,6 +725,7 @@ export class PageProfiler {
     }
     delete raw.hookErrors;
     raw.definitions = { ...this.definitions };
+    if (Object.keys(this.sourceNames).length) raw.sourceNames = { ...this.sourceNames };
     // Every declared phase is reported, even with no renders: an empty phase is
     // part of the snapshot, so renders appearing there later are a regression.
     for (const phase of declaredPhases) {

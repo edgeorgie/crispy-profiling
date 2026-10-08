@@ -1035,6 +1035,20 @@ describe('mutable reads (council round 1, expert)', () => {
   });
 });
 
+describe('source names (council round 4)', () => {
+  it('reports the name written in the source, not the one the bundler gave', async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      scenarios: [{ name: 'b', path: '/?bundled', steps: [] }],
+    });
+    const names = Object.keys((await profile(config)).scenarios.b?.phases.load?.components ?? {});
+    expect(names).toContain('Member');
+    expect(names).not.toContain('Member2');
+  });
+});
+
 describe('expect step (council round 3)', () => {
   it('passes when the UI updates and fails the scenario when it does not', async () => {
     const steps = [

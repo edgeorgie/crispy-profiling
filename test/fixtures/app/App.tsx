@@ -295,6 +295,7 @@ function App() {
           <Slider />
         </>
       )}
+      {location.search.includes('bundled') && <Roster />}
       {location.search.includes('iframe') && <iframe src="/?child" title="child" />}
       {location.search.includes('dupes') && (
         <>
@@ -318,6 +319,20 @@ function App() {
         ))}
       </ul>
     </ThemeContext.Provider>
+  );
+}
+
+// ?bundled: esbuild renames the inner function to `Member2` because `Member` is in scope.
+const Member = memo(function Member({ name }: { name: string }) {
+  return <li>{name}</li>;
+});
+function Roster() {
+  return (
+    <ul>
+      {['ana', 'luis'].map((name) => (
+        <Member key={name} name={name} />
+      ))}
+    </ul>
   );
 }
 
