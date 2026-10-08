@@ -290,6 +290,31 @@ describe('config typos (council round 3)', () => {
       /unknown key "readonly" \(did you mean "readOnly"\?\)[\s\S]*"step" in scenario "a" \(did you mean "steps"\?\)/,
     );
   });
+
+  it('rejects typos inside steps instead of ignoring them (round 5)', async () => {
+    const { parseConfig } = await import('../src/config.js');
+    const config = (steps: unknown[]) => ({
+      baseUrl: 'http://localhost:5173',
+      scenarios: [{ name: 'a', steps }],
+    });
+    // A misspelled key on an expect step used to pass, so a frozen UI went green.
+    expect(() => parseConfig(config([{ action: 'expect', selector: '#n', cuont: 3 }]))).toThrow(
+      /unknown key "cuont" in "expect" in scenario "a" \(step 1\) \(did you mean "count"\?\)/,
+    );
+    expect(() => parseConfig(config([{ action: 'clik', selector: '#go' }]))).toThrow(
+      /unknown action "clik" in scenario "a" \(step 1\) \(did you mean "click"\?\)/,
+    );
+    expect(() => parseConfig(config([{ action: 'banana' }]))).toThrow(/use one of click, /);
+    // Valid steps still parse.
+    expect(() =>
+      parseConfig(
+        config([
+          { action: 'click', selector: '#go' },
+          { action: 'phase', name: 'x' },
+        ]),
+      ),
+    ).not.toThrow();
+  });
 });
 
 describe('render snapshot comparison (round-2 fixes)', async () => {
@@ -390,7 +415,12 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(serializeSnapshot(snap)).toContain('"mutable": true');
     const r = compareSnapshot(snap, make(0, 0));
     expect(r.improvements.map((c) => c.suspect)).toEqual([true]);
-    expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('⚠️ check the UI');
+    const md = snapshotToMarkdown(r, 'crispy.snap.json');
+    expect(md).toContain('⚠️ check the UI');
+    // No green heading and no "lock it in" nudge next to a possibly frozen UI.
+    expect(md).toContain('⚠️ no render regressions, but check the UI');
+    expect(md).not.toContain('✅ no render regressions');
+    expect(md).not.toContain('Improvements found');
     // Accepting the drop keeps the flag, though the component no longer renders.
     expect(
       keepRanges(toSnapshot(make(0, 0)), snap).scenarios.home?.interaction?.components.Item
@@ -959,6 +989,28 @@ describe('root causes (R5-05, R5-06)', async () => {
     );
     expect(causes[1]?.text).toContain('Wrapping `List` in React.memo would skip 13 of them');
   });
+
+  it('warns that useCallback cannot go inside a .map when the function is made per item', () => {
+    const row = component(20, 20, 0);
+    row.callbackRenders = s(20);
+    row.callbackProps = { onSelect: 20 };
+    row.creators = { 'onSelect|App': 20 };
+    const app = component(1, 1, 0);
+    app.causes.state = 1;
+    const text = rootCauses(phase({ App: app, Row: row }))[0]?.text ?? '';
+    expect(text).toContain('wrap them in useCallback there');
+    expect(text).toContain('inside a `.map`, hooks are not allowed in a loop');
+    // One instance per parent render: a plain useCallback is right, no loop warning.
+    const single = component(12, 12, 0);
+    single.callbackRenders = s(12);
+    single.callbackProps = { onSelect: 12 };
+    single.creators = { 'onSelect|App': 12 };
+    const parent = component(12, 12, 0);
+    parent.causes.state = 12;
+    const text2 = rootCauses(phase({ App: parent, Row: single }))[0]?.text ?? '';
+    expect(text2).toContain('wrap them in useCallback there');
+    expect(text2).not.toContain('.map');
+  });
 });
 
 describe('root causes never double count (R6-03)', async () => {
@@ -1212,5 +1264,93 @@ describe('scan safety', async () => {
       'Orders list',
     ])
       expect(risky.test(name), name).toBe(false);
+  });
+});
+
+describe('source names instead of bundler names (council round 4)', async () => {
+  const { applySourceNames } = await import('../src/report/aggregate.js');
+  const comp = (renders: number) =>
+    ({
+      renders,
+      mounts: renders,
+      updates: 0,
+      wastedRenders: 0,
+      avoidableRenders: 0,
+      changedProps: {},
+      unstableProps: {},
+      callbackProps: {},
+      callbackRenders: 0,
+      triggeredBy: {},
+      recreatedContextFrom: {},
+      memo: false,
+      locations: {},
+      causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
+      selfDurationMs: 0,
+    }) as RawRun['phases'][string]['components'][string];
+  const run = (
+    components: Record<string, number>,
+    sourceNames?: Record<string, string>,
+  ): RawRun => ({
+    reactVersion: '19',
+    profilingBuild: true,
+    phases: {
+      load: {
+        commits: 1,
+        components: Object.fromEntries(Object.entries(components).map(([k, n]) => [k, comp(n)])),
+      },
+    },
+    vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
+    warnings: [],
+    definitions: Object.fromEntries(Object.keys(components).map((k) => [k, 'src/Team.tsx'])),
+    ...(sourceNames && { sourceNames }),
+  });
+  const keys = (r: RawRun) => Object.keys(r.phases.load?.components ?? {});
+
+  it('shows Member instead of the Member2 the bundler produced', () => {
+    const [r] = applySourceNames([run({ Member2: 8 }, { Member2: 'Member' })]);
+    expect(keys(r as RawRun)).toEqual(['Member']);
+    expect(Object.keys((r as RawRun).definitions ?? {})).toEqual(['Member']);
+  });
+
+  it('keeps the numbered suffix of same-named components', () => {
+    const [r] = applySourceNames([
+      run({ Member2: 1, 'Member2#2': 2 }, { Member2: 'Member', 'Member2#2': 'Member' }),
+    ]);
+    expect(keys(r as RawRun)).toEqual(['Member', 'Member#2']);
+  });
+
+  it('does not rename onto a name another component already has', () => {
+    const [r] = applySourceNames([run({ Member: 1, Member2: 8 }, { Member2: 'Member' })]);
+    expect(keys(r as RawRun)).toEqual(['Member', 'Member2']);
+  });
+
+  it('leaves runs without source names untouched', () => {
+    const input = [run({ Member2: 8 })];
+    expect(applySourceNames(input)).toBe(input);
+  });
+});
+
+describe('read-only WebSocket guard (council round 5)', async () => {
+  const { isHotReloadSocket } = await import('../src/profiler/run.js');
+  it('exempts only the dev servers hot-reload sockets', () => {
+    for (const hot of [
+      '/?token=aB3dE5gH7jK9',
+      '/_next/webpack-hmr',
+      '/sockjs-node/123/x/websocket',
+    ]) {
+      expect(isHotReloadSocket(hot), hot).toBe(true);
+    }
+    // An app's own sockets stay guarded, even on common names or with a token in the query.
+    for (const app of [
+      '/ws',
+      '/ws/',
+      '/socket',
+      '/socket.io/?EIO=4',
+      '/chat?token=abc',
+      '/live',
+      '/',
+    ]) {
+      expect(isHotReloadSocket(app), app).toBe(false);
+    }
   });
 });

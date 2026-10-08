@@ -74,7 +74,7 @@ function budgetsMarkdown(report: CrispyReport): string {
  * What the recorded snapshot already tells you: the top avoidable-render root
  * causes across all scenarios, so the first run is useful on its own.
  */
-function insight(report: CrispyReport, max = 5): string {
+function insight(report: CrispyReport, max = 5, baselineMissing = false): string {
   const all = Object.values(report.scenarios).flatMap((s) =>
     Object.entries(s.phases).flatMap(([phase, p]) =>
       rootCauses(p).map((c) => ({ ...c, where: `${s.name} / ${phase}` })),
@@ -99,7 +99,9 @@ function insight(report: CrispyReport, max = 5): string {
     '',
     ...top.map((c, i) => `${i + 1}. _${c.where}_ — ${c.text}`),
     '',
-    'Fix one, then run `crispy test` again: it shows 🟢 improved. Locking that in with `-u` is a person’s decision (agents: ask first).',
+    baselineMissing
+      ? 'There is nothing to compare with yet: record the baseline first (the command above), then fix one of these and run the test again: it shows 🟢 improved. Locking that in with `-u` is a person’s decision (agents: ask first).'
+      : 'Fix one, then run `crispy test` again: it shows 🟢 improved. Locking that in with `-u` is a person’s decision (agents: ask first).',
     '',
   ].join('\n');
 }
@@ -131,7 +133,7 @@ export async function runSnapshotTest(
           options.ci
             ? 'Run `crispy test` locally (or `crispy test -u`) and commit the file.'
             : 'Record it with `crispy test` (MCP: `test_render_snapshots` with `update: true`; a first snapshot only records the current counts) and commit the file.'
-        }\n${insight(report)}${extra}`,
+        }\n${insight(report, 5, true)}${extra}`,
       };
     }
     const snap = toSnapshot(report, config.snapshot.includeLibraries);
@@ -183,12 +185,19 @@ export async function runSnapshotTest(
   const note = result.additions.length
     ? `\n${result.additions.length} new or renamed scenario/phase/component entr${result.additions.length === 1 ? 'y is' : 'ies are'} not in \`${shown}\` yet: run \`crispy test -u\` to record ${result.additions.length === 1 ? 'it' : 'them'}.\n`
     : '';
+  // In CI a "check the UI" row fails too: fewer renders on a component that reads
+  // mutable data can hide a stale screen, so a person must look and accept it
+  // with --update (which locks the lower count in) instead of it passing silently.
+  const suspects = options.ci ? result.changes.filter((c) => c.suspect) : [];
+  const suspectNote = suspects.length
+    ? `\n❌ ${suspects.length} change(s) marked ⚠️ check the UI fail in CI: open the screen and confirm it still updates, then run \`crispy test -u\` and commit \`${shown}\`. Or undo the React.memo there.\n`
+    : '';
   return {
-    exitCode: result.passed && !budgetsFail ? 0 : 1,
+    exitCode: result.passed && !budgetsFail && !suspects.length ? 0 : 1,
     file,
     written,
     result,
     report,
-    markdown: snapshotToMarkdown(result, shown) + note + extra,
+    markdown: snapshotToMarkdown(result, shown) + suspectNote + note + extra,
   };
 }

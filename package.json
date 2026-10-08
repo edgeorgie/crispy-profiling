@@ -1,6 +1,6 @@
 {
   "name": "crispy-profiling",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic React render profiling for humans, CI and AI agents. CLI + MCP server + Agent Skill.",
   "keywords": [
     "react",
@@ -71,7 +71,7 @@
   "dependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",
     "@modelcontextprotocol/sdk": "^1.32.0",
-    "playwright-core": "^1.63.0",
+    "playwright-core": "^1.64.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {

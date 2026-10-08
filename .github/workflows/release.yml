@@ -68,6 +68,15 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Wait until npm serves the new version
+        # The MCP Registry validates the npm package; a fresh publish can take minutes to appear.
+        run: |
+          for i in $(seq 1 30); do
+            npm view "crispy-profiling@${TAG#v}" version >/dev/null 2>&1 && exit 0
+            sleep 20
+          done
+          echo "crispy-profiling@${TAG#v} did not appear on npm after 10 minutes"; exit 1
+
       - name: Publish to the official MCP Registry
         run: |
           curl -sSfL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher

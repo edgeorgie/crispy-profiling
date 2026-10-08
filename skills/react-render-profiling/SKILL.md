@@ -73,6 +73,7 @@ from `crispy-profiling/playwright` to the relevant test over writing a new scena
    🟢 only proves fewer renders: also check that the UI you touched still updates (run the app's
    tests or look at the screen). A component that drops to 0 renders after a React.memo is suspect,
    and "⚠️ check the UI" means crispy knows it reads mutable data: undo the memo unless the UI is fine.
+   `crispy test --ci` fails on that row until a person confirms the screen and runs `crispy test -u`.
    Better: before fixing, add an `expect` step after the interaction (`{ "action": "expect",
    "selector": "…", "text": "…" }`) so a frozen UI fails the scenario.
 
@@ -124,8 +125,9 @@ rendered and a suggested fix — apply it and run again. The MCP tool is read-on
 user confirms the new counts are intended, pass `update: true` with
 `confirm: "accept-render-changes"` (CLI: `npx crispy-profiling test -u`). **Never accept a snapshot change on
 your own to make the test pass** — that hides the regression the test exists to catch; show the
-user the diff and ask. If there is no snapshot yet, `crispy test` creates one: tell the user to
-commit it.
+user the diff and ask. If there is no snapshot yet, the CLI `crispy test` creates one; over MCP,
+`test_render_snapshots` only reports it missing, so record the baseline *before* you change code
+(`update: true`; a first snapshot only stores the current counts, so it needs no `confirm`) and tell the user to commit it.
 
 ## Budgets (prevent regressions)
 

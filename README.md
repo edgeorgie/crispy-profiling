@@ -35,11 +35,13 @@ validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are no
 ## Quick start
 
 ```bash
-npm i -D crispy-profiling
+npm i -D crispy-profiling   # or: pnpm add -D crispy-profiling · yarn add -D crispy-profiling
 npx crispy install   # downloads Chromium once (if that fails, an installed Chrome/Chromium is used)
 npx crispy scan      # zero config: starts your dev server, finds interactions, profiles them
 npx crispy test      # records crispy.snap.json from the scanned scenarios → commit it
 ```
+
+Using pnpm or yarn? Run the same commands as `pnpm exec crispy …` or `yarn crispy …`.
 
 Words you will see: a **render** is React running a component again; **avoidable** means its
 inputs did not really change, so the screen would look the same without it; **hoist** means move a
@@ -181,7 +183,7 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 | `cpuThrottle` | `1` | Slow the CPU down (e.g. `4`) to check counts on a slow CI runner or low-end device. Counts should not change. |
 | `clock` | `false` | Control timers with a fake clock (`setTimeout`, `setInterval`, `requestAnimationFrame`, `Date`, `performance`) so polling/animated apps give deterministic counts. |
 | `timeoutMs` | `30000` | Max time for navigation, a step or settling. |
-| `readOnly` | `true` | Block every request other than GET, and WebSocket messages the page sends (hot-reload sockets excepted), while profiling, so replayed clicks never change data. Blocked writes are listed in the report's warnings. Set `false` only for flows that must write, e.g. against a disposable test database. |
+| `readOnly` | `true` | Block every request other than GET, and WebSocket messages the page sends (only the dev server's own hot-reload sockets are excepted), while profiling, so replayed clicks never change data. A WebSocket connection itself is still opened and can receive: only what the page sends is dropped. Blocked writes are listed in the report's warnings. Set `false` only for flows that must write, e.g. against a disposable test database. |
 | `timings` | `false` | Add main-thread CPU per phase (`cost`: ms of JavaScript and of all main-thread work, also in production builds), component self time and LCP/CLS/long tasks. Off by default: timings are not reproducible. |
 | `topComponents` | `0` | Keep only the N most-rendered components per phase (`0` = all). |
 | `viewport` | `1280×800` | Browser viewport. |
@@ -266,7 +268,8 @@ Exit codes: `0` ok · `1` budget violation, regression or failed `expect` step �
 
 ### MCP server
 
-Tools: `profile_url`, `run_scenarios`, `test_render_snapshots`, `compare_reports`, `inspect_component`.
+Tools: `scan_app` (no config yet: finds interactions and returns the top causes), `profile_url`,
+`run_scenarios`, `test_render_snapshots`, `compare_reports`, `inspect_component`.
 
 ```json
 {
@@ -316,6 +319,15 @@ jobs:
 ```
 
 The action installs Chromium and its system libraries itself: no browser setup in the workflow.
+
+Before the first run, record and commit the baseline: `npx crispy test` locally, then commit
+`crispy.snap.json`. Without it the job fails with "missing snapshot" (by design: CI never records one
+for you). `@v0` is a moving tag for the 0.x releases; pin `@v0.2.0` (or a commit SHA) to freeze it. On
+pull requests from forks GitHub gives the token no write access, so the PR comment is skipped with a warning; the job
+summary and the pass/fail result still work.
+
+If the job is red: open the job summary, fix the cause it names, push again. If the change is intended,
+a person runs `npx crispy test -u` and commits the new snapshot.
 
 The step fails when any component renders more than the committed snapshot allows (or a budget is
 exceeded). The job summary — and one PR comment, updated on every push — lists each regression with

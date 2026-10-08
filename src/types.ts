@@ -97,6 +97,8 @@ export interface RawRun {
   warnings: string[];
   /** Component key -> file where the component function is defined (when resolvable). */
   definitions?: Record<string, string>;
+  /** Component key -> the name written in the source, when the bundler renamed the function. */
+  sourceNames?: Record<string, string>;
   /** Main-thread CPU per phase in ms (CDP ScriptDuration / TaskDuration), only with `timings`. */
   cost?: Record<string, { scriptMs: number; taskMs: number }>;
 }

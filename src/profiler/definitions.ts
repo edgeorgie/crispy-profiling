@@ -15,19 +15,25 @@ export async function trackScripts(cdp: CDPSession): Promise<Map<string, string>
   return scripts;
 }
 
+/** Where the declared name starts in "function Name(", "async function Name(" or "class Name". */
+const DECLARATION = /^(?:async\s+)?(?:function\s*\*?\s*|class\s+)([A-Za-z_$][\w$]*)/;
+
 /**
  * Resolves, for every component key seen by the hook, the file where the
  * component function is defined. This gives same-named components a stable,
- * source-based identity that does not depend on render order.
+ * source-based identity that does not depend on render order. Also returns the
+ * name written in the source when the bundler renamed the function: esbuild turns
+ * `memo(function Member…)` into `Member2` when `const Member` is in scope.
  */
 export async function resolveDefinitions(
   page: Page,
   cdp: CDPSession,
   scripts: Map<string, string>,
   sourceMaps?: SourceMapResolver,
-): Promise<Record<string, string>> {
+): Promise<{ files: Record<string, string>; names: Record<string, string> }> {
   const keys = await page.evaluate(() => Object.keys((window as any).__CRISPY__?.typeRefs ?? {}));
   const out: Record<string, string> = {};
+  const names: Record<string, string> = {};
   const objectGroup = 'crispy-definitions';
   try {
     for (const key of keys) {
@@ -53,9 +59,56 @@ export async function resolveDefinitions(
         location.columnNumber + 1,
       );
       out[key] = mapped?.file ?? shortPath(url);
+      const original = sourceMaps
+        ? await originalName(cdp, result.objectId, url, location, sourceMaps)
+        : undefined;
+      if (original) names[key] = original;
     }
   } finally {
     await cdp.send('Runtime.releaseObjectGroup', { objectGroup }).catch(() => {});
   }
-  return out;
+  return { files: out, names };
+}
+
+/**
+ * The name the function has in the source file, when it differs from the one in
+ * the bundle. The source map records it at the position of the declared name.
+ */
+async function originalName(
+  cdp: CDPSession,
+  objectId: string,
+  url: string,
+  location: { lineNumber: number; columnNumber: number },
+  sourceMaps: SourceMapResolver,
+): Promise<string | undefined> {
+  const { result } = await cdp
+    .send('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: 'function(){return Function.prototype.toString.call(this).slice(0,200)}',
+      returnByValue: true,
+    })
+    .catch(() => ({ result: { value: '' } }));
+  const head = String(result.value ?? '');
+  const m = head.match(DECLARATION);
+  if (!m?.[1]) return undefined;
+  const nameAt = head.indexOf(m[1]);
+  // V8 points a function at its parameter list but a class at the `class` keyword.
+  const paren = head.startsWith('class') ? 0 : head.indexOf('(', nameAt);
+  const offset = nameAt - paren;
+  // The generated name must sit on the same line as the position V8 reports.
+  if (
+    nameAt < 0 ||
+    paren < 0 ||
+    head.slice(Math.min(nameAt, paren), Math.max(nameAt, paren)).includes('\n')
+  ) {
+    return undefined;
+  }
+  const mapped = await sourceMaps.resolve(
+    url,
+    location.lineNumber + 1,
+    location.columnNumber + 1 + offset,
+  );
+  return mapped?.name && mapped.name !== m[1] && /^[A-Za-z_$][\w$]*$/.test(mapped.name)
+    ? mapped.name
+    : undefined;
 }

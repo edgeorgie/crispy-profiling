@@ -124,13 +124,17 @@ export class SourceMapResolver {
     url: string,
     line: number,
     column: number,
-  ): Promise<{ file: string; line: number } | null> {
+  ): Promise<{ file: string; line: number; name?: string } | null> {
     const map = await this.load(url);
     if (!map) return null;
     const pos = originalPositionFor(map, { line, column: Math.max(0, column - 1) });
     if (!pos.source || pos.line == null) return null;
     const placed = this.place(pos.source, url);
-    return { file: placed.file, line: placed.generatedFile ? line : pos.line };
+    return {
+      file: placed.file,
+      line: placed.generatedFile ? line : pos.line,
+      ...(pos.name && { name: pos.name }),
+    };
   }
 
   /**
