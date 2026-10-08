@@ -308,6 +308,62 @@ export function hideInternals(runs: RawRun[]): { runs: RawRun[]; hidden: number 
 }
 
 /**
+ * Shows the name written in the source instead of the one the bundler gave the
+ * function: `const Member = memo(function Member…)` is bundled as `Member2`, and
+ * nobody can grep for that. A name is only swapped when it is free in every run.
+ */
+export function applySourceNames(runs: RawRun[]): RawRun[] {
+  const keys = new Set<string>();
+  for (const r of runs) {
+    for (const p of Object.values(r.phases)) for (const k of Object.keys(p.components)) keys.add(k);
+  }
+  const suffix = (k: string) => k.match(/#\d+$/)?.[0] ?? '';
+  const target: Record<string, string | undefined> = {};
+  for (const r of runs) {
+    for (const [k, name] of Object.entries(r.sourceNames ?? {})) {
+      const to = `${name}${suffix(k)}`;
+      if (to === k || keys.has(to)) continue;
+      // The same bundled key must map to the same source name in every run.
+      target[k] = target[k] === undefined || target[k] === to ? to : '';
+    }
+  }
+  const rename: Record<string, string> = {};
+  const taken = new Set<string>();
+  for (const k of [...keys].sort(cmp)) {
+    const to = target[k];
+    if (!to || taken.has(to)) continue;
+    rename[k] = to;
+    taken.add(to);
+  }
+  if (Object.keys(rename).length === 0) return runs;
+  const remap = (m: Record<string, number> | undefined) =>
+    Object.fromEntries(Object.entries(m ?? {}).map(([t, n]) => [rename[t] ?? t, n]));
+  return runs.map((r) => ({
+    ...r,
+    ...(r.definitions && {
+      definitions: Object.fromEntries(
+        Object.entries(r.definitions).map(([k, f]) => [rename[k] ?? k, f]),
+      ),
+    }),
+    phases: Object.fromEntries(
+      Object.entries(r.phases).map(([phase, p]) => [
+        phase,
+        {
+          ...p,
+          ...(p.memoSkips && { memoSkips: remap(p.memoSkips) }),
+          components: Object.fromEntries(
+            Object.entries(p.components).map(([k, v]) => [
+              rename[k] ?? k,
+              { ...v, triggeredBy: remap(v.triggeredBy) },
+            ]),
+          ),
+        },
+      ]),
+    ),
+  }));
+}
+
+/**
  * Keys components that share a name by their definition file (`Item (src/a.tsx)`)
  * so they never mix up. Each run is renamed with its own definitions: `Item#2`
  * may be a different component in each run when modules load in another order.
@@ -426,7 +482,7 @@ export function buildReport(
   const updates: Record<string, number> = {};
   for (const { scenario, runs: rawRuns } of results) {
     const visible = config.includeInternals ? { runs: rawRuns, hidden: 0 } : hideInternals(rawRuns);
-    const { runs, definedIn } = stabilizeKeys(visible.runs);
+    const { runs, definedIn } = stabilizeKeys(applySourceNames(visible.runs));
     reactVersion ??= runs[0]?.reactVersion ?? null;
     profilingBuild ||= runs.some((r) => r.profilingBuild);
 
