@@ -14,8 +14,10 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - Reusing a dev server that is already running no longer prints a warning when crispy checked it
   serves this very app; the warning stays when it could not verify that.
-
-### Changed
+- A snapshot test whose only changes are "⚠️ check the UI" rows no longer shows the green
+  "no render regressions" heading or the "lock the improvements in" nudge: it says to check the UI.
+- With no snapshot yet, the tip says to record the baseline first (MCP: `update: true`) before
+  fixing, instead of promising a 🟢 that cannot appear; the skill says the same.
 - `crispy init` writes a load-only starter scenario instead of clicking the first visible button
   (which could be "log out"); the message points to `crispy scan` for finding interactions.
 - Components show the name written in the source instead of the one the bundler produced:

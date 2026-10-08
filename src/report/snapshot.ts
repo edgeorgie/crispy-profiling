@@ -709,7 +709,9 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   const lines = [
     `## 🥓 crispy render snapshots: ${
       result.passed
-        ? '✅ no render regressions'
+        ? result.changes.some((c) => c.suspect)
+          ? '⚠️ no render regressions, but check the UI'
+          : '✅ no render regressions'
         : `❌ ${result.regressions.length} render regression(s)${causes(result.regressions)}`
     }`,
     '',
@@ -754,7 +756,7 @@ export function snapshotToMarkdown(result: SnapshotResult, file: string): string
   }
   for (const c of sorted) if (!blocking.has(c)) lines.push(row(c));
   lines.push('');
-  if (result.improvements.length) {
+  if (result.improvements.length && !result.changes.some((c) => c.suspect)) {
     lines.push(`Improvements found: run \`crispy test --update\` to lock them into \`${file}\`.`);
     lines.push(GREEN_CAVEAT);
   }
