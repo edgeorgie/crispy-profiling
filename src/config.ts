@@ -264,15 +264,46 @@ function unknownKeys(value: unknown, known: string[], where: string): string[] {
     });
 }
 
+/** Keys each step action accepts, so a typo (`"cuont"`) is an error instead of a silent no-op. */
+const STEP_KEYS: Record<string, string[]> = Object.fromEntries(
+  StepSchema.options.map((o) => [o.shape.action.value, Object.keys(o.shape)]),
+);
+
+function stepProblems(steps: unknown, where: string): string[] {
+  if (!Array.isArray(steps)) return [];
+  const problems: string[] = [];
+  steps.forEach((step, i) => {
+    const action = (step as { action?: unknown } | null)?.action;
+    const at = `${where} (step ${i + 1})`;
+    if (typeof action !== 'string') return;
+    const keys = STEP_KEYS[action];
+    if (!keys) {
+      const known = Object.keys(STEP_KEYS);
+      const near = known
+        .map(
+          (n) => [n, n.toLowerCase() === action.toLowerCase() ? 0 : distance(n, action)] as const,
+        )
+        .filter(([, d]) => d <= 2)
+        .sort((a, b) => a[1] - b[1])[0]?.[0];
+      problems.push(
+        `unknown action "${action}"${at}${near ? ` (did you mean "${near}"?)` : `: use one of ${known.join(', ')}`}`,
+      );
+      return;
+    }
+    problems.push(...unknownKeys(step, keys, ` in "${action}"${at}`));
+  });
+  return problems;
+}
+
 export function parseConfig(input: unknown): CrispyConfig {
   const problems = unknownKeys(input, Object.keys(ConfigSchema.shape), '');
   const scenarios = (input as { scenarios?: unknown })?.scenarios;
   if (Array.isArray(scenarios)) {
     for (const s of scenarios) {
       const name = (s as { name?: unknown })?.name;
-      problems.push(
-        ...unknownKeys(s, Object.keys(ScenarioSchema.shape), ` in scenario "${String(name)}"`),
-      );
+      const where = ` in scenario "${String(name)}"`;
+      problems.push(...unknownKeys(s, Object.keys(ScenarioSchema.shape), where));
+      problems.push(...stepProblems((s as { steps?: unknown })?.steps, where));
     }
   }
   if (problems.length)

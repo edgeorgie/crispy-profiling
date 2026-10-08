@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- A typo inside a step (`"cuont"` on an `expect`, `"clik"` as the action) is now an error with a
+  "did you mean" suggestion. It used to be ignored, so an `expect` that checked nothing let a
+  frozen UI pass.
+
 ### Changed
 - `crispy init` writes a load-only starter scenario instead of clicking the first visible button
   (which could be "log out"); the message points to `crispy scan` for finding interactions.
