@@ -183,12 +183,19 @@ export async function runSnapshotTest(
   const note = result.additions.length
     ? `\n${result.additions.length} new or renamed scenario/phase/component entr${result.additions.length === 1 ? 'y is' : 'ies are'} not in \`${shown}\` yet: run \`crispy test -u\` to record ${result.additions.length === 1 ? 'it' : 'them'}.\n`
     : '';
+  // In CI a "check the UI" row fails too: fewer renders on a component that reads
+  // mutable data can hide a stale screen, so a person must look and accept it
+  // with --update (which locks the lower count in) instead of it passing silently.
+  const suspects = options.ci ? result.changes.filter((c) => c.suspect) : [];
+  const suspectNote = suspects.length
+    ? `\n❌ ${suspects.length} change(s) marked ⚠️ check the UI fail in CI: open the screen and confirm it still updates, then run \`crispy test -u\` and commit \`${shown}\`. Or undo the React.memo there.\n`
+    : '';
   return {
-    exitCode: result.passed && !budgetsFail ? 0 : 1,
+    exitCode: result.passed && !budgetsFail && !suspects.length ? 0 : 1,
     file,
     written,
     result,
     report,
-    markdown: snapshotToMarkdown(result, shown) + note + extra,
+    markdown: snapshotToMarkdown(result, shown) + suspectNote + note + extra,
   };
 }

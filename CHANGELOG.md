@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- `crispy test --ci` (the default in CI) now fails on a "⚠️ check the UI" row: fewer renders on a
+  component that reads mutable data can hide a stale screen, so a person has to confirm the UI and
+  accept it with `crispy test -u`. Local runs still only warn.
+
 ## [0.2.0] - 2026-10-05
 
 ### Breaking
