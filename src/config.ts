@@ -331,12 +331,9 @@ export function exampleConfig(
       {
         name: 'home',
         path: '/',
-        // Replace with the interaction you want to guard: wait for the app, then act.
-        steps: [
-          { action: 'waitFor', selector: 'button:visible' },
-          { action: 'phase', name: 'interaction' },
-          { action: 'click', selector: 'button:visible' },
-        ],
+        // Load only, so nothing is clicked by surprise (the first button may log you out).
+        // Add the interaction you want to guard: waitFor, phase "interaction", click.
+        steps: [],
       },
     ],
   };

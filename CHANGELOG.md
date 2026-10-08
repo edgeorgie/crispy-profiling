@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- `crispy init` writes a load-only starter scenario instead of clicking the first visible button
+  (which could be "log out"); the message points to `crispy scan` for finding interactions.
 - `crispy test --ci` (the default in CI) now fails on a "⚠️ check the UI" row: fewer renders on a
   component that reads mutable data can hide a stale screen, so a person has to confirm the UI and
   accept it with `crispy test -u`. Local runs still only warn.

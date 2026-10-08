@@ -60,9 +60,10 @@ describe('crispy CLI', () => {
   it('init refuses to overwrite and writes a valid config', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'crispy-init-'));
     expect((await exec(dir, ['init', '--base-url', 'http://localhost:4000'])).status).toBe(0);
-    expect(JSON.parse(readFileSync(join(dir, 'crispy.config.json'), 'utf8')).baseUrl).toBe(
-      'http://localhost:4000',
-    );
+    const written = JSON.parse(readFileSync(join(dir, 'crispy.config.json'), 'utf8'));
+    expect(written.baseUrl).toBe('http://localhost:4000');
+    // The starter only loads the page: no click that could log the user out.
+    expect(written.scenarios[0].steps).toEqual([]);
     expect((await exec(dir, ['init'])).status).toBe(2);
   });
 

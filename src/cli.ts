@@ -106,7 +106,7 @@ async function main(argv: string[]): Promise<number> {
           (app.devCommand
             ? `crispy will start your dev server with "${app.devCommand}". `
             : 'Start your dev server first. ') +
-          `Edit the scenario steps, then run "npx crispy test" to record crispy.snap.json (commit it).`,
+          `The starter scenario only loads the page: add the interaction to guard under "steps" (or run "npx crispy scan" to find some), then "npx crispy test" records crispy.snap.json (commit it).`,
       );
       return 0;
     }
