@@ -1,7 +1,7 @@
 {
   "name": "crispy-profiling",
   "displayName": "Crispy Profiling",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic React render profiling: find wasted re-renders, their causes, and verify fixes with before/after numbers.",
   "author": {
     "name": "Edwin Jorge",
@@ -16,7 +16,7 @@
   "mcpServers": {
     "crispy-profiling": {
       "command": "npx",
-      "args": ["-y", "crispy-profiling@0.2.0", "mcp"]
+      "args": ["-y", "crispy-profiling@0.3.0", "mcp"]
     }
   }
 }

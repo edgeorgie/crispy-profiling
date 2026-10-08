@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-08
 ### Changed
 - `crispy init` writes a load-only starter scenario instead of clicking the first visible button
   (which could be "log out"); the message points to `crispy scan` for finding interactions.
