@@ -35,11 +35,13 @@ validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are no
 ## Quick start
 
 ```bash
-npm i -D crispy-profiling
+npm i -D crispy-profiling   # or: pnpm add -D crispy-profiling · yarn add -D crispy-profiling
 npx crispy install   # downloads Chromium once (if that fails, an installed Chrome/Chromium is used)
 npx crispy scan      # zero config: starts your dev server, finds interactions, profiles them
 npx crispy test      # records crispy.snap.json from the scanned scenarios → commit it
 ```
+
+Using pnpm or yarn? Run the same commands as `pnpm exec crispy …` or `yarn crispy …`.
 
 Words you will see: a **render** is React running a component again; **avoidable** means its
 inputs did not really change, so the screen would look the same without it; **hoist** means move a
@@ -266,7 +268,8 @@ Exit codes: `0` ok · `1` budget violation, regression or failed `expect` step �
 
 ### MCP server
 
-Tools: `profile_url`, `run_scenarios`, `test_render_snapshots`, `compare_reports`, `inspect_component`.
+Tools: `scan_app` (no config yet: finds interactions and returns the top causes), `profile_url`,
+`run_scenarios`, `test_render_snapshots`, `compare_reports`, `inspect_component`.
 
 ```json
 {
