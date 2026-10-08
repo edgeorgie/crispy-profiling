@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Reusing a dev server that is already running no longer prints a warning when crispy checked it
+  serves this very app; the warning stays when it could not verify that.
+
+### Changed
 - `crispy init` writes a load-only starter scenario instead of clicking the first visible button
   (which could be "log out"); the message points to `crispy scan` for finding interactions.
 - Components show the name written in the source instead of the one the bundler produced:
