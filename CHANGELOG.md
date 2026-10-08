@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Components show the name written in the source instead of the one the bundler produced:
+  `const Member = memo(function Member…)` was reported as `Member2` (esbuild renames the inner
+  function), which nobody can grep. The name comes from the source map; without one nothing changes.
+  Existing snapshots show those components as renamed once.
+- When a recreated function is passed to several rows per render of its creator, the fix also says
+  that `useCallback` cannot go inside a `.map` (pass one stable handler and the item id instead).
+
 ## [0.2.0] - 2026-10-05
 
 ### Breaking

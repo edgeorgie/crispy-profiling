@@ -344,15 +344,26 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
     const wrap = notMemo.length
       ? `, then wrap ${code(notMemo.slice(0, 2))} in React.memo (stable props alone do not skip renders)`
       : '';
+    // Several affected renders per render of the creator: the function is most likely
+    // made per list item, where useCallback is not allowed (hooks cannot run in a loop).
+    const creatorRenders = phase.components[creator]?.renders.median ?? 0;
+    const affectedRenders = e.affected.reduce(
+      (n, k) => n + (phase.components[k]?.renders.median ?? 0),
+      0,
+    );
+    const perItem =
+      creatorRenders > 0 && affectedRenders >= 2 * creatorRenders && e.props.some(isCallback)
+        ? ': if they are created inside a `.map`, hooks are not allowed in a loop, so create one stable handler outside it and pass the item id as a prop (or read it from the event target)'
+        : '';
     const fix = stale
       ? `${depFix(`\`${stale[0]}\``, stale[2] ?? '', isCallback(stale[0] ?? ''))}${realChange(stale[2] ?? '') ? '' : wrap}`
       : renderFunction(creator)
         ? `\`${creator}\` is a render function where hooks are not allowed: move that markup into its own component and memoize the values there (or hoist constants)${wrap}`
         : `${
             e.props.every(isCallback)
-              ? 'wrap them in useCallback there'
+              ? `wrap them in useCallback there${perItem}`
               : e.props.some(isCallback)
-                ? 'wrap the functions in useCallback and the objects in useMemo there (or hoist constants out of the component)'
+                ? `wrap the functions in useCallback and the objects in useMemo there (or hoist constants out of the component)${perItem}`
                 : 'hoist them out of the component if they are constant, else wrap them in useMemo there'
           }${wrap}`;
     // Where the values are passed: the first affected component rendered by the creator.
