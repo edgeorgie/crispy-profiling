@@ -74,7 +74,9 @@ export async function startWebServer(
       );
     }
     log(
-      `[crispy] ⚠️ reusing the server already running at ${url} — ${served === local && served ? `it serves "${served}", this app` : "make sure it is this app's development build"}.`,
+      served && local && served === local
+        ? `[crispy] using the dev server already running at ${url} ("${served}", this app).`
+        : `[crispy] ⚠️ using the server already running at ${url}: crispy could not check it is this app, so make sure it is this app's development build.`,
     );
     return { stop: async () => {}, url, reused: true };
   }

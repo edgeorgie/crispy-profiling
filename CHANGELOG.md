@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- A typo inside a step (`"cuont"` on an `expect`, `"clik"` as the action) is now an error with a
+  "did you mean" suggestion. It used to be ignored, so an `expect` that checked nothing let a
+  frozen UI pass.
+
+### Changed
+- Reusing a dev server that is already running no longer prints a warning when crispy checked it
+  serves this very app; the warning stays when it could not verify that.
+
 ### Changed
 - A snapshot test whose only changes are "⚠️ check the UI" rows no longer shows the green
   "no render regressions" heading or the "lock the improvements in" nudge: it says to check the UI.

@@ -290,6 +290,31 @@ describe('config typos (council round 3)', () => {
       /unknown key "readonly" \(did you mean "readOnly"\?\)[\s\S]*"step" in scenario "a" \(did you mean "steps"\?\)/,
     );
   });
+
+  it('rejects typos inside steps instead of ignoring them (round 5)', async () => {
+    const { parseConfig } = await import('../src/config.js');
+    const config = (steps: unknown[]) => ({
+      baseUrl: 'http://localhost:5173',
+      scenarios: [{ name: 'a', steps }],
+    });
+    // A misspelled key on an expect step used to pass, so a frozen UI went green.
+    expect(() => parseConfig(config([{ action: 'expect', selector: '#n', cuont: 3 }]))).toThrow(
+      /unknown key "cuont" in "expect" in scenario "a" \(step 1\) \(did you mean "count"\?\)/,
+    );
+    expect(() => parseConfig(config([{ action: 'clik', selector: '#go' }]))).toThrow(
+      /unknown action "clik" in scenario "a" \(step 1\) \(did you mean "click"\?\)/,
+    );
+    expect(() => parseConfig(config([{ action: 'banana' }]))).toThrow(/use one of click, /);
+    // Valid steps still parse.
+    expect(() =>
+      parseConfig(
+        config([
+          { action: 'click', selector: '#go' },
+          { action: 'phase', name: 'x' },
+        ]),
+      ),
+    ).not.toThrow();
+  });
 });
 
 describe('render snapshot comparison (round-2 fixes)', async () => {
