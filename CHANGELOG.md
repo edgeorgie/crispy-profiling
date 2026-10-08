@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- `crispy init` writes a load-only starter scenario instead of clicking the first visible button
+  (which could be "log out"); the message points to `crispy scan` for finding interactions.
 - Components show the name written in the source instead of the one the bundler produced:
   `const Member = memo(function Member…)` was reported as `Member2` (esbuild renames the inner
   function), which nobody can grep. The name comes from the source map; without one nothing changes.
