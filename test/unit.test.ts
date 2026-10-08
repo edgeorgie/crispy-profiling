@@ -390,7 +390,12 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(serializeSnapshot(snap)).toContain('"mutable": true');
     const r = compareSnapshot(snap, make(0, 0));
     expect(r.improvements.map((c) => c.suspect)).toEqual([true]);
-    expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('⚠️ check the UI');
+    const md = snapshotToMarkdown(r, 'crispy.snap.json');
+    expect(md).toContain('⚠️ check the UI');
+    // No green heading and no "lock it in" nudge next to a possibly frozen UI.
+    expect(md).toContain('⚠️ no render regressions, but check the UI');
+    expect(md).not.toContain('✅ no render regressions');
+    expect(md).not.toContain('Improvements found');
     // Accepting the drop keeps the flag, though the component no longer renders.
     expect(
       keepRanges(toSnapshot(make(0, 0)), snap).scenarios.home?.interaction?.components.Item
