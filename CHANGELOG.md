@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Docs
+- README CI section: commit the baseline snapshot first, what `@v0` means and how to pin it, what
+  happens on fork PRs, and what to do when the job is red.
+
 ### Fixed
 - A typo inside a step (`"cuont"` on an `expect`, `"clik"` as the action) is now an error with a
   "did you mean" suggestion. It used to be ignored, so an `expect` that checked nothing let a

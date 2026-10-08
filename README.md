@@ -320,6 +320,15 @@ jobs:
 
 The action installs Chromium and its system libraries itself: no browser setup in the workflow.
 
+Before the first run, record and commit the baseline: `npx crispy test` locally, then commit
+`crispy.snap.json`. Without it the job fails with "missing snapshot" (by design: CI never records one
+for you). `@v0` is a moving tag for the 0.x releases; pin `@v0.2.0` (or a commit SHA) to freeze it. On
+pull requests from forks GitHub gives the token no write access, so the PR comment is skipped with a warning; the job
+summary and the pass/fail result still work.
+
+If the job is red: open the job summary, fix the cause it names, push again. If the change is intended,
+a person runs `npx crispy test -u` and commits the new snapshot.
+
 The step fails when any component renders more than the committed snapshot allows (or a budget is
 exceeded). The job summary — and one PR comment, updated on every push — lists each regression with
 its cause, where it is rendered and the suggested fix (`comment: false` to disable). `command: run` (with an optional `baseline` report) is available for budget-only or
