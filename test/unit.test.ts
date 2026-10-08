@@ -1329,3 +1329,28 @@ describe('source names instead of bundler names (council round 4)', async () => 
     expect(applySourceNames(input)).toBe(input);
   });
 });
+
+describe('read-only WebSocket guard (council round 5)', async () => {
+  const { isHotReloadSocket } = await import('../src/profiler/run.js');
+  it('exempts only the dev servers hot-reload sockets', () => {
+    for (const hot of [
+      '/?token=aB3dE5gH7jK9',
+      '/_next/webpack-hmr',
+      '/sockjs-node/123/x/websocket',
+    ]) {
+      expect(isHotReloadSocket(hot), hot).toBe(true);
+    }
+    // An app's own sockets stay guarded, even on common names or with a token in the query.
+    for (const app of [
+      '/ws',
+      '/ws/',
+      '/socket',
+      '/socket.io/?EIO=4',
+      '/chat?token=abc',
+      '/live',
+      '/',
+    ]) {
+      expect(isHotReloadSocket(app), app).toBe(false);
+    }
+  });
+});

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- The read-only WebSocket guard no longer exempts a bare `/ws` (or any `?token=` URL): an app's own
+  `/ws` endpoint received messages from a "read-only" run. Only the dev servers' hot-reload sockets
+  (Vite's `/?token=…`, `/_next/…`, webpack-hmr, sockjs-node) pass through. The README says that the
+  connection itself is still opened and only what the page sends is dropped.
+
 ### Docs
 - README CI section: commit the baseline snapshot first, what `@v0` means and how to pin it, what
   happens on fork PRs, and what to do when the job is red.

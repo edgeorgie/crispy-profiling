@@ -50,8 +50,16 @@ function explainReused(err: unknown, url: string | undefined, command?: string):
   return e;
 }
 
-/** Dev-server hot reload sockets (Vite, webpack, Next.js), never blocked. */
-const HMR_SOCKET = /webpack-hmr|sockjs-node|__vite|vite-hmr|[?&]token=|^\/ws\/?$|^\/_next\//i;
+/**
+ * Dev-server hot reload sockets (Vite, webpack, Next.js), never blocked. Deliberately narrow:
+ * an app's own `/ws`, `/socket` or `/chat?token=…` must stay guarded, so only the paths the
+ * dev servers use for HMR are listed (Vite's is the root path with a short `token`).
+ */
+const HMR_SOCKET = /webpack-hmr|sockjs-node|__vite|vite-hmr|^\/\?token=[\w-]+$|^\/_next\//i;
+
+export function isHotReloadSocket(pathAndSearch: string): boolean {
+  return HMR_SOCKET.test(pathAndSearch);
+}
 
 /** Aborts writes (requests and WebSocket sends) and closes popups (read-only profiling). */
 export async function guardContext(
@@ -69,7 +77,7 @@ export async function guardContext(
   // dropped (a chat message, a realtime mutation). Dev-server HMR sockets pass through.
   const reported = new Set<string>();
   await context.routeWebSocket(
-    (u) => !HMR_SOCKET.test(u.pathname + u.search),
+    (u) => !isHotReloadSocket(u.pathname + u.search),
     (ws) => {
       const server = ws.connectToServer();
       ws.onMessage(() => {
