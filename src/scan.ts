@@ -11,6 +11,7 @@ import {
 import { startWebServer } from './profiler/webserver.js';
 import { byCost, type RootCause, rootCauses } from './report/hints.js';
 import type { CrispyReport } from './types.js';
+import { cmp } from './util/cmp.js';
 
 export interface ScanOptions {
   /** Start path (default "/"). */
@@ -38,6 +39,8 @@ export interface ScanResult {
   skipped: { name: string; reason: string }[];
   /** Top root causes across all scenarios, most renders first. */
   causes: (RootCause & { where: string })[];
+  /** What scan saw but did not exercise, so a missing flow is not mistaken for a tested one. */
+  notTried: string[];
 }
 
 /**
@@ -60,6 +63,8 @@ interface Found {
   links: string[];
   /** The page asks to sign in (password field or a "log in" button). */
   login: boolean;
+  /** Seen but never clicked: buttons with a risky name, and clickable-looking non-buttons. */
+  notTried: { risky: string[]; pointer: Record<string, number> };
 }
 
 /** Runs in the page: safe interactive elements and same-origin links, in DOM order. */
@@ -82,6 +87,7 @@ function discoverInPage(risky: string): Found {
   const inMain = (el: Element) => el.closest('main, [role="main"]') !== null;
   const actions: Found['actions'] = [];
   const seen = new Set<string>();
+  const riskyNames: string[] = [];
   const clickable = document.querySelectorAll(
     'button, [role="button"], [role="tab"], [role="switch"], [role="checkbox"], input[type="checkbox"]',
   );
@@ -92,7 +98,11 @@ function discoverInPage(risky: string): Found {
     if (h.type === 'submit' && (h.form || el.closest('form'))) continue;
     const role = el.tagName === 'INPUT' ? 'checkbox' : el.getAttribute('role') || 'button';
     const name = norm(el.getAttribute('aria-label') || (el as HTMLElement).innerText || h.title);
-    if (!name || name.length > 40 || !meaningful(name) || isRisky(name)) continue;
+    if (name && name.length <= 40 && meaningful(name) && isRisky(name)) {
+      if (!riskyNames.includes(name) && riskyNames.length < 5) riskyNames.push(name);
+      continue;
+    }
+    if (!name || name.length > 40 || !meaningful(name)) continue;
     const key = `${role}|${name}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -200,7 +210,25 @@ function discoverInPage(risky: string): Found {
           norm((b as HTMLElement).innerText || (b as HTMLInputElement).value),
         ),
     );
-  return { actions: ranked.map(([a]) => a), links, login };
+  // Elements that look clickable (cursor: pointer) but are not buttons, links, tabs or
+  // fields: a React onClick on a <li> or <div> is invisible to the discovery above.
+  // Only the outermost one counts, because the cursor is inherited by the children.
+  const pointer: Record<string, number> = {};
+  const nativeControl = 'a[href], button, input, select, textarea, label, summary, [role]';
+  for (const el of Array.from(document.body.querySelectorAll('*')).slice(0, 4000)) {
+    if (!visible(el) || el.closest(nativeControl) !== null) continue;
+    if (getComputedStyle(el).cursor !== 'pointer') continue;
+    const parent = el.parentElement;
+    if (parent && getComputedStyle(parent).cursor === 'pointer') continue;
+    const tag = el.tagName.toLowerCase();
+    pointer[tag] = (pointer[tag] ?? 0) + 1;
+  }
+  return {
+    actions: ranked.map(([a]) => a),
+    links,
+    login,
+    notTried: { risky: riskyNames, pointer },
+  };
 }
 
 const slug = (s: string) =>
@@ -219,7 +247,7 @@ async function discover(
   config: CrispyConfig,
   options: Required<Pick<ScanOptions, 'path' | 'maxRoutes' | 'maxActions' | 'allowWrites'>>,
   log: (msg: string) => void,
-): Promise<{ scenarios: Scenario[]; loadWrites: Set<string> }> {
+): Promise<{ scenarios: Scenario[]; loadWrites: Set<string>; notTried: string[] }> {
   const origin = new URL(config.baseUrl).origin;
   // Writes the pages send on their own while loading (analytics, sessions): not
   // caused by an interaction, so they do not disqualify one.
@@ -228,6 +256,9 @@ async function discover(
   const queue = [options.path];
   const visited = new Set<string>();
   const scenarios: Scenario[] = [];
+  const risky = new Set<string>();
+  const pointer: Record<string, number> = {};
+  let beyondLimit = 0;
   const names = new Set<string>();
   // Layout chrome (sidebars, headers) repeats on every route: scan each action once.
   const scanned = new Set<string>();
@@ -273,8 +304,11 @@ async function discover(
       let taken = 0;
       // List rows ("Member 1", "Member 2"…) exercise the same code: keep the first.
       const shapes = new Set<string>();
-      for (const action of found.actions) {
-        if (taken >= options.maxActions) break;
+      for (const [i, action] of found.actions.entries()) {
+        if (taken >= options.maxActions) {
+          beyondLimit += found.actions.length - i;
+          break;
+        }
         if (scanned.has(action.selector)) continue;
         const shape = `${action.kind}:${action.name.replace(/\d+/g, '#')}`;
         if (/\d/.test(action.name) && shapes.has(shape)) continue;
@@ -308,6 +342,10 @@ async function discover(
           ],
         });
       }
+      for (const name of found.notTried.risky) risky.add(name);
+      for (const [tag, n] of Object.entries(found.notTried.pointer)) {
+        pointer[tag] = Math.max(pointer[tag] ?? 0, n);
+      }
       log(
         `[crispy] ${landed}: ${taken} interaction(s)${found.links.length ? `, ${found.links.length} link(s)` : ''}`,
       );
@@ -321,7 +359,27 @@ async function discover(
       await context.close();
     }
   }
-  return { scenarios, loadWrites };
+  const notTried: string[] = [];
+  const pointerTags = Object.entries(pointer).sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]));
+  if (pointerTags.length) {
+    notTried.push(
+      `${pointerTags.reduce((n, [, c]) => n + c, 0)} clickable-looking element(s) that are not buttons or links (${pointerTags.map(([t, c]) => `${t} ×${c}`).join(', ')}): scan only clicks buttons, links, tabs, switches, checkboxes and fields, so add a click step by hand if they matter.`,
+    );
+  }
+  if (risky.size) {
+    notTried.push(
+      `skipped on purpose because the name looks risky: ${[...risky]
+        .sort(cmp)
+        .map((n) => `"${n}"`)
+        .join(', ')}.`,
+    );
+  }
+  if (beyondLimit) {
+    notTried.push(
+      `${beyondLimit} more safe interaction(s) were found but not profiled (raise --actions).`,
+    );
+  }
+  return { scenarios, loadWrites, notTried };
 }
 
 /**
@@ -359,8 +417,9 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
     const browser = await launchBrowser(config);
     let scenarios: Scenario[];
     let loadWrites: Set<string>;
+    let notTried: string[];
     try {
-      ({ scenarios, loadWrites } = await discover(browser, config, settings, log));
+      ({ scenarios, loadWrites, notTried } = await discover(browser, config, settings, log));
     } finally {
       await browser.close();
     }
@@ -427,7 +486,7 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
       }
     }
     causes.sort(byCost);
-    return { report, scenarios: ran, skipped, causes };
+    return { report, scenarios: ran, skipped, causes, notTried };
   } finally {
     await stopServer();
   }
