@@ -19,6 +19,14 @@ export function Trap() {
           Member {m}
         </button>
       ))}
+      <ul>
+        {['row-a', 'row-b'].map((r) => (
+          // biome-ignore lint/a11y/useKeyWithClickEvents: a clickable row, like many real apps
+          <li key={r} style={{ cursor: 'pointer' }} onClick={() => setN(n + 1)}>
+            {r}
+          </li>
+        ))}
+      </ul>
       <button type="button" onClick={() => post('eliminar')}>
         Eliminar
       </button>
