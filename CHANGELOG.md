@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `crispy test` tip: when a component falls to 0 renders in a scenario that has no `expect` step, it
+  says a React.memo may have frozen the screen and shows the `expect` step to add.
+
+### Added
 - `crispy scan` says what it tried and what it did not: clickable-looking elements that are not
   buttons or links (a `li` with `onClick`), buttons skipped on purpose for a risky name, and safe
   interactions beyond `--actions`. Same list in the MCP `scan_app` output.
