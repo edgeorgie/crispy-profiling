@@ -202,6 +202,8 @@ async function main(argv: string[]): Promise<number> {
             : 'No avoidable renders in these interactions.',
         );
       }
+      lines.push('', `Tried: ${result.scenarios.map((s) => s.name).join(', ')}.`);
+      for (const line of result.notTried) lines.push(`Not tried: ${line}`);
       lines.push(
         '',
         hasConfig

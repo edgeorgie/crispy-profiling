@@ -142,8 +142,11 @@ export function createServer(): McpServer {
         const skipped = result.skipped.length
           ? `\n\nSkipped:\n${result.skipped.map((s) => `- ${s.name}: ${s.reason}`).join('\n')}`
           : '';
+        const notTried = result.notTried.length
+          ? `\n\nNot tried (so these flows are NOT covered):\n${result.notTried.map((n) => `- ${n}`).join('\n')}`
+          : '';
         return text(
-          `${result.scenarios.length} interaction(s) profiled.\n\nTop root causes:\n${causes}${skipped}\n\n` +
+          `${result.scenarios.length} interaction(s) profiled (${result.scenarios.map((s) => s.name).join(', ')}).\n\nTop root causes:\n${causes}${skipped}${notTried}\n\n` +
             `Scenarios (save under "scenarios" in crispy.config.json):\n${JSON.stringify(result.scenarios)}`,
         );
       } catch (err) {
