@@ -225,8 +225,10 @@ export function createServer(): McpServer {
           only: scenarios,
           baseDir: dirname(resolve(configPath)),
         });
+        // A pass that still needs a human look must not end on a bare "pass" (council round 5).
+        const warn = outcome.exitCode === 0 && outcome.result?.changes.some((c) => c.suspect);
         return text(
-          `Status: ${outcome.exitCode !== 0 ? 'FAIL' : outcome.result?.changes.some((c) => c.suspect) ? 'WARN (fewer renders on a component that reads mutable data: check the UI, or undo that React.memo)' : 'PASS'}\n\n${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode === 0 ? 'pass' : 'fail'}`,
+          `Status: ${outcome.exitCode !== 0 ? 'FAIL' : warn ? 'WARN (fewer renders on a component that reads mutable data: check the UI, or undo that React.memo)' : 'PASS'}\n\n${forAgents(outcome.markdown)}\nExit status: ${outcome.exitCode !== 0 ? 'fail' : warn ? 'warn: not a clean pass, check the UI before accepting' : 'pass'}`,
         );
       } catch (err) {
         return fail(err);
