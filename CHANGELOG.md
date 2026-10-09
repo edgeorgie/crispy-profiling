@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-08
+
 ### Security
 - The read-only WebSocket guard no longer exempts a bare `/ws` (or any `?token=` URL): an app's own
   `/ws` endpoint received messages from a "read-only" run. Only the dev servers' hot-reload sockets
@@ -22,6 +24,7 @@ All notable changes to this project are documented here. The format follows
   frozen UI pass.
 
 ### Changed
+- Built and tested against playwright-core 1.64.
 - Reusing a dev server that is already running no longer prints a warning when crispy checked it
   serves this very app; the warning stays when it could not verify that.
 - A snapshot test whose only changes are "⚠️ check the UI" rows no longer shows the green

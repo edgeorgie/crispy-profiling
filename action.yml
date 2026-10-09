@@ -28,7 +28,7 @@ inputs:
     default: 'true'
   version:
     description: crispy-profiling version to use (pinned to this release by scripts/sync-version.ts)
-    default: 0.2.0
+    default: 0.3.0
 outputs:
   summary:
     description: Path to the Markdown summary
