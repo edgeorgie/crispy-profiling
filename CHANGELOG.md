@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- `crispy scan` now measures time while it profiles, so every root cause says what it costs
+  ("≈ 11 ms of JavaScript") and a first-time user can tell whether it is worth fixing. Saved
+  scenarios and snapshots are unaffected (timings are not recorded in them).
+
 ### Docs
 - Discoverability: the package description, keywords, README intro and plugin descriptions now name
   `crispy-profiling` and say it is a React re-render profiler, so it is not mistaken for the `crispy`

@@ -859,6 +859,8 @@ describe('crispy scan', () => {
       scenarios: [{ name: 'x' }],
     });
     const result = await scan(config, { path: '/?cascade', maxRoutes: 1, maxActions: 6, runs: 1 });
+    // scan measures time, so each cause says what it costs in ms (council round 5, newcomer).
+    expect(result.causes.some((c) => /≈ \d+ ms of JavaScript/.test(c.text))).toBe(true);
     expect(result.skipped.map((s) => s.reason)).toEqual([]);
     const names = result.scenarios.map((s) => s.name);
     expect(names.length).toBe(6);
