@@ -304,6 +304,11 @@ describe('render snapshots (crispy test)', () => {
 
     await runSnapshotTest(config(slowUrl), { baseDir: dir, update: true });
     expect((await runSnapshotTest(config(slowUrl), { baseDir: dir, ci: true })).exitCode).toBe(0);
+
+    // The memoized variant drops Row to 0 renders: without an expect step crispy cannot tell a
+    // win from a frozen screen, so it says so and shows the step to add (council round 5).
+    const fixed = await runSnapshotTest(config(fastUrl), { baseDir: dir });
+    expect(fixed.markdown).toMatch(/`Row` fell to 0 renders[\s\S]*"action": "expect"/);
   });
 });
 

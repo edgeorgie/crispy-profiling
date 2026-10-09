@@ -74,6 +74,11 @@ function budgetsMarkdown(report: CrispyReport): string {
  * What the recorded snapshot already tells you: the top avoidable-render root
  * causes across all scenarios, so the first run is useful on its own.
  */
+/** Does the scenario check the screen after its interactions? */
+function hasExpect(scenario: { steps?: { action: string }[] } | undefined): boolean {
+  return !!scenario?.steps?.some((st) => st.action === 'expect');
+}
+
 function insight(report: CrispyReport, max = 5, baselineMissing = false): string {
   const all = Object.values(report.scenarios).flatMap((s) =>
     Object.entries(s.phases).flatMap(([phase, p]) =>
@@ -192,12 +197,25 @@ export async function runSnapshotTest(
   const suspectNote = suspects.length
     ? `\n❌ ${suspects.length} change(s) marked ⚠️ check the UI fail in CI: open the screen and confirm it still updates, then run \`crispy test -u\` and commit \`${shown}\`. Or undo the React.memo there.\n`
     : '';
+  // A component that fell to 0 renders is either a real win or a frozen screen, and crispy
+  // cannot tell them apart without an `expect` step: say so, with a ready-to-edit example.
+  const frozen = result.improvements.filter(
+    (c) =>
+      c.component &&
+      c.metric === 'renders' &&
+      !c.suspect &&
+      c.actual === 0 &&
+      !hasExpect(config.scenarios.find((sc) => sc.name === c.scenario)),
+  );
+  const zeroNote = frozen.length
+    ? `\n💡 ${[...new Set(frozen.map((c) => `\`${c.component}\``))].slice(0, 3).join(', ')} fell to 0 renders. If ${frozen.length === 1 ? 'it shows' : 'they show'} data that should change in that interaction, a React.memo may have frozen the screen: add a step that checks it, after the interaction in scenario "${frozen[0]?.scenario}", e.g. \`{ "action": "expect", "selector": "<what it shows>", "text": "<text after the interaction>" }\`.\n`
+    : '';
   return {
     exitCode: result.passed && !budgetsFail && !suspects.length ? 0 : 1,
     file,
     written,
     result,
     report,
-    markdown: snapshotToMarkdown(result, shown) + suspectNote + note + extra,
+    markdown: snapshotToMarkdown(result, shown) + suspectNote + zeroNote + note + extra,
   };
 }
