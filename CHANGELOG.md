@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Docs
+- Discoverability: the package description, keywords, README intro and plugin descriptions now name
+  `crispy-profiling` and say it is a React re-render profiler, so it is not mistaken for the `crispy`
+  style-guide package or other tools called crispy.
+
 ### Added
 - `crispy scan` says what it tried and what it did not: clickable-looking elements that are not
   buttons or links (a `li` with `onClick`), buttons skipped on purpose for a risky name, and safe

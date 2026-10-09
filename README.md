@@ -2,6 +2,8 @@
 
 **Snapshot testing for React re-renders — deterministic, runtime-proven, with the fix.**
 
+`crispy-profiling` is a React re-render profiler (npm: [`crispy-profiling`](https://www.npmjs.com/package/crispy-profiling)): CLI, GitHub Action, MCP server and Agent Skill. Not related to the `crispy` style-guide package or to the scientific software of the same name.
+
 Your React app feels slow when you type or click? crispy shows which components re-render for no
 reason, and the exact line to fix.
 

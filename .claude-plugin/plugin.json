@@ -2,7 +2,7 @@
   "name": "crispy-profiling",
   "displayName": "Crispy Profiling",
   "version": "0.3.0",
-  "description": "Deterministic React render profiling: find wasted re-renders, their causes, and verify fixes with before/after numbers.",
+  "description": "crispy-profiling: React re-render profiler. Find wasted re-renders, their causes, and verify fixes with before/after numbers.",
   "author": {
     "name": "Edwin Jorge",
     "url": "https://github.com/edgeorgie"
