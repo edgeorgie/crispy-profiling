@@ -1,6 +1,6 @@
 {
   "name": "crispy-profiling",
-  "description": "React render profiling tools for AI coding agents",
+  "description": "crispy-profiling: React re-render profiling tools for AI coding agents",
   "owner": {
     "name": "Edwin Jorge",
     "url": "https://github.com/edgeorgie"

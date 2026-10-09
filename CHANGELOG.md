@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Docs
+- Discoverability: the package description, keywords, README intro and plugin descriptions now name
+  `crispy-profiling` and say it is a React re-render profiler, so it is not mistaken for the `crispy`
+  style-guide package or other tools called crispy.
+
 ### Added
 - `crispy test` tip: when a component falls to 0 renders in a scenario that has no `expect` step, it
   says a React.memo may have frozen the screen and shows the `expect` step to add.
