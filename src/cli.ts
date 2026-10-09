@@ -153,6 +153,14 @@ async function main(argv: string[]): Promise<number> {
         base = { ...(existing ?? {}), baseUrl: u.origin, scenarios: [] };
         if (existing && existing.baseUrl !== u.origin)
           delete (base as { webServer?: unknown }).webServer;
+        // No server to start in the config: when the URL is this project's own dev address,
+        // start its dev command (an already running server is reused, never restarted).
+        if (!(base as { webServer?: unknown }).webServer) {
+          const app = detectApp(process.cwd());
+          if (app.devCommand && new URL(app.baseUrl).origin === u.origin) {
+            base = { ...base, webServer: { command: app.devCommand } };
+          }
+        }
         path = `${u.pathname}${u.search}${u.hash}`;
       } else if (existing) {
         base = existing;

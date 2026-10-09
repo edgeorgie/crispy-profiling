@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- `crispy scan <url>` with no config now starts this project's detected dev command when the URL is
+  the project's own dev address (an already running server is reused). Before, it failed with
+  "Nothing is listening" even though crispy knew the command.
+
 ### Docs
 - Discoverability: the package description, keywords, README intro and plugin descriptions now name
   `crispy-profiling` and say it is a React re-render profiler, so it is not mistaken for the `crispy`
