@@ -10,6 +10,13 @@ All notable changes to this project are documented here. The format follows
 - `crispy scan` now clicks clickable-looking elements that are not buttons or links (a `li` or `div`
   with a pointer cursor and a short text, like a list row), by their text. Those without a short text
   are still listed under "Not tried".
+- Root causes for recreated props and for state updates now open with a plain sentence ("`Row`
+  re-rendered 20 time(s) with nothing new to show, because `App` hands it a new function on every
+  render."); the technical cause and the fix follow unchanged.
+- `crispy test` lists the measured time per phase when `timings` is on (render counts stay the gate).
+
+### Docs
+- README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
 
 ## [0.4.0] - 2026-10-10
 

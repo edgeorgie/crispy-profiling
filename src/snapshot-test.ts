@@ -79,6 +79,22 @@ function hasExpect(scenario: { steps?: { action: string }[] } | undefined): bool
   return !!scenario?.steps?.some((st) => st.action === 'expect');
 }
 
+/** Measured time per phase, only with `timings` on (render counts stay the gate). */
+function timingsMarkdown(report: CrispyReport): string {
+  const rows: string[] = [];
+  for (const s of Object.values(report.scenarios)) {
+    for (const [phase, p] of Object.entries(s.phases)) {
+      if (!p.cost) continue;
+      rows.push(
+        `- ${s.name} / ${phase}: ${Math.round(p.cost.scriptMs.median)} ms JavaScript (${Math.round(p.cost.taskMs.median)} ms main thread)`,
+      );
+    }
+  }
+  return rows.length
+    ? `\nTime per phase (medians; ms vary between runs, render counts are the gate):\n${rows.join('\n')}\n`
+    : '';
+}
+
 function insight(report: CrispyReport, max = 5, baselineMissing = false): string {
   const all = Object.values(report.scenarios).flatMap((s) =>
     Object.entries(s.phases).flatMap(([phase, p]) =>
@@ -122,7 +138,7 @@ export async function runSnapshotTest(
     { ...config, topComponents: 0 },
     { only: options.only, log: options.log, cwd: options.baseDir },
   );
-  const extra = budgetsMarkdown(report);
+  const extra = budgetsMarkdown(report) + timingsMarkdown(report);
   const budgetsFail = report.violations.length > 0;
   const previous = existsSync(file) ? parseSnapshot(await readFile(file, 'utf8')) : null;
 
