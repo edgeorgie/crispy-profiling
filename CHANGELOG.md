@@ -6,29 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-- Same-named render functions in one file (a table's `cell` and `header` functions) are keyed by a
-  fingerprint of their source (`cell (src/columns.tsx#1x9k2z)`), not by their line number as in
-  0.5.0: inserting lines above them renamed every key and produced dozens of 🆕 rows and false
-  "⚠️ check the UI" warnings. The fingerprint ignores whitespace and the line numbers the dev JSX
-  transform embeds, so it only changes when the function itself is edited. Snapshots recorded with
-  0.5.0 show those keys as renamed once.
-
 ### Changed
 - `crispy <command> --help` prints only that command's usage and options (it printed the whole help).
-
-### Docs
-- README: a three-point "New to this?" block under the quick start (nothing is edited or sent,
-  what a root cause is and what "No avoidable renders" and `Not tried` mean, what 🟢/🔴 mean) and
-  a line in the glossary on why `React.memo` needs stable props.
-
-### Changed
 - When a recreated prop re-renders several components, the root cause says how the renders split
   ("`Row` (30), `DetailsPanel` (1) and `TicketTable` (1) re-rendered 32 time(s) in total…") instead
   of attributing the sum to the first one, and the location points at the component that
   re-rendered most.
-
-### Changed
 - MCP `scan_app` ends with a complete `crispy.config.json` to save (`$schema`, `baseUrl` and the
   scenarios) and the next call to make (`test_render_snapshots` with `update: true` to record the
   baseline before changing code), instead of the scenarios alone. The skill's "First run" says the
@@ -46,9 +29,20 @@ All notable changes to this project are documented here. The format follows
   because of hidden matches, the message says to add `>> visible=true`.
 
 ### Fixed
+- Same-named render functions in one file (a table's `cell` and `header` functions) are keyed by a
+  fingerprint of their source (`cell (src/columns.tsx#1x9k2z)`), not by their line number as in
+  0.5.0: inserting lines above them renamed every key and produced dozens of 🆕 rows and false
+  "⚠️ check the UI" warnings. The fingerprint ignores whitespace and the line numbers the dev JSX
+  transform embeds, so it only changes when the function itself is edited. Snapshots recorded with
+  0.5.0 show those keys as renamed once.
 - `crispy test` reports one cascade as one row when a cause is itself part of a bigger one (a
   sidebar group re-rendered by the sidebar whose store subscription started everything): the chain
   of causes is followed to the top instead of stopping at the first regressed component.
+
+### Docs
+- README: a three-point "New to this?" block under the quick start (nothing is edited or sent,
+  what a root cause is and what "No avoidable renders" and `Not tried` mean, what 🟢/🔴 mean) and
+  a line in the glossary on why `React.memo` needs stable props.
 
 ## [0.5.0] - 2026-10-10
 
