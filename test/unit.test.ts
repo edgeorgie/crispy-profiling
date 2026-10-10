@@ -357,6 +357,15 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(r.changes).toEqual([]);
   });
 
+  it('does not report one commit fewer as an improvement (council round 5, P13)', () => {
+    // One extra commit is tolerated as a scheduling detail; one fewer is the same noise.
+    expect(compareSnapshot(toSnapshot(make(10, 0, 2)), make(10, 0, 1)).changes).toEqual([]);
+    const r = compareSnapshot(toSnapshot(make(10, 0, 3)), make(10, 0, 1));
+    expect(r.improvements.map((c) => [c.metric, c.expected, c.actual])).toEqual([
+      ['commits', 3, 1],
+    ]);
+  });
+
   it('reports more commits, and fails on them only when asked (R2-11, council round 3)', () => {
     const r = compareSnapshot(toSnapshot(make(10, 0, 2)), make(10, 0, 50));
     expect(r.passed).toBe(true);

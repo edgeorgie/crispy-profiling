@@ -27,6 +27,11 @@ All notable changes to this project are documented here. The format follows
   render."); the technical cause and the fix follow unchanged.
 - `crispy test` lists the measured time per phase when `timings` is on (render counts stay the gate).
 
+### Fixed
+- `crispy test` no longer reports one commit fewer as a 🟢 improvement: one extra commit is tolerated
+  as a scheduling detail, and one fewer is the same noise (it used to add an unrelated row next to a
+  real regression).
+
 ### Docs
 - README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
 
