@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-10
+
 ### Changed
 - `crispy <command> --help` prints only that command's usage and options (it printed the whole help).
 - When a recreated prop re-renders several components, the root cause says how the renders split
