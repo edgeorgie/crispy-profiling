@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-10
+
 ### Added
 - "I tried it on my app" issue form (what crispy found, missed or got wrong on a real app), a
   five-line report example in CONTRIBUTING, and a pre-filled issue link after invalid-config
@@ -34,6 +36,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Docs
 - README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
+- Landing page (`site/`, published at https://crispy-profiling.vercel.app): the find → explain → fix →
+  verify story, an interactive report and the four ways to use crispy.
 
 ## [0.4.0] - 2026-10-10
 
