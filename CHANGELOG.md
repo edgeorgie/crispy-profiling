@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- Read-only mode no longer reports Vite's own hot-reload socket as a blocked write on Vite before
+  5.0.13 (it opens the bare root path with no token, e.g. Excalidraw): the bare root is exempt only
+  when the page loaded `/@vite/client`; an app's own `/ws`, `/live` or `/` on a non-Vite app stays
+  guarded. The warning for a real blocked socket says when its URL has a query, never its value.
+
+### Fixed
 - Same-named render functions in one file (a table's `cell` and `header` functions) are keyed by a
   fingerprint of their source (`cell (src/columns.tsx#1x9k2z)`), not by their line number as in
   0.5.0: inserting lines above them renamed every key and produced dozens of 🆕 rows and false
