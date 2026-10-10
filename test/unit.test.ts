@@ -913,6 +913,18 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
   });
 });
 
+describe('source names (council round 6)', async () => {
+  const { isRenamedBy } = await import('../src/profiler/definitions.js');
+  it('only accepts the name a bundler renamed by adding a suffix', () => {
+    expect(isRenamedBy('Member2', 'Member')).toBe(true);
+    expect(isRenamedBy('Member$1', 'Member')).toBe(true);
+    // The source map position of `class App` carried the constructor parameter `props`.
+    expect(isRenamedBy('App', 'props')).toBe(false);
+    expect(isRenamedBy('Member', 'Member')).toBe(false);
+    expect(isRenamedBy('Memberlist', 'Member')).toBe(false);
+  });
+});
+
 describe('library factory keys (R4-15)', async () => {
   const { stabilizeKeys } = await import('../src/report/aggregate.js');
   it('keys a single styled component by its site, so adding a second one renames nothing', () => {

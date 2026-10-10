@@ -23,10 +23,21 @@ npx crispy test      # records crispy.snap.json from the scanned scenarios → c
 
 Using pnpm or yarn? Run the same commands as `pnpm exec crispy …` or `yarn crispy …`.
 
+**New to this? Three things to know.**
+1. `crispy scan` only *looks* at your app: it edits none of your code and sends nothing anywhere
+   (requests that would change data are blocked).
+2. It prints a short list of **root causes**. Each names a file and a line and says what to change.
+   "No avoidable renders" means the flows it tried are fine; its `Not tried` lines say what it
+   skipped, and `crispy.config.json` is where you add the interaction that feels slow.
+3. After a fix, run `npx crispy test` again: 🟢 means fewer renders (check that the screen still
+   updates), 🔴 means a render came back. Nothing is saved over your snapshot unless you ask (`-u`).
+
 Words you will see: a **render** is React running a component again; **avoidable** means its
 inputs did not really change, so the screen would look the same without it; **hoist** means move a
 constant out of the component; **memoize** means keep the same value or function between renders
-(`useMemo`, `useCallback`, `React.memo`).
+(`useMemo`, `useCallback`, `React.memo`). A component re-renders whenever its parent does, even
+with the same props, unless it is wrapped in `React.memo`; and `React.memo` only skips the render when
+its props are stable, so crispy usually asks for both.
 
 `crispy scan` detects Next.js/Vite, the dev URL (the port your dev server prints, e.g. `server.port`
 in `vite.config.ts`) and your dev command, visits a few routes, tries
