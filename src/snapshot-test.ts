@@ -35,8 +35,11 @@ export interface SnapshotTestOptions {
 }
 
 export interface SnapshotTestOutcome {
-  /** 0 = pass, 1 = regression, budget violation or missing snapshot in CI. */
-  exitCode: 0 | 1;
+  /**
+   * 0 = pass, 1 = regression, budget violation, failed `expect` or missing snapshot in CI,
+   * 2 = a scenario's step could not run (its results are missing from the comparison).
+   */
+  exitCode: 0 | 1 | 2;
   file: string;
   written: boolean;
   result: SnapshotResult | null;
@@ -134,10 +137,31 @@ export async function runSnapshotTest(
   const file = resolve(options.baseDir ?? process.cwd(), config.snapshot.file);
   const shown = relative(process.cwd(), file) || file;
   // Snapshots always cover every component, even when `topComponents` trims reports.
+  // A scenario whose step fails is reported and skipped: the others are still
+  // compared, and its snapshot entries are kept rather than reported as removed.
+  const failed: { name: string; error: Error }[] = [];
   const report = await profile(
     { ...config, topComponents: 0 },
-    { only: options.only, log: options.log, cwd: options.baseDir },
+    {
+      only: options.only,
+      log: options.log,
+      cwd: options.baseDir,
+      onScenarioError: (name, error) => {
+        failed.push({ name, error });
+        options.log?.(`[crispy] ${error.message}`);
+      },
+    },
   );
+  const partial = !!options.only?.length || failed.length > 0;
+  const failNote = failed.length
+    ? `\n❌ ${failed.length} scenario(s) did not run to the end: ${failed.map((f) => `**${f.name}** (${f.error.message.split('\n')[0]})`).join('; ')}. Their snapshot entries were left as they were.\n`
+    : '';
+  // A failed expect step is the app's regression (exit 1), not crispy failing (exit 2).
+  const failCode = failed.length
+    ? failed.every((f) => /expect failed:/.test(f.error.message))
+      ? 1
+      : 2
+    : 0;
   const extra = budgetsMarkdown(report) + timingsMarkdown(report);
   const budgetsFail = report.violations.length > 0;
   const previous = existsSync(file) ? parseSnapshot(await readFile(file, 'utf8')) : null;
@@ -159,8 +183,8 @@ export async function runSnapshotTest(
     }
     const snap = toSnapshot(report, config.snapshot.includeLibraries);
     let next = previous ? keepRanges(snap, previous) : snap;
-    if (previous && options.only?.length) {
-      // Keep the scenarios that did not run.
+    if (previous && partial) {
+      // Keep the scenarios that did not run (or did not finish).
       next = { schemaVersion: 1, scenarios: { ...previous.scenarios, ...next.scenarios } };
       next = mergeAdditions(next, report, config.snapshot.includeLibraries);
     }
@@ -170,7 +194,7 @@ export async function runSnapshotTest(
           previous,
           report,
           0,
-          !!options.only?.length,
+          partial,
           false,
           false,
           false,
@@ -181,12 +205,12 @@ export async function runSnapshotTest(
       ? `## 🥓 crispy render snapshots: ✍️ updated \`${shown}\` (${result?.changes.length ?? 0} change(s) accepted)`
       : `## 🥓 crispy render snapshots: ✍️ written \`${shown}\` — commit it to start guarding re-renders`;
     return {
-      exitCode: budgetsFail ? 1 : 0,
+      exitCode: failCode === 2 ? 2 : budgetsFail || failCode ? 1 : 0,
       file,
       written: true,
       result,
       report,
-      markdown: `${header}\n${insight(report)}${extra}`,
+      markdown: `${header}\n${failNote}${insight(report)}${extra}`,
     };
   }
 
@@ -194,7 +218,7 @@ export async function runSnapshotTest(
     previous,
     report,
     config.snapshot.tolerance,
-    !!options.only?.length,
+    partial,
     config.snapshot.failOnNewAvoidable,
     config.snapshot.failOnMoreAvoidable,
     config.snapshot.failOnMoreCommits,
@@ -227,11 +251,12 @@ export async function runSnapshotTest(
     ? `\n💡 ${[...new Set(frozen.map((c) => `\`${c.component}\``))].slice(0, 3).join(', ')} fell to 0 renders. If ${frozen.length === 1 ? 'it shows' : 'they show'} data that should change in that interaction, a React.memo may have frozen the screen: add a step that checks it, after the interaction in scenario "${frozen[0]?.scenario}", e.g. \`{ "action": "expect", "selector": "<what it shows>", "text": "<text after the interaction>" }\`.\n`
     : '';
   return {
-    exitCode: result.passed && !budgetsFail && !suspects.length ? 0 : 1,
+    exitCode:
+      failCode === 2 ? 2 : result.passed && !budgetsFail && !suspects.length && !failCode ? 0 : 1,
     file,
     written,
     result,
     report,
-    markdown: snapshotToMarkdown(result, shown) + suspectNote + zeroNote + note + extra,
+    markdown: snapshotToMarkdown(result, shown) + failNote + suspectNote + zeroNote + note + extra,
   };
 }

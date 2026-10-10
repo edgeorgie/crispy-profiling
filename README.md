@@ -205,6 +205,10 @@ The first run writes the snapshot (commit it); `CRISPY_UPDATE=1` accepts intende
 `text` or `count`): it fails the scenario when the screen does not show what it should, so a fix that
 freezes the UI fails `crispy test` instead of passing with fewer renders. Add one after each
 interaction whose result matters, e.g. `{ "action": "expect", "selector": "#cart-count", "text": "3" }`.
+`text` and visibility are checked on the visible matches, so a hidden duplicate (a mobile menu, a
+screen-reader label) does not fail the step; `count` counts every match (`"selector >> visible=true"`
+to count only visible ones). A scenario whose step fails is skipped and named in the output: the
+other scenarios still produce their report or snapshot comparison.
 `type` presses one key at a time and waits for React to finish (including deferred values and
 transitions) before the next key, so concurrent features give the same counts on fast and slow CPUs.
 Renders before the first step are recorded in phase `load`; renders during steps go to

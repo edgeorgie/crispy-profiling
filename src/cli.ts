@@ -358,16 +358,33 @@ async function main(argv: string[]): Promise<number> {
         },
       });
       const config = await loadConfig(values.config);
+      // A scenario whose step fails is reported and skipped: the others still
+      // produce a report, instead of one bad selector costing the whole run.
+      const failed: { name: string; error: Error }[] = [];
       const report = await profile(config, {
         only: values.scenario,
         log,
         cwd: dirname(resolve(values.config)),
+        onScenarioError: (name, error) => {
+          failed.push({ name, error });
+          log(`[crispy] ${error.message}`);
+        },
       });
-      await write(values.out, serializeReport(report));
-      log(`[crispy] report written to ${values.out}`);
-      const md = reportToMarkdown(report);
-      if (values.markdown) await write(values.markdown, md);
-      process.stdout.write(md);
+      if (Object.keys(report.scenarios).length > 0) {
+        await write(values.out, serializeReport(report));
+        log(`[crispy] report written to ${values.out}`);
+        const md = reportToMarkdown(report);
+        if (values.markdown) await write(values.markdown, md);
+        process.stdout.write(md);
+      }
+      if (failed.length) {
+        log(
+          `[crispy] ${failed.length} scenario(s) did not run to the end: ${failed.map((f) => f.name).join(', ')}.` +
+            (Object.keys(report.scenarios).length ? ' The report covers the others.' : ''),
+        );
+        // A failed expect step is the app's regression (exit 1), not crispy failing (exit 2).
+        return failed.every((f) => /expect failed:/.test(f.error.message)) ? 1 : 2;
+      }
       return report.violations.length > 0 && !values['no-fail'] ? 1 : 0;
     }
     case 'test': {

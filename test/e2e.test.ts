@@ -1098,4 +1098,31 @@ describe('expect step (council round 3)', () => {
       /expect failed: "#inc" should show text "count 2", found text "count 1"/,
     );
   });
+
+  it('keeps the results of the other scenarios when a step fails (council round 5, P11)', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { runSnapshotTest } = await import('../src/snapshot-test.js');
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      timeoutMs: 2000,
+      scenarios: [
+        { name: 'good', steps: [{ action: 'click', selector: '#inc' }] },
+        { name: 'bad', steps: [{ action: 'click', selector: '#does-not-exist' }] },
+      ],
+    });
+    const baseDir = mkdtempSync(join(tmpdir(), 'crispy-partial-'));
+    const first = await runSnapshotTest(config, { baseDir });
+    // The good scenario is recorded; the bad one is named, and exit 2 says crispy could not run it.
+    expect(first.exitCode).toBe(2);
+    expect(Object.keys(first.report.scenarios)).toEqual(['good']);
+    expect(first.markdown).toContain('1 scenario(s) did not run to the end: **bad**');
+    // On the next run the good scenario still compares against its snapshot.
+    const second = await runSnapshotTest(config, { baseDir });
+    expect(second.exitCode).toBe(2);
+    expect(second.result?.passed).toBe(true);
+  });
 });

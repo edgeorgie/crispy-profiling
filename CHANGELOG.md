@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- A scenario whose step fails (a selector that no longer matches, a failed `expect`) no longer costs
+  the whole run: `crispy run` and `crispy test` skip it, name it in the output and keep the results
+  of the other scenarios (snapshot entries of the skipped scenario are left as they were). The exit
+  code is still 1 for a failed `expect` and 2 for a step crispy could not run.
+- `expect` checks `text` and visibility on the visible matches, so a hidden duplicate of the element
+  (a mobile menu, a screen-reader label) no longer fails the step. When a `count` is off only
+  because of hidden matches, the message says to add `>> visible=true`.
+
 ### Fixed
 - `crispy test` reports one cascade as one row when a cause is itself part of a bigger one (a
   sidebar group re-rendered by the sidebar whose store subscription started everything): the chain
