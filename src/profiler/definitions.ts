@@ -32,13 +32,16 @@ export async function resolveDefinitions(
   sourceMaps?: SourceMapResolver,
 ): Promise<{
   files: Record<string, string>;
-  /** key -> `file:line` of the definition: tells apart same-named functions in one file. */
-  lines: Record<string, string>;
+  /**
+   * key -> fingerprint of the function's source, which tells apart same-named functions
+   * in one file and, unlike a line number, survives edits elsewhere in the file.
+   */
+  prints: Record<string, string>;
   names: Record<string, string>;
 }> {
   const keys = await page.evaluate(() => Object.keys((window as any).__CRISPY__?.typeRefs ?? {}));
   const out: Record<string, string> = {};
-  const lines: Record<string, string> = {};
+  const prints: Record<string, string> = {};
   const names: Record<string, string> = {};
   const objectGroup = 'crispy-definitions';
   try {
@@ -65,7 +68,8 @@ export async function resolveDefinitions(
         location.columnNumber + 1,
       );
       out[key] = mapped?.file ?? shortPath(url);
-      lines[key] = `${out[key]}:${mapped?.line ?? location.lineNumber + 1}`;
+      const print = await fingerprint(cdp, result.objectId);
+      if (print) prints[key] = print;
       const original = sourceMaps
         ? await originalName(cdp, result.objectId, url, location, sourceMaps)
         : undefined;
@@ -74,7 +78,27 @@ export async function resolveDefinitions(
   } finally {
     await cdp.send('Runtime.releaseObjectGroup', { objectGroup }).catch(() => {});
   }
-  return { files: out, lines, names };
+  return { files: out, prints, names };
+}
+
+/**
+ * A short hash of the function's source text without whitespace and without the line
+ * and column numbers that the dev JSX transform embeds in it (`lineNumber: 24`), so
+ * inserting lines above a function does not change it, but editing its body does.
+ */
+async function fingerprint(cdp: CDPSession, objectId: string): Promise<string | undefined> {
+  const { result } = await cdp
+    .send('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration:
+        'function(){const s=Function.prototype.toString.call(this)' +
+        ".replace(/(lineNumber|columnNumber)\\s*:\\s*\\d+/g,'').replace(/\\s+/g,'');" +
+        'let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}' +
+        'return (h>>>0).toString(36)}',
+      returnByValue: true,
+    })
+    .catch(() => ({ result: { value: '' } }));
+  return result.value ? String(result.value) : undefined;
 }
 
 /**
@@ -115,7 +139,20 @@ async function originalName(
     location.lineNumber + 1,
     location.columnNumber + 1 + offset,
   );
-  return mapped?.name && mapped.name !== m[1] && /^[A-Za-z_$][\w$]*$/.test(mapped.name)
-    ? mapped.name
-    : undefined;
+  return mapped?.name && isRenamedBy(m[1], mapped.name) ? mapped.name : undefined;
+}
+
+/**
+ * Whether `original` is the name a bundler renamed to `generated` by adding a suffix
+ * (esbuild turns `Member` into `Member2` when another `Member` is in scope). A source
+ * map position next to a class declaration can carry an unrelated name (the constructor
+ * parameter `props` for `class App`), so anything that is not such a rename is ignored.
+ */
+export function isRenamedBy(generated: string, original: string): boolean {
+  return (
+    generated !== original &&
+    /^[A-Za-z_$][\w$]*$/.test(original) &&
+    generated.startsWith(original) &&
+    /^[\d$_]+$/.test(generated.slice(original.length))
+  );
 }

@@ -499,6 +499,32 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('from 1 cause');
   });
 
+  it('follows a cause that is itself part of a bigger one up to the top (council round 5, P13)', async () => {
+    const { snapshotToMarkdown } = await import('../src/report/snapshot.js');
+    // AppSidebar's store subscription re-renders NavGroup (its child, no trigger recorded
+    // because NavGroup also subscribes), and NavGroup's state re-renders the links below.
+    const tree = (renders: number) => {
+      const sidebar = component(renders, renders, 0);
+      sidebar.causes.state = renders;
+      const nav = component(renders, renders, 0);
+      nav.causes.state = renders;
+      nav.locations = ['src/AppSidebar.tsx:31 (AppSidebar)'];
+      const link = component(renders, renders, renders - 1);
+      link.avoidableRenders = s(renders - 1);
+      link.triggeredBy = { NavGroup: renders };
+      link.locations = ['src/NavGroup.tsx:47 (NavGroup)'];
+      return report({ interaction: phase({ AppSidebar: sidebar, NavGroup: nav, Link: link }) });
+    };
+    const r = compareSnapshot(toSnapshot(tree(1)), tree(6));
+    expect(r.regressions.filter((c) => c.component === 'Link').map((c) => c.rootCause)).toEqual([
+      'AppSidebar',
+      'AppSidebar',
+    ]);
+    const md = snapshotToMarkdown(r, 'crispy.snap.json');
+    expect(md).toContain('from 1 cause');
+    expect(md.split('\n').filter((l) => l.startsWith('| ❌'))).toHaveLength(1);
+  });
+
   it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
     const flaky = make(10, 0);
     const item = flaky.scenarios.home?.phases.interaction?.components.Item;
@@ -887,6 +913,18 @@ describe('fix hints that converge (R4-03..R4-10)', async () => {
   });
 });
 
+describe('source names (council round 6)', async () => {
+  const { isRenamedBy } = await import('../src/profiler/definitions.js');
+  it('only accepts the name a bundler renamed by adding a suffix', () => {
+    expect(isRenamedBy('Member2', 'Member')).toBe(true);
+    expect(isRenamedBy('Member$1', 'Member')).toBe(true);
+    // The source map position of `class App` carried the constructor parameter `props`.
+    expect(isRenamedBy('App', 'props')).toBe(false);
+    expect(isRenamedBy('Member', 'Member')).toBe(false);
+    expect(isRenamedBy('Memberlist', 'Member')).toBe(false);
+  });
+});
+
 describe('library factory keys (R4-15)', async () => {
   const { stabilizeKeys } = await import('../src/report/aggregate.js');
   it('keys a single styled component by its site, so adding a second one renames nothing', () => {
@@ -922,7 +960,7 @@ describe('library factory keys (R4-15)', async () => {
     ]);
   });
 
-  it('keys same-named render functions in one file by their definition line (P14)', () => {
+  it('keys same-named render functions in one file by a source fingerprint, so line shifts and new columns change nothing (P14, council round 6)', () => {
     // A table's column definitions: one `cell` function per column, all in
     // columns.tsx and all rendered from the same JSX site inside the table.
     const cell = (renders: number) =>
@@ -943,7 +981,7 @@ describe('library factory keys (R4-15)', async () => {
         causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
         selfDurationMs: 0,
       }) as RawRun['phases'][string]['components'][string];
-    const run = (components: Record<string, number>, lines: Record<string, string>): RawRun => ({
+    const run = (components: Record<string, number>, prints: Record<string, string>): RawRun => ({
       reactVersion: '19',
       profilingBuild: true,
       phases: {
@@ -955,33 +993,25 @@ describe('library factory keys (R4-15)', async () => {
       vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
       warnings: [],
       definitions: Object.fromEntries(Object.keys(components).map((k) => [k, 'src/columns.tsx'])),
-      definitionLines: lines,
+      definitionPrints: prints,
     });
     const keys = (r: RawRun) => Object.keys(r.phases.load?.components ?? {});
-    const before = stabilizeKeys([
-      run({ cell: 1, 'cell#2': 2 }, { cell: 'src/columns.tsx:12', 'cell#2': 'src/columns.tsx:30' }),
-    ]);
+    const before = stabilizeKeys([run({ cell: 1, 'cell#2': 2 }, { cell: 'a1', 'cell#2': 'b2' })]);
     expect(keys(before.runs[0] as RawRun)).toEqual([
-      'cell (src/columns.tsx:12)',
-      'cell (src/columns.tsx:30)',
+      'cell (src/columns.tsx#a1)',
+      'cell (src/columns.tsx#b2)',
     ]);
-    // A new column in the middle renumbers the raw keys; the stable keys stay.
+    // A column added in the middle (and 15 lines inserted above) renumbers the raw keys and
+    // moves every line; the fingerprints, and so the stable keys, stay.
     const after = stabilizeKeys([
-      run(
-        { cell: 1, 'cell#2': 3, 'cell#3': 2 },
-        {
-          cell: 'src/columns.tsx:12',
-          'cell#2': 'src/columns.tsx:21',
-          'cell#3': 'src/columns.tsx:30',
-        },
-      ),
+      run({ cell: 1, 'cell#2': 3, 'cell#3': 2 }, { cell: 'a1', 'cell#2': 'c3', 'cell#3': 'b2' }),
     ]);
     expect(keys(after.runs[0] as RawRun)).toEqual([
-      'cell (src/columns.tsx:12)',
-      'cell (src/columns.tsx:21)',
-      'cell (src/columns.tsx:30)',
+      'cell (src/columns.tsx#a1)',
+      'cell (src/columns.tsx#c3)',
+      'cell (src/columns.tsx#b2)',
     ]);
-    expect(after.definedIn['cell (src/columns.tsx:21)']).toBe('src/columns.tsx');
+    expect(after.definedIn['cell (src/columns.tsx#c3)']).toBe('src/columns.tsx');
   });
 });
 
@@ -1059,6 +1089,27 @@ describe('root causes (R5-05, R5-06)', async () => {
       '`App` recreates `onSelect` → 20 avoidable render(s) in `Row`',
     );
     expect(causes[1]?.text).toContain('Wrapping `List` in React.memo would skip 13 of them');
+  });
+
+  it('says how the renders split when one creator re-renders several components (council round 6)', () => {
+    const row = component(30, 30, 0);
+    row.callbackRenders = s(30);
+    row.callbackProps = { onSelect: 30 };
+    row.creators = { 'onSelect|App': 30 };
+    row.locations = ['src/App.tsx:146 (App)'];
+    const panel = component(1, 1, 0);
+    panel.callbackRenders = s(1);
+    panel.callbackProps = { onClose: 1 };
+    panel.creators = { 'onClose|App': 1 };
+    panel.locations = ['src/App.tsx:148 (App)'];
+    const app = component(1, 1, 0);
+    app.causes.state = 1;
+    const text = rootCauses(phase({ App: app, DetailsPanel: panel, Row: row }))[0]?.text ?? '';
+    expect(text).toContain(
+      '`Row` (30), `DetailsPanel` (1) re-rendered 31 time(s) in total with nothing new to show, because `App` hands them a new function on every render.',
+    );
+    // The location is where the component that re-rendered most is passed the value.
+    expect(text).toContain('`App` (src/App.tsx:146) recreates');
   });
 
   it('warns that useCallback cannot go inside a .map when the function is made per item', () => {
@@ -1423,5 +1474,10 @@ describe('read-only WebSocket guard (council round 5)', async () => {
     ]) {
       expect(isHotReloadSocket(app), app).toBe(false);
     }
+    // Vite before 5.0.13 opens its HMR socket on the bare root with no token (Excalidraw,
+    // council round 6): exempt only when the page loaded Vite's client.
+    expect(isHotReloadSocket('/', true)).toBe(true);
+    expect(isHotReloadSocket('/ws', true)).toBe(false);
+    expect(isHotReloadSocket('/?x=1', true)).toBe(false);
   });
 });

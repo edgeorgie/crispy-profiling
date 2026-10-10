@@ -27,6 +27,24 @@ export function Trap() {
           </li>
         ))}
       </ul>
+      {/* Icon-only buttons on every row (council round 6, newcomer): one of them is clicked. */}
+      {[1, 2, 3].map((m) => (
+        <button key={`star-${m}`} type="button" onClick={() => setN(n + m)}>
+          ☆
+        </button>
+      ))}
+      {/* A table of clickable rows without a short text (council round 6, intermediate). */}
+      <table id="orders">
+        <tbody>
+          {[1, 2, 3, 4, 5].map((r) => (
+            <tr key={r} style={{ cursor: 'pointer' }} onClick={() => setN(n + r)}>
+              <td>Order {r}</td>
+              <td>Customer {r}</td>
+              <td>{r * 10} EUR</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {/* Clickable-looking, but no text to click it by: reported as not tried. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: on purpose */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: on purpose */}

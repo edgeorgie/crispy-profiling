@@ -57,8 +57,13 @@ function explainReused(err: unknown, url: string | undefined, command?: string):
  */
 const HMR_SOCKET = /webpack-hmr|sockjs-node|__vite|vite-hmr|^\/\?token=[\w-]+$|^\/_next\//i;
 
-export function isHotReloadSocket(pathAndSearch: string): boolean {
-  return HMR_SOCKET.test(pathAndSearch);
+/**
+ * `viteClient`: the page loaded `/@vite/client`. Vite before 5.0.13 opens its HMR socket on
+ * the bare root path with no token, which is indistinguishable by URL from an app's own socket
+ * at `/`, so the bare root is exempt only when Vite's client is on the page.
+ */
+export function isHotReloadSocket(pathAndSearch: string, viteClient = false): boolean {
+  return HMR_SOCKET.test(pathAndSearch) || (viteClient && pathAndSearch === '/');
 }
 
 /** Aborts writes (requests and WebSocket sends) and closes popups (read-only profiling). */
@@ -76,13 +81,18 @@ export async function guardContext(
   // WebSockets: the app's sockets connect and receive, but what the page sends is
   // dropped (a chat message, a realtime mutation). Dev-server HMR sockets pass through.
   const reported = new Set<string>();
+  let viteClient = false;
+  context.on('request', (req) => {
+    if (!viteClient && /\/@vite\/client(\?|$)/.test(req.url())) viteClient = true;
+  });
   await context.routeWebSocket(
-    (u) => !isHotReloadSocket(u.pathname + u.search),
+    (u) => !isHotReloadSocket(u.pathname + u.search, viteClient),
     (ws) => {
       const server = ws.connectToServer();
       ws.onMessage(() => {
         const u = new URL(ws.url());
-        const what = `WebSocket send ${u.origin}${u.pathname}`;
+        // The query can carry a session token: say that there is one, never its value.
+        const what = `WebSocket send ${u.origin}${u.pathname}${u.search ? '?…' : ''}`;
         if (!reported.has(what)) {
           reported.add(what);
           onBlocked(what);
@@ -500,25 +510,31 @@ async function runStep(
       return setPhase(page, step.name);
     case 'expect': {
       const target = page.locator(step.selector);
+      // Text and visibility are checked on the visible matches: a selector often also
+      // hits a hidden duplicate (a mobile menu, a screen-reader label) that would
+      // otherwise fail a step whose visible element is right.
+      const visible = target.locator('visible=true');
       // The step before has settled: a short grace period is enough.
       const deadline = Date.now() + Math.min(timeoutMs, 5000);
       let seen = '';
+      let n = 0;
+      let shown = 0;
       for (;;) {
-        const n = await target.count();
-        const text = n > 0 ? ((await target.first().textContent()) ?? '') : '';
+        n = await target.count();
+        const texts = n > 0 ? await visible.allTextContents() : [];
+        shown = texts.length;
+        const text = texts[0] ?? (n > 0 ? ((await target.first().textContent()) ?? '') : '');
         const ok =
           step.count !== undefined
             ? n === step.count
-            : n > 0 &&
-              (step.text !== undefined
-                ? text.includes(withEnv(step.text))
-                : await target.first().isVisible());
+            : shown > 0 &&
+              (step.text === undefined || texts.some((t) => t.includes(withEnv(step.text ?? ''))));
         if (ok) return;
         seen =
           step.count !== undefined
             ? `${n} match(es)`
             : n
-              ? `text "${text.slice(0, 80)}"`
+              ? `text "${text.slice(0, 80)}"${shown ? '' : ' (hidden)'}`
               : 'nothing';
         if (Date.now() > deadline) break;
         await page.waitForTimeout(POLL_MS * 4);
@@ -529,8 +545,15 @@ async function runStep(
           : step.text !== undefined
             ? `text "${step.text}"`
             : 'a visible element';
+      // A count that is right once hidden duplicates are left out: say how to count them.
+      const tip =
+        step.count !== undefined && n !== step.count && shown === step.count
+          ? ` ${shown} of the ${n} matches are visible: use "${step.selector} >> visible=true" to count only those.`
+          : n > 1
+            ? ` (${n} elements match, ${shown} visible)`
+            : '';
       throw new Error(
-        `expect failed: "${step.selector}" should show ${want}, found ${seen}. The UI did not update as expected: if a change just made it render less (e.g. a React.memo), undo that change rather than the expect step.`,
+        `expect failed: "${step.selector}" should show ${want}, found ${seen}.${tip} The UI did not update as expected: if a change just made it render less (e.g. a React.memo), undo that change rather than the expect step.`,
       );
     }
   }
@@ -571,8 +594,8 @@ async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Pro
  */
 export class PageProfiler {
   private definitions: Record<string, string> = {};
-  /** key -> `file:line` of the definition (same ambiguity rules as `definitions`). */
-  private definitionLines: Record<string, string> = {};
+  /** key -> fingerprint of the function's source (same ambiguity rules as `definitions`). */
+  private definitionPrints: Record<string, string> = {};
   /** key -> name written in the source, when the bundler renamed the function. */
   private sourceNames: Record<string, string> = {};
   private conflictingNames = new Set<string>();
@@ -695,7 +718,7 @@ export class PageProfiler {
       this.sourceMaps,
     ).catch(() => {
       const none: Record<string, string> = {};
-      return { files: none, lines: none, names: none };
+      return { files: none, prints: none, names: none };
     });
     for (const [k, n] of Object.entries(found.names)) {
       if (this.conflictingNames.has(k)) continue;
@@ -706,14 +729,14 @@ export class PageProfiler {
     }
     for (const [k, f] of Object.entries(found.files)) {
       if (this.ambiguous.has(k)) continue;
-      const line = found.lines[k] as string;
+      const print = found.prints[k];
       if (this.definitions[k] === undefined) {
         this.definitions[k] = f;
-        this.definitionLines[k] = line;
-      } else if (this.definitions[k] !== f || this.definitionLines[k] !== line) {
+        if (print) this.definitionPrints[k] = print;
+      } else if (this.definitions[k] !== f || this.definitionPrints[k] !== print) {
         this.ambiguous.add(k);
         delete this.definitions[k];
-        delete this.definitionLines[k];
+        delete this.definitionPrints[k];
       }
     }
   }
@@ -742,7 +765,8 @@ export class PageProfiler {
     }
     delete raw.hookErrors;
     raw.definitions = { ...this.definitions };
-    if (Object.keys(this.definitionLines).length) raw.definitionLines = { ...this.definitionLines };
+    if (Object.keys(this.definitionPrints).length)
+      raw.definitionPrints = { ...this.definitionPrints };
     if (Object.keys(this.sourceNames).length) raw.sourceNames = { ...this.sourceNames };
     // Every declared phase is reported, even with no renders: an empty phase is
     // part of the snapshot, so renders appearing there later are a regression.

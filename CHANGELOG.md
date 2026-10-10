@@ -6,6 +6,53 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-10
+
+### Changed
+- `crispy <command> --help` prints only that command's usage and options (it printed the whole help).
+- When a recreated prop re-renders several components, the root cause says how the renders split
+  ("`Row` (30), `DetailsPanel` (1) and `TicketTable` (1) re-rendered 32 time(s) in total…") instead
+  of attributing the sum to the first one, and the location points at the component that
+  re-rendered most.
+- MCP `scan_app` ends with a complete `crispy.config.json` to save (`$schema`, `baseUrl` and the
+  scenarios) and the next call to make (`test_render_snapshots` with `update: true` to record the
+  baseline before changing code), instead of the scenarios alone. The skill's "First run" says the
+  same order: baseline first, then the fix.
+- `crispy scan` now clicks icon-only buttons (a star or an arrow repeated on every row: one click
+  per icon), clicks the second row of a table or list whose rows have a pointer cursor but no
+  short text, and types the page's most frequent letter instead of always `e`, so a search over
+  "Task 1…20" no longer empties the list and leaves the rows unprofiled.
+- A scenario whose step fails (a selector that no longer matches, a failed `expect`) no longer costs
+  the whole run: `crispy run` and `crispy test` skip it, name it in the output and keep the results
+  of the other scenarios (snapshot entries of the skipped scenario are left as they were). The exit
+  code is still 1 for a failed `expect` and 2 for a step crispy could not run.
+- `expect` checks `text` and visibility on the visible matches, so a hidden duplicate of the element
+  (a mobile menu, a screen-reader label) no longer fails the step. When a `count` is off only
+  because of hidden matches, the message says to add `>> visible=true`.
+
+### Fixed
+- Read-only mode no longer reports Vite's own hot-reload socket as a blocked write on Vite before
+  5.0.13 (it opens the bare root path with no token, e.g. Excalidraw): the bare root is exempt only
+  when the page loaded `/@vite/client`; an app's own `/ws`, `/live` or `/` on a non-Vite app stays
+  guarded. The warning for a real blocked socket says when its URL has a query, never its value.
+- A class component could be reported under an unrelated name (`class App` in Excalidraw showed as
+  `props`, the name of its constructor parameter): the name from the source map is only used when it
+  is the bundler's suffixed rename of the same function (`Member2` → `Member`).
+- Same-named render functions in one file (a table's `cell` and `header` functions) are keyed by a
+  fingerprint of their source (`cell (src/columns.tsx#1x9k2z)`), not by their line number as in
+  0.5.0: inserting lines above them renamed every key and produced dozens of 🆕 rows and false
+  "⚠️ check the UI" warnings. The fingerprint ignores whitespace and the line numbers the dev JSX
+  transform embeds, so it only changes when the function itself is edited. Snapshots recorded with
+  0.5.0 show those keys as renamed once.
+- `crispy test` reports one cascade as one row when a cause is itself part of a bigger one (a
+  sidebar group re-rendered by the sidebar whose store subscription started everything): the chain
+  of causes is followed to the top instead of stopping at the first regressed component.
+
+### Docs
+- README: a three-point "New to this?" block under the quick start (nothing is edited or sent,
+  what a root cause is and what "No avoidable renders" and `Not tried` mean, what 🟢/🔴 mean) and
+  a line in the glossary on why `React.memo` needs stable props.
+
 ## [0.5.0] - 2026-10-10
 
 ### Added

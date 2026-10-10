@@ -253,6 +253,28 @@ describe('component identity', () => {
   });
 });
 
+describe('anonymous render functions (council round 6)', () => {
+  it("keys a table's cell functions by a source fingerprint, not by line or render order", async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 2,
+      settleMs: 150,
+      scenarios: [
+        { name: 'cols', path: '/?columns', steps: [{ action: 'click', selector: '#columns-inc' }] },
+      ],
+    });
+    const report = await profile(config);
+    const keys = Object.keys(report.scenarios.cols?.phases.interaction?.components ?? {}).filter(
+      (k) => k.startsWith('cell'),
+    );
+    // Three columns, three distinct stable keys: `cell (file#fingerprint)`.
+    expect(keys.length).toBe(3);
+    for (const k of keys)
+      expect(k).toMatch(/^cell \(test\/fixtures\/app\/Columns\.tsx#[0-9a-z]+\)$/);
+    expect(new Set(keys).size).toBe(3);
+  });
+});
+
 describe('resilience', () => {
   it('turns hook failures into a warning instead of failing the run (C-19)', async () => {
     const config = parseConfig({
@@ -901,6 +923,15 @@ describe('crispy scan safety (red-team round 9)', () => {
     // What scan did not exercise is said out loud (council round 5).
     // A clickable row with a short text is clicked by that text (council round 5).
     expect(result.scenarios.some((s) => s.name.includes('row-a'))).toBe(true);
+    // Icon-only buttons are clicked once per icon; a table of pointer rows gets its
+    // second row clicked through an anchored selector (council round 6).
+    const steps = result.scenarios.flatMap((s) => s.steps);
+    expect(
+      steps.some((st) => 'selector' in st && st.selector === 'role=button[name="☆"] >> nth=0'),
+    ).toBe(true);
+    expect(
+      steps.some((st) => 'selector' in st && st.selector === '#orders tbody > tr >> nth=1'),
+    ).toBe(true);
     const notTried = result.notTried.join('\n');
     expect(notTried).toMatch(
       /1 clickable-looking element\(s\) without a short text to click them by \(div ×1\)/,
@@ -1097,5 +1128,32 @@ describe('expect step (council round 3)', () => {
     await expect(profile(frozen)).rejects.toThrow(
       /expect failed: "#inc" should show text "count 2", found text "count 1"/,
     );
+  });
+
+  it('keeps the results of the other scenarios when a step fails (council round 5, P11)', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { runSnapshotTest } = await import('../src/snapshot-test.js');
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 1,
+      settleMs: 150,
+      timeoutMs: 2000,
+      scenarios: [
+        { name: 'good', steps: [{ action: 'click', selector: '#inc' }] },
+        { name: 'bad', steps: [{ action: 'click', selector: '#does-not-exist' }] },
+      ],
+    });
+    const baseDir = mkdtempSync(join(tmpdir(), 'crispy-partial-'));
+    const first = await runSnapshotTest(config, { baseDir });
+    // The good scenario is recorded; the bad one is named, and exit 2 says crispy could not run it.
+    expect(first.exitCode).toBe(2);
+    expect(Object.keys(first.report.scenarios)).toEqual(['good']);
+    expect(first.markdown).toContain('1 scenario(s) did not run to the end: **bad**');
+    // On the next run the good scenario still compares against its snapshot.
+    const second = await runSnapshotTest(config, { baseDir });
+    expect(second.exitCode).toBe(2);
+    expect(second.result?.passed).toBe(true);
   });
 });

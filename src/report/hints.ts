@@ -294,7 +294,10 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
   const used = new Map<string, number>();
   const budget = (name: string, c: ComponentReport) => fixable(c) - (used.get(name) ?? 0);
   const spend = (name: string, n: number) => used.set(name, (used.get(name) ?? 0) + n);
-  const byCreator = new Map<string, { renders: number; props: string[]; affected: string[] }>();
+  const byCreator = new Map<
+    string,
+    { renders: number; props: string[]; affected: string[]; perAffected: Record<string, number> }
+  >();
   for (const [name, c] of comps) {
     let left = budget(name, c);
     if (!left) continue;
@@ -313,14 +316,17 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       if (take <= 0) break;
       left -= take;
       spend(name, take);
-      const e = byCreator.get(creator) ?? { renders: 0, props: [], affected: [] };
+      const e = byCreator.get(creator) ?? { renders: 0, props: [], affected: [], perAffected: {} };
       e.renders += take;
       for (const p of props) if (!e.props.includes(p)) e.props.push(p);
       if (!e.affected.includes(name)) e.affected.push(name);
+      e.perAffected[name] = (e.perAffected[name] ?? 0) + take;
       byCreator.set(creator, e);
     }
   }
   for (const [creator, e] of byCreator) {
+    // The component that re-rendered most comes first, in the sentence and in the location.
+    e.affected.sort((a, b) => (e.perAffected[b] ?? 0) - (e.perAffected[a] ?? 0) || cmp(a, b));
     const stale = e.props
       .map((prop) =>
         comps
@@ -378,7 +384,17 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       : e.props.some(isCallback)
         ? 'new functions and objects'
         : 'a new object';
-    const plain = `\`${e.affected[0]}\` re-rendered ${e.renders} time(s) with nothing new to show, because \`${creator}\` hands it ${handed} on every render.`;
+    // Several components: say how the renders split, so the number matches the table.
+    const who =
+      e.affected.length === 1
+        ? `\`${e.affected[0]}\` re-rendered ${e.renders} time(s)`
+        : `${e.affected
+            .slice(0, 3)
+            .map((k) => `\`${k}\` (${e.perAffected[k] ?? 0})`)
+            .join(
+              ', ',
+            )}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''} re-rendered ${e.renders} time(s) in total`;
+    const plain = `${who} with nothing new to show, because \`${creator}\` hands ${e.affected.length === 1 ? 'it' : 'them'} ${handed} on every render.`;
     out.push({
       renders: e.renders,
       text: `${plain} \`${creator}\`${at ? ` (${at})` : ''} recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
