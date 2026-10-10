@@ -57,8 +57,13 @@ function explainReused(err: unknown, url: string | undefined, command?: string):
  */
 const HMR_SOCKET = /webpack-hmr|sockjs-node|__vite|vite-hmr|^\/\?token=[\w-]+$|^\/_next\//i;
 
-export function isHotReloadSocket(pathAndSearch: string): boolean {
-  return HMR_SOCKET.test(pathAndSearch);
+/**
+ * `viteClient`: the page loaded `/@vite/client`. Vite before 5.0.13 opens its HMR socket on
+ * the bare root path with no token, which is indistinguishable by URL from an app's own socket
+ * at `/`, so the bare root is exempt only when Vite's client is on the page.
+ */
+export function isHotReloadSocket(pathAndSearch: string, viteClient = false): boolean {
+  return HMR_SOCKET.test(pathAndSearch) || (viteClient && pathAndSearch === '/');
 }
 
 /** Aborts writes (requests and WebSocket sends) and closes popups (read-only profiling). */
@@ -76,13 +81,18 @@ export async function guardContext(
   // WebSockets: the app's sockets connect and receive, but what the page sends is
   // dropped (a chat message, a realtime mutation). Dev-server HMR sockets pass through.
   const reported = new Set<string>();
+  let viteClient = false;
+  context.on('request', (req) => {
+    if (!viteClient && /\/@vite\/client(\?|$)/.test(req.url())) viteClient = true;
+  });
   await context.routeWebSocket(
-    (u) => !isHotReloadSocket(u.pathname + u.search),
+    (u) => !isHotReloadSocket(u.pathname + u.search, viteClient),
     (ws) => {
       const server = ws.connectToServer();
       ws.onMessage(() => {
         const u = new URL(ws.url());
-        const what = `WebSocket send ${u.origin}${u.pathname}`;
+        // The query can carry a session token: say that there is one, never its value.
+        const what = `WebSocket send ${u.origin}${u.pathname}${u.search ? '?…' : ''}`;
         if (!reported.has(what)) {
           reported.add(what);
           onBlocked(what);

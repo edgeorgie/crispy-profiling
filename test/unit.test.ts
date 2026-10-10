@@ -1474,5 +1474,10 @@ describe('read-only WebSocket guard (council round 5)', async () => {
     ]) {
       expect(isHotReloadSocket(app), app).toBe(false);
     }
+    // Vite before 5.0.13 opens its HMR socket on the bare root with no token (Excalidraw,
+    // council round 6): exempt only when the page loaded Vite's client.
+    expect(isHotReloadSocket('/', true)).toBe(true);
+    expect(isHotReloadSocket('/ws', true)).toBe(false);
+    expect(isHotReloadSocket('/?x=1', true)).toBe(false);
   });
 });

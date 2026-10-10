@@ -29,6 +29,10 @@ All notable changes to this project are documented here. The format follows
   because of hidden matches, the message says to add `>> visible=true`.
 
 ### Fixed
+- Read-only mode no longer reports Vite's own hot-reload socket as a blocked write on Vite before
+  5.0.13 (it opens the bare root path with no token, e.g. Excalidraw): the bare root is exempt only
+  when the page loaded `/@vite/client`; an app's own `/ws`, `/live` or `/` on a non-Vite app stays
+  guarded. The warning for a real blocked socket says when its URL has a query, never its value.
 - A class component could be reported under an unrelated name (`class App` in Excalidraw showed as
   `props`, the name of its constructor parameter): the name from the source map is only used when it
   is the bundler's suffixed rename of the same function (`Member2` → `Member`).
