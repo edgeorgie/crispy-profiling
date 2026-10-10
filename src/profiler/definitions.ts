@@ -139,7 +139,20 @@ async function originalName(
     location.lineNumber + 1,
     location.columnNumber + 1 + offset,
   );
-  return mapped?.name && mapped.name !== m[1] && /^[A-Za-z_$][\w$]*$/.test(mapped.name)
-    ? mapped.name
-    : undefined;
+  return mapped?.name && isRenamedBy(m[1], mapped.name) ? mapped.name : undefined;
+}
+
+/**
+ * Whether `original` is the name a bundler renamed to `generated` by adding a suffix
+ * (esbuild turns `Member` into `Member2` when another `Member` is in scope). A source
+ * map position next to a class declaration can carry an unrelated name (the constructor
+ * parameter `props` for `class App`), so anything that is not such a rename is ignored.
+ */
+export function isRenamedBy(generated: string, original: string): boolean {
+  return (
+    generated !== original &&
+    /^[A-Za-z_$][\w$]*$/.test(original) &&
+    generated.startsWith(original) &&
+    /^[\d$_]+$/.test(generated.slice(original.length))
+  );
 }
