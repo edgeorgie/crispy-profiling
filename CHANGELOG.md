@@ -7,10 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
-- Same-named render functions defined in one file (a table's `cell` and `header` functions, one per
-  column) are keyed by their definition line (`cell (src/columns.tsx:30)`) instead of render order
-  (`cell#2`), so adding a column no longer renumbers the other keys in the snapshot. Existing
-  snapshots with `name#N` keys for such functions show a one-time rename.
+- Same-named render functions defined in one file and rendered from one place (a table's `cell` and
+  `header` functions, one per column) are keyed by their definition line (`cell (src/columns.tsx:30)`)
+  instead of render order (`cell#2`), so adding a column no longer renumbers the other keys in the
+  snapshot. Existing snapshots with `name#N` keys for such functions show a one-time rename.
 
 ### Added
 - GitHub Action input `scenarios`: run only those scenarios, so a slow snapshot test can be split

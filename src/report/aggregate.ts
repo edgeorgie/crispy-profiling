@@ -409,21 +409,6 @@ export function stabilizeKeys(runs: RawRun[]): {
     return !!g && g.resolvable && (g.keys.size > 1 || g.files.size > 1);
   };
 
-  // Several same-named functions in one file (a table's `cell` and `header`
-  // render functions, one per column): the definition line tells them apart,
-  // and adding a column does not renumber the others the way `cell#2` does.
-  const byLine = new Set<string>();
-  for (const [name, g] of Object.entries(groups)) {
-    if (g.keys.size < 2 || byFile(name)) continue;
-    const ok = runs.every((r) => {
-      const lines = keysOf(r)
-        .filter((k) => base(k) === name)
-        .map((k) => r.definitionLines?.[k]);
-      return lines.every(Boolean) && new Set(lines).size === lines.length;
-    });
-    if (ok) byLine.add(name);
-  }
-
   // When files cannot tell them apart (styled-components, HOC factories, several
   // components in one file), fall back to where each one is rendered: the JSX
   // site does not depend on render order the way `Item#2` does.
@@ -445,7 +430,7 @@ export function stabilizeKeys(runs: RawRun[]): {
     [...g.files].every((f) => LIBRARY_PATH.test(f));
   const bySite = new Set<string>();
   for (const [name, g] of Object.entries(groups)) {
-    if ((g.keys.size < 2 && !isFactory(name, g)) || byFile(name) || byLine.has(name)) continue;
+    if ((g.keys.size < 2 && !isFactory(name, g)) || byFile(name)) continue;
     const ok = runs.every((r) => {
       const sites = keysOf(r)
         .filter((k) => base(k) === name)
@@ -453,6 +438,22 @@ export function stabilizeKeys(runs: RawRun[]): {
       return sites.every(Boolean) && new Set(sites).size === sites.length;
     });
     if (ok) bySite.add(name);
+  }
+
+  // Several same-named functions in one file rendered from one site (a table's
+  // `cell` and `header` render functions, one per column, all rendered by the
+  // table): the definition line tells them apart, and adding a column does not
+  // renumber the others the way `cell#2` does. Last resort before numbering.
+  const byLine = new Set<string>();
+  for (const [name, g] of Object.entries(groups)) {
+    if (g.keys.size < 2 || byFile(name) || bySite.has(name)) continue;
+    const ok = runs.every((r) => {
+      const lines = keysOf(r)
+        .filter((k) => base(k) === name)
+        .map((k) => r.definitionLines?.[k]);
+      return lines.every(Boolean) && new Set(lines).size === lines.length;
+    });
+    if (ok) byLine.add(name);
   }
 
   const definedIn: Record<string, string> = {};
@@ -465,10 +466,10 @@ export function stabilizeKeys(runs: RawRun[]): {
       const key =
         byFile(base(k)) && f
           ? `${base(k)} (${f})`
-          : line
-            ? `${base(k)} (${line})`
-            : site
-              ? `${base(k)} @ ${site}`
+          : site
+            ? `${base(k)} @ ${site}`
+            : line
+              ? `${base(k)} (${line})`
               : k;
       if (key !== k) rename[k] = key;
       if (f) definedIn[key] ??= f;
