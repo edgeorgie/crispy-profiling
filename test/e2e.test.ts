@@ -253,6 +253,28 @@ describe('component identity', () => {
   });
 });
 
+describe('anonymous render functions (council round 6)', () => {
+  it("keys a table's cell functions by a source fingerprint, not by line or render order", async () => {
+    const config = parseConfig({
+      baseUrl: slowUrl,
+      runs: 2,
+      settleMs: 150,
+      scenarios: [
+        { name: 'cols', path: '/?columns', steps: [{ action: 'click', selector: '#columns-inc' }] },
+      ],
+    });
+    const report = await profile(config);
+    const keys = Object.keys(report.scenarios.cols?.phases.interaction?.components ?? {}).filter(
+      (k) => k.startsWith('cell'),
+    );
+    // Three columns, three distinct stable keys: `cell (file#fingerprint)`.
+    expect(keys.length).toBe(3);
+    for (const k of keys)
+      expect(k).toMatch(/^cell \(test\/fixtures\/app\/Columns\.tsx#[0-9a-z]+\)$/);
+    expect(new Set(keys).size).toBe(3);
+  });
+});
+
 describe('resilience', () => {
   it('turns hook failures into a warning instead of failing the run (C-19)', async () => {
     const config = parseConfig({

@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Cascade, CascadeRound8 } from './Cascade.js';
+import { Columns } from './Columns.js';
 import { Deps } from './Deps.js';
 import { Lab } from './Lab.js';
 import { Mutable } from './Mutable.js';
@@ -281,6 +282,7 @@ function App() {
       {location.search.includes('mutable') && <Mutable />}
       {location.search.includes('deps') && <Deps />}
       {location.search.includes('trap') && <Trap />}
+      {location.search.includes('columns') && <Columns />}
       {location.search.includes('cascade') && <Cascade />}
       {location.search.includes('round8') && <CascadeRound8 />}
       {location.search.includes('memo') && (

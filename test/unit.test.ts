@@ -948,7 +948,7 @@ describe('library factory keys (R4-15)', async () => {
     ]);
   });
 
-  it('keys same-named render functions in one file by their definition line (P14)', () => {
+  it('keys same-named render functions in one file by a source fingerprint, so line shifts and new columns change nothing (P14, council round 6)', () => {
     // A table's column definitions: one `cell` function per column, all in
     // columns.tsx and all rendered from the same JSX site inside the table.
     const cell = (renders: number) =>
@@ -969,7 +969,7 @@ describe('library factory keys (R4-15)', async () => {
         causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
         selfDurationMs: 0,
       }) as RawRun['phases'][string]['components'][string];
-    const run = (components: Record<string, number>, lines: Record<string, string>): RawRun => ({
+    const run = (components: Record<string, number>, prints: Record<string, string>): RawRun => ({
       reactVersion: '19',
       profilingBuild: true,
       phases: {
@@ -981,33 +981,25 @@ describe('library factory keys (R4-15)', async () => {
       vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
       warnings: [],
       definitions: Object.fromEntries(Object.keys(components).map((k) => [k, 'src/columns.tsx'])),
-      definitionLines: lines,
+      definitionPrints: prints,
     });
     const keys = (r: RawRun) => Object.keys(r.phases.load?.components ?? {});
-    const before = stabilizeKeys([
-      run({ cell: 1, 'cell#2': 2 }, { cell: 'src/columns.tsx:12', 'cell#2': 'src/columns.tsx:30' }),
-    ]);
+    const before = stabilizeKeys([run({ cell: 1, 'cell#2': 2 }, { cell: 'a1', 'cell#2': 'b2' })]);
     expect(keys(before.runs[0] as RawRun)).toEqual([
-      'cell (src/columns.tsx:12)',
-      'cell (src/columns.tsx:30)',
+      'cell (src/columns.tsx#a1)',
+      'cell (src/columns.tsx#b2)',
     ]);
-    // A new column in the middle renumbers the raw keys; the stable keys stay.
+    // A column added in the middle (and 15 lines inserted above) renumbers the raw keys and
+    // moves every line; the fingerprints, and so the stable keys, stay.
     const after = stabilizeKeys([
-      run(
-        { cell: 1, 'cell#2': 3, 'cell#3': 2 },
-        {
-          cell: 'src/columns.tsx:12',
-          'cell#2': 'src/columns.tsx:21',
-          'cell#3': 'src/columns.tsx:30',
-        },
-      ),
+      run({ cell: 1, 'cell#2': 3, 'cell#3': 2 }, { cell: 'a1', 'cell#2': 'c3', 'cell#3': 'b2' }),
     ]);
     expect(keys(after.runs[0] as RawRun)).toEqual([
-      'cell (src/columns.tsx:12)',
-      'cell (src/columns.tsx:21)',
-      'cell (src/columns.tsx:30)',
+      'cell (src/columns.tsx#a1)',
+      'cell (src/columns.tsx#c3)',
+      'cell (src/columns.tsx#b2)',
     ]);
-    expect(after.definedIn['cell (src/columns.tsx:21)']).toBe('src/columns.tsx');
+    expect(after.definedIn['cell (src/columns.tsx#c3)']).toBe('src/columns.tsx');
   });
 });
 
