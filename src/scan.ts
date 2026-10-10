@@ -65,6 +65,8 @@ interface Found {
   login: boolean;
   /** Seen but never clicked: buttons with a risky name, and clickable-looking non-buttons. */
   notTried: { risky: string[]; pointer: Record<string, number> };
+  /** The letter to type into search boxes: the most frequent one on the page, so a list stays non-empty. */
+  letter: string;
 }
 
 /** Runs in the page: safe interactive elements and same-origin links, in DOM order. */
@@ -102,15 +104,18 @@ function discoverInPage(risky: string): Found {
       if (!riskyNames.includes(name) && riskyNames.length < 5) riskyNames.push(name);
       continue;
     }
-    if (!name || name.length > 40 || !meaningful(name)) continue;
+    if (!name || name.length > 40) continue;
     const key = `${role}|${name}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    // An icon-only name (a star, an arrow) says nothing about the action, but 20 of
+    // them on a list are usually the interaction that feels slow: click the first.
+    const icon = !meaningful(name);
     actions.push({
       kind: 'click',
       selector: `role=${role}[name=${quote(name)}] >> nth=0`,
-      name,
-      rank: inMain(el) ? 2 : 3,
+      name: icon ? `icon ${name}` : name,
+      rank: icon ? (inMain(el) ? 3 : 4) : inMain(el) ? 2 : 3,
     });
   }
   const typeable = document.querySelectorAll(
@@ -204,6 +209,9 @@ function discoverInPage(risky: string): Found {
   // clicked through that text; without one it is only reported as not tried.
   const pointer: Record<string, number> = {};
   const nativeControl = 'a[href], button, input, select, textarea, label, summary, [role]';
+  // Rows of a table or list (siblings with a pointer cursor and no short text): one
+  // click on the second row of each group, found through the nearest anchored ancestor.
+  const rowGroups = new Map<Element, { tag: string; count: number }>();
   for (const el of Array.from(document.body.querySelectorAll('*')).slice(0, 4000)) {
     if (!visible(el) || el.closest(nativeControl) !== null) continue;
     if (getComputedStyle(el).cursor !== 'pointer') continue;
@@ -228,8 +236,47 @@ function discoverInPage(risky: string): Found {
       });
       continue;
     }
+    const group = parent ? rowGroups.get(parent) : undefined;
+    if (parent && (!group || group.tag === tag)) {
+      rowGroups.set(parent, { tag, count: (group?.count ?? 0) + 1 });
+      continue;
+    }
     pointer[tag] = (pointer[tag] ?? 0) + 1;
   }
+  const anchorOf = (el: Element): string => {
+    for (let a: Element | null = el; a && a !== document.body; a = a.parentElement) {
+      if (a.id) return `#${CSS.escape(a.id)}`;
+      const testId = a.getAttribute('data-testid');
+      if (testId) return `[data-testid=${quote(testId)}]`;
+      if (a.tagName === 'MAIN') return 'main';
+    }
+    return 'body';
+  };
+  for (const [parent, { tag, count }] of rowGroups) {
+    if (count < 3) {
+      pointer[tag] = (pointer[tag] ?? 0) + count;
+      continue;
+    }
+    const key = `rows|${anchorOf(parent)}|${tag}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    actions.push({
+      kind: 'click',
+      selector: `${anchorOf(parent)} ${parent.tagName.toLowerCase()} > ${tag} >> nth=1`,
+      name: `${tag} row 2`,
+      rank: inMain(parent) ? 3 : 4,
+    });
+  }
+  // The most frequent letter of the page's own text: typing it keeps most lists
+  // non-empty (typing "e" into a search over "Task 1…20" hid every row).
+  const letters: Record<string, number> = {};
+  for (const ch of norm(
+    (document.querySelector('main') ?? document.body).innerText,
+  ).toLowerCase()) {
+    if (ch >= 'a' && ch <= 'z') letters[ch] = (letters[ch] ?? 0) + 1;
+  }
+  const letter =
+    Object.entries(letters).sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1))[0]?.[0] ?? 'e';
   // Stable sort: by rank, then DOM order.
   const ranked = actions
     .map((a, i) => [a, i] as const)
@@ -247,6 +294,7 @@ function discoverInPage(risky: string): Found {
     links,
     login,
     notTried: { risky: riskyNames, pointer },
+    letter,
   };
 }
 
@@ -348,8 +396,8 @@ async function discover(
             ? { action: 'click', selector: action.selector }
             : action.kind === 'select'
               ? { action: 'select', selector: action.selector, value: action.value ?? '' }
-              : // One common letter keeps most lists non-empty, so rows still re-render.
-                { action: 'type', selector: action.selector, value: 'e' };
+              : // The page's most frequent letter keeps most lists non-empty, so rows re-render.
+                { action: 'type', selector: action.selector, value: found.letter };
         scenarios.push({
           name,
           path: landed,
