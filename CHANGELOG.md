@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
+### Added
+- `crispy scan` says what it tried and what it did not: clickable-looking elements that are not
+  buttons or links (a `li` with `onClick`), buttons skipped on purpose for a risky name, and safe
+  interactions beyond `--actions`. Same list in the MCP `scan_app` output.
+- `crispy test` tip: when a component falls to 0 renders in a scenario that has no `expect` step, it
+  says a React.memo may have frozen the screen and shows the `expect` step to add.
+
+### Changed
+- `crispy scan` now measures time while it profiles, so every root cause says what it costs
+  ("≈ 11 ms of JavaScript") and a first-time user can tell whether it is worth fixing. Saved
+  scenarios and snapshots are unaffected (timings are not recorded in them).
+- `crispy scan <url>` with no config now starts this project's detected dev command when the URL is
+  the project's own dev address (an already running server is reused). Before, it failed with
+  "Nothing is listening" even though crispy knew the command.
+- MCP `test_render_snapshots`: a result with "⚠️ check the UI" rows ends with `Exit status: warn`
+  instead of a bare `pass`, so an agent reading the last line does not take it as clean.
+
+### Docs
+- Discoverability: the package description, keywords, README intro and plugin descriptions now name
+  `crispy-profiling` and say it is a React re-render profiler, so it is not mistaken for the `crispy`
+  style-guide package or other tools called crispy.
+
 ## [0.3.0] - 2026-10-08
 
 ### Security

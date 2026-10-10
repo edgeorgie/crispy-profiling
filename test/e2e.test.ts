@@ -304,6 +304,11 @@ describe('render snapshots (crispy test)', () => {
 
     await runSnapshotTest(config(slowUrl), { baseDir: dir, update: true });
     expect((await runSnapshotTest(config(slowUrl), { baseDir: dir, ci: true })).exitCode).toBe(0);
+
+    // The memoized variant drops Row to 0 renders: without an expect step crispy cannot tell a
+    // win from a frozen screen, so it says so and shows the step to add (council round 5).
+    const fixed = await runSnapshotTest(config(fastUrl), { baseDir: dir });
+    expect(fixed.markdown).toMatch(/`Row` fell to 0 renders[\s\S]*"action": "expect"/);
   });
 });
 
@@ -859,6 +864,8 @@ describe('crispy scan', () => {
       scenarios: [{ name: 'x' }],
     });
     const result = await scan(config, { path: '/?cascade', maxRoutes: 1, maxActions: 6, runs: 1 });
+    // scan measures time, so each cause says what it costs in ms (council round 5, newcomer).
+    expect(result.causes.some((c) => /≈ \d+ ms of JavaScript/.test(c.text))).toBe(true);
     expect(result.skipped.map((s) => s.reason)).toEqual([]);
     const names = result.scenarios.map((s) => s.name);
     expect(names.length).toBe(6);
@@ -891,6 +898,12 @@ describe('crispy scan safety (red-team round 9)', () => {
       /tried to send POST .*\/api\/save \(blocked, not saved\)/,
     );
     expect(result.scenarios.some((s) => s.name.includes('add-item'))).toBe(true);
+    // What scan did not exercise is said out loud (council round 5).
+    const notTried = result.notTried.join('\n');
+    expect(notTried).toMatch(
+      /2 clickable-looking element\(s\) that are not buttons or links \(li ×2\)/,
+    );
+    expect(notTried).toMatch(/skipped on purpose because the name looks risky: .*"Eliminar"/);
     // List rows that differ only by a number are one scenario, not three.
     expect(result.scenarios.filter((s) => s.name.includes('member')).length).toBe(1);
   }, 180_000);
