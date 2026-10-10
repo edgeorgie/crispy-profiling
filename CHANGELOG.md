@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Docs
+- README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added
