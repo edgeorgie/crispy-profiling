@@ -668,6 +668,26 @@ function linkRootCauses(changes: SnapshotChange[], report: CrispyReport): void {
     const by = dominantTrigger(phase?.components[c.component]?.triggeredBy, c.component);
     if (by) c.rootCause = by;
   }
+  // A cause can itself be part of a bigger one (a sidebar group re-rendered by the
+  // sidebar whose store subscription started everything): follow the links to the
+  // top, so the whole cascade is one row.
+  const causeOf = new Map<string, string>();
+  for (const c of changes) {
+    if (c.status === 'regressed' && c.component && c.rootCause)
+      causeOf.set(id(c, c.component), c.rootCause);
+  }
+  for (const c of changes) {
+    if (!c.rootCause || !c.component) continue;
+    const seen = new Set([c.component, c.rootCause]);
+    for (
+      let up = causeOf.get(id(c, c.rootCause));
+      up && !seen.has(up);
+      up = causeOf.get(id(c, up))
+    ) {
+      seen.add(up);
+      c.rootCause = up;
+    }
+  }
 }
 
 /** The component whose state updates re-rendered this one most often (not itself). */

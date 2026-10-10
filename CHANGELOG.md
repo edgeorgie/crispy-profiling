@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `crispy test` reports one cascade as one row when a cause is itself part of a bigger one (a
+  sidebar group re-rendered by the sidebar whose store subscription started everything): the chain
+  of causes is followed to the top instead of stopping at the first regressed component.
+
 ## [0.5.0] - 2026-10-10
 
 ### Added
