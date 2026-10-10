@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>crispy-profiling</title>
+<meta name="description" content="Snapshot testing for React re-renders: find the components that render for no reason, read why, apply the fix, verify it in CI. CLI, GitHub Action, MCP server and Agent Skill." />
+<meta property="og:title" content="crispy-profiling — snapshot testing for React re-renders" />
+<meta property="og:description" content="Deterministic React render profiling with the fix attached. Zero config: npx crispy scan." />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🥓%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #fbf8f3;
+    --bg-2: #f3eee6;
+    --surface: #ffffff;
+    --surface-2: #f7f2ea;
+    --border: #e6ddd0;
+    --text: #1d1a16;
+    --muted: #6b6259;
+    --accent: #e8590c;
+    --accent-2: #fd7e14;
+    --accent-soft: rgba(232, 89, 12, 0.12);
+    --green: #1f9d55;
+    --green-soft: rgba(31, 157, 85, 0.14);
+    --red: #d7263d;
+    --red-soft: rgba(215, 38, 61, 0.12);
+    --amber: #b7791f;
+    --amber-soft: rgba(183, 121, 31, 0.14);
+    --term-bg: #15120f;
+    --term-text: #f1e9dd;
+    --term-dim: #9b8f80;
+    --term-green: #7ee2a8;
+    --term-red: #ff7b8a;
+    --term-amber: #ffc46b;
+    --shadow: 0 10px 30px rgba(50, 30, 10, 0.08);
+    --radius: 14px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #100e0c;
+      --bg-2: #171310;
+      --surface: #1b1714;
+      --surface-2: #221d18;
+      --border: #332b24;
+      --text: #f3ece2;
+      --muted: #a2978a;
+      --accent: #ff8a3d;
+      --accent-2: #ffa94d;
+      --accent-soft: rgba(255, 138, 61, 0.16);
+      --green: #4ade80;
+      --green-soft: rgba(74, 222, 128, 0.14);
+      --red: #ff6b7a;
+      --red-soft: rgba(255, 107, 122, 0.14);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.14);
+      --term-bg: #0b0a09;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #100e0c;
+    --bg-2: #171310;
+    --surface: #1b1714;
+    --surface-2: #221d18;
+    --border: #332b24;
+    --text: #f3ece2;
+    --muted: #a2978a;
+    --accent: #ff8a3d;
+    --accent-2: #ffa94d;
+    --accent-soft: rgba(255, 138, 61, 0.16);
+    --green: #4ade80;
+    --green-soft: rgba(74, 222, 128, 0.14);
+    --red: #ff6b7a;
+    --red-soft: rgba(255, 107, 122, 0.14);
+    --amber: #fbbf24;
+    --amber-soft: rgba(251, 191, 36, 0.14);
+    --term-bg: #0b0a09;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 0.9em; }
+  h1, h2, h3 { line-height: 1.15; letter-spacing: -0.02em; margin: 0; }
+  h2 { font-size: clamp(1.6rem, 3vw, 2.3rem); font-weight: 800; }
+  h3 { font-size: 1.1rem; font-weight: 600; }
+  p { margin: 0; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  /* grid children must be allowed to shrink below their <pre> content width */
+  .hero .wrap > *, .demo-grid > *, .how > *, .tabpanel.on > * { min-width: 0; }
+  section { padding: 72px 0; }
+  .kicker { color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.75rem; margin-bottom: 12px; }
+  .lead { color: var(--muted); font-size: 1.1rem; max-width: 62ch; margin-top: 14px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px;
+    font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; font-size: 0.95rem;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); text-decoration: none; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-2); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg) 80%, transparent); border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
+  .brand span { font-size: 1.4rem; }
+  .links { display: flex; gap: 20px; align-items: center; font-size: 0.92rem; }
+  .links a { color: var(--muted); font-weight: 500; }
+  .links a:hover { color: var(--text); text-decoration: none; }
+  .theme { background: none; border: 1px solid var(--border); border-radius: 8px; width: 34px; height: 34px; cursor: pointer; color: var(--text); font-size: 1rem; }
+  @media (max-width: 760px) { .links a:not(.keep) { display: none; } }
+
+  /* hero */
+  .hero { padding: 80px 0 48px; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: -40% -20% auto -20%; height: 520px; pointer-events: none;
+    background: radial-gradient(ellipse at 30% 20%, var(--accent-soft), transparent 60%);
+  }
+  .hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; position: relative; }
+  @media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } }
+  h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+  .install {
+    margin-top: 24px; display: inline-flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px;
+    border: 1px solid var(--border); background: var(--surface); border-radius: 10px; font-size: 0.95rem; max-width: 100%;
+  }
+  .install span { overflow-x: auto; white-space: nowrap; }
+  .install .copy { border: none; background: var(--surface-2); color: var(--muted); border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.8rem; font-family: inherit; }
+  .install .copy:hover { color: var(--text); }
+  .stats { display: flex; gap: 22px; margin-top: 28px; flex-wrap: wrap; color: var(--muted); font-size: 0.9rem; }
+  .stats b { color: var(--text); display: block; font-size: 1.25rem; letter-spacing: -0.02em; }
+
+  /* terminal */
+  .terminal {
+    background: var(--term-bg); color: var(--term-text); border-radius: var(--radius); box-shadow: var(--shadow);
+    border: 1px solid rgba(255,255,255,0.06); overflow: hidden; font-size: 0.8rem;
+  }
+  .terminal .bar { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); align-items: center; }
+  .terminal .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a332c; display: inline-block; }
+  .terminal .bar i:nth-child(1) { background: #ff5f57; } .terminal .bar i:nth-child(2) { background: #febc2e; } .terminal .bar i:nth-child(3) { background: #28c840; }
+  .terminal .bar span { margin-left: auto; color: var(--term-dim); font-family: "JetBrains Mono", monospace; }
+  .terminal pre { margin: 0; padding: 16px; min-height: 330px; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; line-height: 1.6; }
+  .terminal .p { color: var(--term-green); } .terminal .d { color: var(--term-dim); } .terminal .r { color: var(--term-red); } .terminal .a { color: var(--term-amber); } .terminal .g { color: var(--term-green); }
+  .cursor::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--term-amber); }
+  @keyframes blink { 50% { opacity: 0; } }
+  .replay { background: none; border: 1px solid rgba(255,255,255,0.15); color: var(--term-dim); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-size: 0.75rem; margin-left: 8px; }
+  .replay:hover { color: var(--term-text); }
+
+  /* loop */
+  .loop { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .steps4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 36px; }
+  @media (max-width: 900px) { .steps4 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .steps4 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+  .card .n { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 800; margin-bottom: 14px; }
+  .card p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
+  .card code { font-size: 0.8em; }
+
+  /* demo */
+  .demo-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 24px; margin-top: 32px; }
+  @media (max-width: 900px) { .demo-grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .panel header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); font-size: 0.85rem; font-weight: 600; flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { background: var(--surface); border: none; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .app { padding: 16px; }
+  .app input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  .comp { position: relative; border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 10px; transition: background 0.1s, border-color 0.1s; }
+  .comp.flash { background: var(--red-soft); border-color: var(--red); }
+  .comp.flash.ok { background: var(--green-soft); border-color: var(--green); }
+  .comp .tag { position: absolute; top: -9px; left: 10px; background: var(--surface); padding: 0 6px; font-size: 0.7rem; color: var(--muted); font-family: "JetBrains Mono", monospace; }
+  .comp .cnt { position: absolute; top: -10px; right: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: 0.72rem; font-family: "JetBrains Mono", monospace; }
+  .rows { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; }
+  .row.sel { outline: 2px solid var(--accent); }
+  .row small { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 0.82rem; padding: 0 16px 14px; }
+  .code { margin: 0; padding: 14px 16px; background: var(--term-bg); color: var(--term-text); font-size: 0.78rem; line-height: 1.6; overflow-x: auto; border-top: 1px solid var(--border); }
+  .code .k { color: #c792ea; } .code .f { color: #82aaff; } .code .s { color: var(--term-green); } .code .c { color: var(--term-dim); } .code .hl { background: rgba(255,138,61,0.18); display: inline-block; width: 100%; }
+  .code .bad { background: rgba(255,107,122,0.18); display: inline-block; width: 100%; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  td.num { font-family: "JetBrains Mono", monospace; text-align: right; }
+  th.num { text-align: right; }
+  td .why { color: var(--muted); display: block; font-size: 0.78rem; margin-top: 2px; }
+  .verdict { padding: 12px 16px; font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); }
+  .verdict.red { background: var(--red-soft); color: var(--red); } .verdict.green { background: var(--green-soft); color: var(--green); } .verdict.gray { color: var(--muted); }
+  .rootcause { padding: 12px 16px; font-size: 0.85rem; background: var(--amber-soft); border-bottom: 1px solid var(--border); }
+  .rootcause b { color: var(--amber); }
+  .table-wrap { overflow-x: auto; }
+
+  /* how */
+  .how { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; margin-top: 32px; }
+  @media (max-width: 900px) { .how { grid-template-columns: 1fr; } }
+  .tl { display: grid; gap: 14px; }
+  .tl .item { display: grid; grid-template-columns: 36px 1fr; gap: 14px; padding: 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .tl .item:hover, .tl .item.on { background: var(--surface); border-color: var(--border); }
+  .tl .dot { width: 36px; height: 36px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 800; }
+  .tl .item p { color: var(--muted); font-size: 0.92rem; margin-top: 4px; }
+  .json { position: sticky; top: 80px; }
+  .json pre { margin: 0; padding: 18px; background: var(--term-bg); color: var(--term-text); border-radius: var(--radius); font-size: 0.78rem; line-height: 1.6; overflow-x: auto; min-height: 320px; box-shadow: var(--shadow); }
+  .json .k { color: #82aaff; } .json .s { color: var(--term-green); } .json .n { color: var(--term-amber); } .json .c { color: var(--term-dim); }
+
+  /* integrations */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 28px; }
+  .tabs button { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 8px 16px; cursor: pointer; font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+  .tabs button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .tabpanel { display: none; margin-top: 18px; }
+  .tabpanel.on { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .tabpanel.on { grid-template-columns: 1fr; } }
+  .tabpanel ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); }
+  .tabpanel li { margin: 6px 0; }
+  .block { position: relative; }
+  .block pre { margin: 0; padding: 18px; background: var(--term-bg); color: var(--term-text); border-radius: var(--radius); font-size: 0.8rem; line-height: 1.6; overflow-x: auto; box-shadow: var(--shadow); }
+  .block .copy { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.08); color: var(--term-dim); border: none; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: inherit; font-size: 0.75rem; }
+  .block .copy:hover { color: var(--term-text); }
+
+  /* proof */
+  .proof { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .apps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 28px; }
+  @media (max-width: 900px) { .apps { grid-template-columns: repeat(2, 1fr); } }
+  .apps .card { padding: 16px; }
+  .apps .card b { display: block; }
+  .apps .card span { color: var(--muted); font-size: 0.85rem; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
+  @media (max-width: 760px) { .facts { grid-template-columns: 1fr; } }
+
+  /* faq */
+  details { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 0 18px; margin-top: 10px; }
+  summary { cursor: pointer; padding: 14px 0; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  summary::after { content: "+"; color: var(--muted); font-size: 1.2rem; }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--muted); padding-bottom: 16px; font-size: 0.95rem; }
+
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--border); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .fade { opacity: 0; transform: translateY(14px); transition: opacity 0.6s, transform 0.6s; }
+  .fade.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .fade { opacity: 1; transform: none; transition: none; } .cursor::after { animation: none; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><span>🥓</span> crispy-profiling</a>
+    <div class="links">
+      <a href="#demo">Demo</a>
+      <a href="#how">How it works</a>
+      <a href="#integrations">Integrations</a>
+      <a href="#faq">FAQ</a>
+      <a class="keep" href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">GitHub</a>
+      <a class="keep" href="https://www.npmjs.com/package/crispy-profiling" target="_blank" rel="noopener">npm</a>
+      <button class="theme" id="theme" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <div class="pill">🟢 v0.4.0 · MIT · React 18.3 & 19</div>
+      <h1 style="margin-top:18px">Snapshot testing for <em>React re-renders</em>.</h1>
+      <p class="lead">Your app feels slow when you type or click? crispy opens it in headless Chromium, counts every component render, explains <b>why</b> each one happened and prints the line to fix. Then it fails the PR that brings the renders back.</p>
+      <div class="install mono">
+        <span id="install-cmd">npx crispy scan</span>
+        <button class="copy" data-copy="npm i -D crispy-profiling && npx crispy install && npx crispy scan">copy</button>
+      </div>
+      <div class="cta">
+        <a class="btn primary" href="#demo">Try the interactive demo ↓</a>
+        <a class="btn" href="https://github.com/edgeorgie/crispy-profiling#quick-start" target="_blank" rel="noopener">Read the docs</a>
+      </div>
+      <div class="stats">
+        <div><b>0 lines</b>of config to start</div>
+        <div><b>0 changes</b>to your app code</div>
+        <div><b>5 real apps</b>validated, 5 fixable findings</div>
+        <div><b>byte-for-byte</b>reproducible reports</div>
+      </div>
+    </div>
+    <div class="terminal" aria-label="Animated terminal showing npx crispy scan">
+      <div class="bar"><i></i><i></i><i></i><span>zsh — my-react-app <button class="replay" id="replay">↻ replay</button></span></div>
+      <pre id="term"></pre>
+    </div>
+  </div>
+</header>
+
+<section class="loop">
+  <div class="wrap">
+    <div class="kicker">The loop</div>
+    <h2>Find → explain → fix → verify</h2>
+    <p class="lead">Every finding carries its fix. Every fix becomes a test that keeps it fixed.</p>
+    <div class="steps4">
+      <div class="card fade"><div class="n">1</div><h3>Find</h3><p><code>npx crispy scan</code> detects Vite/Next.js, starts your dev server, visits routes and tries the safe interactions: buttons, tabs, inputs, links. Never anything named delete, pay, submit…</p></div>
+      <div class="card fade"><div class="n">2</div><h3>Explain</h3><p>Each render is classified: <b>props</b>, <b>state</b>, <b>context</b> or <b>parent</b>. Avoidable ones get a root cause: a recreated callback, an inline object, a context value rebuilt on every render.</p></div>
+      <div class="card fade"><div class="n">3</div><h3>Fix</h3><p>The report points at <code>src/App.tsx:222 (App)</code> and says what to do: <code>useCallback</code>, <code>useMemo</code>, hoist, <code>React.memo</code>. Agents apply it through the MCP server.</p></div>
+      <div class="card fade"><div class="n">4</div><h3>Verify</h3><p><code>npx crispy test</code> records <code>crispy.snap.json</code>. In CI the GitHub Action fails the PR that adds renders and comments the cause and the fix.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="kicker">Interactive demo</div>
+    <h2>Type in the app. Watch what re-renders.</h2>
+    <p class="lead">A small list app, instrumented the way crispy sees it. Every keystroke in the search box updates <code>App</code> state. Switch between the naive code and the fix to see what crispy reports.</p>
+    <div class="demo-grid">
+      <div class="panel">
+        <header>
+          <span>Your app <span style="color:var(--muted);font-weight:500">(simulated)</span></span>
+          <div class="seg" role="tablist" aria-label="Code variant">
+            <button class="on" data-variant="naive">naive</button>
+            <button data-variant="fixed">with the fix</button>
+          </div>
+        </header>
+        <div class="app">
+          <div class="comp" id="c-App"><span class="tag">App</span><span class="cnt" id="n-App">0 renders</span>
+            <div class="comp" id="c-Header" style="margin-top:14px"><span class="tag">Header</span><span class="cnt" id="n-Header">0</span>
+              <input id="search" placeholder="Type to search members…" autocomplete="off" />
+            </div>
+            <div class="rows" id="rows"></div>
+            <div class="comp" id="c-Status"><span class="tag">Status</span><span class="cnt" id="n-Status">0</span><small id="status">8 members · none selected</small></div>
+          </div>
+        </div>
+        <p class="hint">🔴 flash = rendered with nothing new to show (avoidable) · 🟢 flash = rendered for a real change. Click a row to select it.</p>
+        <pre class="code" id="code"></pre>
+      </div>
+      <div class="panel">
+        <header><span>crispy report · scenario <span class="mono" style="font-weight:500">search</span></span><button class="btn" id="reset" style="padding:5px 10px;font-size:0.78rem">reset counts</button></header>
+        <div class="rootcause" id="rootcause"></div>
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th>Component</th><th class="num">Renders</th><th class="num">Avoidable</th><th>Why it rendered / how to fix</th></tr></thead>
+          <tbody id="report"></tbody>
+        </table>
+        </div>
+        <div class="verdict gray" id="verdict">Type something above to profile the scenario.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="loop">
+  <div class="wrap">
+    <div class="kicker">How it works</div>
+    <h2>The same hook React DevTools uses. No instrumentation in your code.</h2>
+    <div class="how">
+      <div class="tl" id="tl">
+        <div class="item on" data-step="0"><div class="dot">1</div><div><h3>Open the app in headless Chromium</h3><p>playwright-core drives a real browser. crispy starts your dev server (<code>webServer</code>) or attaches to a running URL. Everything is read-only: non-GET requests and WebSocket messages never leave the browser.</p></div></div>
+        <div class="item" data-step="1"><div class="dot">2</div><div><h3>Record every render</h3><p>A small hook registers as <code>__REACT_DEVTOOLS_GLOBAL_HOOK__</code> before React loads and sees each commit: which fibers rendered, with which props, state and context.</p></div></div>
+        <div class="item" data-step="2"><div class="dot">3</div><div><h3>Classify and settle</h3><p>Per scenario step (click, fill, press, navigate, <code>expect</code>), renders are grouped by phase and compared with the previous props to decide: changed, shallow-equal, recreated callback, context, parent.</p></div></div>
+        <div class="item" data-step="3"><div class="dot">4</div><div><h3>Deterministic report</h3><p>Sorted, timestamp-free JSON that only changes when your code changes. Budgets, baseline comparison, Markdown for PR comments, and snapshots for <code>crispy test</code>.</p></div></div>
+      </div>
+      <div class="json"><pre id="json"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="integrations">
+  <div class="wrap">
+    <div class="kicker">Integrations</div>
+    <h2>One tool, four doors.</h2>
+    <p class="lead">Use it from your terminal, from CI, or let your coding agent measure its own fix instead of guessing.</p>
+    <div class="tabs" role="tablist">
+      <button class="on" data-tab="cli">CLI</button>
+      <button data-tab="action">GitHub Action</button>
+      <button data-tab="mcp">MCP server</button>
+      <button data-tab="skill">Agent Skill & plugin</button>
+    </div>
+
+    <div class="tabpanel on" data-tab="cli">
+      <div><h3>From your terminal</h3><ul>
+        <li><code>scan</code> finds and profiles interactions with zero config and writes <code>crispy.config.json</code>.</li>
+        <li><code>run</code> prints every component with its causes and the fix for a one-off look.</li>
+        <li><code>test</code> records or checks <code>crispy.snap.json</code>; <code>--ci</code> fails on regressions.</li>
+        <li><code>compare</code> diffs two reports with a threshold. Exit codes: 0 ok · 1 regression · 2 usage.</li>
+      </ul></div>
+      <div class="block"><button class="copy" data-copy="npm i -D crispy-profiling
+npx crispy install
+npx crispy scan
+npx crispy test">copy</button><pre><span class="c"># install once</span>
+npm i -D crispy-profiling
+npx crispy install        <span class="c"># Chromium, or set CRISPY_CHROMIUM_PATH</span>
+
+<span class="c"># zero config: find, profile, explain</span>
+npx crispy scan
+
+<span class="c"># record the snapshot, commit it, guard the flows</span>
+npx crispy test
+npx crispy test --ci       <span class="c"># fails when a component adds renders</span>
+
+<span class="c"># one-off deep look at a flow</span>
+npx crispy run -s search --markdown report.md</pre></div>
+    </div>
+
+    <div class="tabpanel" data-tab="action">
+      <div><h3>In every pull request</h3><ul>
+        <li>Installs Chromium and its libraries itself: no browser setup in the workflow.</li>
+        <li>Fails when any component renders more than the committed snapshot allows.</li>
+        <li>One PR comment, updated on every push, with the cause, where it renders and the fix.</li>
+        <li><code>scenarios</code> input splits a slow suite across a job matrix.</li>
+      </ul></div>
+      <div class="block"><button class="copy" data-copy="name: crispy
+on: pull_request
+permissions: { contents: read, pull-requests: write }
+jobs:
+  renders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - uses: edgeorgie/crispy-profiling@v0">copy</button><pre><span class="k">name</span>: crispy
+<span class="k">on</span>: pull_request
+<span class="k">permissions</span>: { contents: read, pull-requests: write }
+<span class="k">jobs</span>:
+  <span class="k">renders</span>:
+    <span class="k">runs-on</span>: ubuntu-latest
+    <span class="k">steps</span>:
+      - <span class="k">uses</span>: actions/checkout@v4
+      - <span class="k">uses</span>: actions/setup-node@v4
+        <span class="k">with</span>: { node-version: 22 }
+      - <span class="k">run</span>: npm ci
+      - <span class="k">uses</span>: <span class="s">edgeorgie/crispy-profiling@v0</span>   <span class="c"># starts your dev server, runs crispy test --ci</span></pre></div>
+    </div>
+
+    <div class="tabpanel" data-tab="mcp">
+      <div><h3>For AI coding agents</h3><ul>
+        <li>Tools: <code>scan_app</code>, <code>profile_url</code>, <code>test_render_snapshots</code>, <code>compare_reports</code>, <code>inspect_component</code>.</li>
+        <li>Claude Code, Cursor, Codex, Copilot & co. <b>measure</b> a re-render fix before and after, instead of guessing.</li>
+        <li>Deterministic counts make a reliable reward signal: same code, same numbers.</li>
+      </ul></div>
+      <div class="block"><button class="copy" data-copy='{
+  "mcpServers": {
+    "crispy-profiling": { "command": "npx", "args": ["-y", "crispy-profiling@latest", "mcp"] }
+  }
+}'>copy</button><pre><span class="c">// .mcp.json / mcp.json</span>
+{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"crispy-profiling"</span>: {
+      <span class="k">"command"</span>: <span class="s">"npx"</span>,
+      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"crispy-profiling@latest"</span>, <span class="s">"mcp"</span>]
+    }
+  }
+}
+
+<span class="c"># Claude Code one-liner</span>
+claude mcp add crispy-profiling -- npx -y crispy-profiling@latest mcp</pre></div>
+    </div>
+
+    <div class="tabpanel" data-tab="skill">
+      <div><h3>Skill + Claude Code plugin</h3><ul>
+        <li>The <b>react-render-profiling</b> Agent Skill teaches the agent when to profile, how to read a report and how to apply each hint.</li>
+        <li>The plugin bundles the MCP server and the skill in two commands.</li>
+        <li>Also listed in the MCP Registry as <code>io.github.edgeorgie/crispy-profiling</code>.</li>
+      </ul></div>
+      <div class="block"><button class="copy" data-copy="/plugin marketplace add edgeorgie/crispy-profiling
+/plugin install crispy-profiling@crispy-profiling">copy</button><pre><span class="c"># inside Claude Code</span>
+/plugin marketplace add edgeorgie/crispy-profiling
+/plugin install crispy-profiling@crispy-profiling
+
+<span class="c"># then ask</span>
+<span class="d">"Why does the members list re-render when I type? Profile it and fix it."</span></pre></div>
+    </div>
+  </div>
+</section>
+
+<section class="proof">
+  <div class="wrap">
+    <div class="kicker">Validated on real apps</div>
+    <h2>Five open-source apps. A fixable re-render problem in each.</h2>
+    <div class="apps">
+      <div class="card fade"><b>Redux Essentials</b><span>React 18 · tutorial app</span></div>
+      <div class="card fade"><b>Next.js App Router Playground</b><span>React 19 · Next.js</span></div>
+      <div class="card fade"><b>Excalidraw</b><span>large canvas app</span></div>
+      <div class="card fade"><b>shadcn-admin</b><span>first root causes in 2.5 min, zero config</span></div>
+      <div class="card fade"><b>react-admin</b><span>admin framework demo</span></div>
+    </div>
+    <div class="facts">
+      <div class="card fade"><h3>Deterministic by design</h3><p>Sorted output, no timestamps, wall-clock data only behind <code>timings</code>. Two reports of the same scenario differ only when the code changed.</p></div>
+      <div class="card fade"><h3>Read-only by default</h3><p>Requests other than GET and WebSocket messages the page sends are blocked in the browser. An interaction that tried to write is reported and not saved.</p></div>
+      <div class="card fade"><h3>Status: early (0.x)</h3><p>Improving every week. Bug reports, wrong hints and case studies are the most valuable contribution right now.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="kicker">FAQ</div>
+    <h2>Questions people ask first</h2>
+    <details><summary>How is this different from React DevTools or why-did-you-render?</summary><p>Those run in your browser while you look. crispy runs headless, on demand, from the CLI, CI or an agent, and produces a reproducible report with the fix attached. It uses the same DevTools hook, so no code changes are needed, and the numbers are stable enough to snapshot and diff across commits.</p></details>
+    <details><summary>Does it need changes in my app?</summary><p>No. It injects the DevTools hook before React loads in headless Chromium. Point it at a development or preview build (dev builds expose component names; production builds work with source maps for original names).</p></details>
+    <details><summary>Which React versions?</summary><p>Tested on React 19, validated on 18.3 and 19.0 apps. React 16.8–17 expose the same hook but are not tested.</p></details>
+    <details><summary>Will it click "delete" in my app?</summary><p>No. <code>scan</code> only tries safe interactions and skips anything named delete, pay, sign out, submit… in several languages. Every command is read-only: writes never leave the browser unless you pass <code>--allow-writes</code>.</p></details>
+    <details><summary>Is a render count really stable in CI?</summary><p>Per-component render counts are reproducible for the same code. Commit counts and effect cascades can vary with load timing, so snapshots store them as ranges. Timings (ms) are informative, never the gate.</p></details>
+    <details><summary>What does it cost?</summary><p>MIT licensed, free. About 20–25 s per scenario per CI run on a GitHub runner, plus one minute to install Chromium. Split scenarios across a job matrix when it grows.</p></details>
+  </div>
+</section>
+
+<section>
+  <div class="wrap" style="text-align:center">
+    <h2>Measure the fix. Keep it fixed.</h2>
+    <p class="lead" style="margin:14px auto 0">Three commands to your first finding.</p>
+    <div class="install mono" style="margin-top:24px"><span>npm i -D crispy-profiling && npx crispy install && npx crispy scan</span><button class="copy" data-copy="npm i -D crispy-profiling && npx crispy install && npx crispy scan">copy</button></div>
+    <div class="cta" style="justify-content:center">
+      <a class="btn primary" href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">★ Star on GitHub</a>
+      <a class="btn" href="https://www.npmjs.com/package/crispy-profiling" target="_blank" rel="noopener">View on npm</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>🥓 crispy-profiling · MIT · <a href="https://github.com/edgeorgie/crispy-profiling/blob/develop/CHANGELOG.md" target="_blank" rel="noopener">changelog</a> · <a href="https://github.com/edgeorgie/crispy-profiling/issues" target="_blank" rel="noopener">issues</a></div>
+    <div>Built in the open, with AI coding agents, by <a href="https://github.com/edgeorgie" target="_blank" rel="noopener">Edwin Jorge</a>.</div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  // theme
+  const root = document.documentElement;
+  try { const t = localStorage.getItem('crispy-theme'); if (t) root.dataset.theme = t; } catch {}
+  $('#theme').addEventListener('click', () => {
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('crispy-theme', root.dataset.theme); } catch {}
+  });
+
+  // copy buttons
+  $$('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'copied'; setTimeout(() => (b.textContent = 'copy'), 1200); } catch { b.textContent = 'select & copy'; }
+  }));
+
+  // reveal
+  const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && e.target.classList.add('in')), { threshold: 0.15 });
+  $$('.fade').forEach((el) => io.observe(el));
+  // Safety net for printing, thumbnails and browsers without the observer.
+  setTimeout(() => $$('.fade').forEach((el) => el.classList.add('in')), 2500);
+
+  // ---------- hero terminal ----------
+  const LINES = [
+    ['<span class="p">$</span> npx crispy scan', 400],
+    ['<span class="d">[crispy] Vite app detected: npm run dev → http://localhost:5173</span>', 350],
+    ['<span class="d">[crispy] visiting / … 3 interactions found: search, select-row, sort</span>', 500],
+    ['<span class="d">[crispy] profiling search … select-row … sort … done (3 runs each)</span>', 900],
+    ['', 100],
+    ['<span class="a">Root causes — fix these first</span>', 300],
+    ['<span class="r">●</span> <b>App</b> hands <b>Row</b> a new function on every render → Row re-rendered <b>20×</b> with nothing new to show', 250],
+    ['  <span class="d">src/App.tsx:222 (App)</span>: `onSelect` is a new function with the same code in `App`:', 150],
+    ['  wrap it in <span class="g">useCallback</span> with the values it uses as dependencies, then wrap Row in <span class="g">React.memo</span>.', 250],
+    ['<span class="r">●</span> <b>Status</b>: `style` is recreated with equal data in `App` → <span class="g">hoist it</span> out of the component.', 300],
+    ['', 100],
+    ['<span class="d">Tried: search, select-row, sort · Not tried: 1 risky name skipped (sign out)</span>', 250],
+    ['<span class="g">✓</span> saved crispy.config.json — run <b>npx crispy test</b> to record the snapshot', 0],
+  ];
+  const term = $('#term');
+  let run = 0;
+  async function play() {
+    const me = ++run; term.innerHTML = ''; let html = '';
+    for (const [line, wait] of LINES) {
+      if (me !== run) return;
+      html += line + '\n'; term.innerHTML = html + '<span class="cursor"></span>';
+      await new Promise((r) => setTimeout(r, wait));
+    }
+    if (me === run) term.innerHTML = html + '<span class="p">$</span> <span class="cursor"></span>';
+  }
+  $('#replay').addEventListener('click', play);
+  play();
+
+  // ---------- interactive demo ----------
+  const MEMBERS = ['Ada', 'Grace', 'Linus', 'Margaret', 'Dennis', 'Barbara', 'Ken', 'Hedy'];
+  const state = { variant: 'naive', query: '', selected: null, counts: {}, avoidable: {}, sawEvent: false };
+  const rowsEl = $('#rows');
+  MEMBERS.forEach((m, i) => {
+    const el = document.createElement('div');
+    el.className = 'comp row'; el.id = 'c-Row' + i;
+    el.innerHTML = `<span class="tag">Row</span><span class="cnt" id="n-Row${i}">0</span><span>${m}</span><small>#${i + 1}</small>`;
+    el.addEventListener('click', () => { state.selected = state.selected === i ? null : i; commit('select'); });
+    rowsEl.appendChild(el);
+  });
+  const names = ['App', 'Header', 'Status', ...MEMBERS.map((_, i) => 'Row' + i)];
+  const reset = () => { names.forEach((n) => { state.counts[n] = 0; state.avoidable[n] = 0; }); state.sawEvent = false; paintCounts(); report(); };
+
+  function render(name, avoidable) {
+    state.counts[name]++; if (avoidable) state.avoidable[name]++;
+    const el = $('#c-' + name); if (!el) return;
+    el.classList.remove('flash', 'ok'); void el.offsetWidth;
+    el.classList.add('flash'); if (!avoidable) el.classList.add('ok');
+    setTimeout(() => el.classList.remove('flash', 'ok'), 220);
+  }
+  function commit(kind) {
+    state.sawEvent = true;
+    render('App', false); // own state changed
+    const naive = state.variant === 'naive';
+    // Header shows the query: real change on typing, avoidable on select.
+    render('Header', kind !== 'type' && naive);
+    if (kind === 'type' && !naive) { /* memoized Header only re-renders when its props change */ }
+    MEMBERS.forEach((m, i) => {
+      const visible = m.toLowerCase().includes(state.query.toLowerCase());
+      const el = $('#c-Row' + i); el.style.display = visible ? '' : 'none';
+      el.classList.toggle('sel', state.selected === i);
+      if (!visible) return;
+      if (naive) render('Row' + i, !(kind === 'select' && (state.selected === i || state.prevSel === i)));
+      else if (kind === 'select' && (state.selected === i || state.prevSel === i)) render('Row' + i, false);
+    });
+    state.prevSel = state.selected;
+    // Status: inline style object → avoidable in naive; hoisted in fixed, re-renders only on select.
+    if (naive) render('Status', kind !== 'select');
+    else if (kind === 'select') render('Status', false);
+    $('#status').textContent = `${MEMBERS.filter((m) => m.toLowerCase().includes(state.query.toLowerCase())).length} members · ${state.selected == null ? 'none selected' : MEMBERS[state.selected] + ' selected'}`;
+    paintCounts(); report();
+  }
+  function paintCounts() {
+    names.forEach((n) => { const el = $('#n-' + n); if (el) el.textContent = n === 'App' ? state.counts[n] + ' renders' : state.counts[n]; });
+  }
+  $('#search').addEventListener('input', (e) => { state.query = e.target.value; commit('type'); });
+  $('#reset').addEventListener('click', () => { state.query = ''; $('#search').value = ''; state.selected = null; reset(); commit('type'); reset(); });
+  $$('.seg button').forEach((b) => b.addEventListener('click', () => {
+    $$('.seg button').forEach((x) => x.classList.toggle('on', x === b));
+    state.variant = b.dataset.variant; reset(); paintCode();
+  }));
+
+  function paintCode() {
+    const naive = state.variant === 'naive';
+    $('#code').innerHTML = naive
+      ? `<span class="c">// App.tsx — naive</span>
+<span class="k">function</span> <span class="f">App</span>() {
+  <span class="k">const</span> [query, setQuery] = <span class="f">useState</span>(<span class="s">''</span>);
+  <span class="k">const</span> [selected, setSelected] = <span class="f">useState</span>(<span class="k">null</span>);
+  <span class="k">return</span> (&lt;&gt;
+    &lt;<span class="f">Header</span> query={query} onChange={setQuery} /&gt;
+    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m}
+<span class="bad">      onSelect={(id) =&gt; setSelected(id)}            <span class="c">// ← new function every render</span></span>
+      selected={selected === m.id} /&gt;)}
+<span class="bad">    &lt;<span class="f">Status</span> style={{ opacity: 0.7 }} count={n} /&gt;  <span class="c">// ← new object every render</span></span>
+  &lt;/&gt;);
+}`
+      : `<span class="c">// App.tsx — with the fix crispy suggested</span>
+<span class="hl"><span class="k">const</span> statusStyle = { opacity: 0.7 };                 <span class="c">// hoisted</span></span>
+<span class="k">function</span> <span class="f">App</span>() {
+  <span class="k">const</span> [query, setQuery] = <span class="f">useState</span>(<span class="s">''</span>);
+  <span class="k">const</span> [selected, setSelected] = <span class="f">useState</span>(<span class="k">null</span>);
+<span class="hl">  <span class="k">const</span> onSelect = <span class="f">useCallback</span>((id) =&gt; setSelected(id), []);</span>
+  <span class="k">return</span> (&lt;&gt;
+    &lt;<span class="f">Header</span> query={query} onChange={setQuery} /&gt;
+    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m} onSelect={onSelect}
+      selected={selected === m.id} /&gt;)}
+    &lt;<span class="f">Status</span> style={statusStyle} count={n} /&gt;
+  &lt;/&gt;);
+}
+<span class="hl"><span class="k">const</span> Row = <span class="f">React.memo</span>(RowImpl); <span class="k">const</span> Status = <span class="f">React.memo</span>(StatusImpl);</span>`;
+  }
+
+  function report() {
+    const naive = state.variant === 'naive';
+    const rows = MEMBERS.map((_, i) => 'Row' + i);
+    const rowRenders = rows.reduce((a, n) => a + state.counts[n], 0);
+    const rowAvoid = rows.reduce((a, n) => a + state.avoidable[n], 0);
+    const data = [
+      ['Row', rowRenders, rowAvoid, naive
+        ? 'recreated callbacks · rendered at <code>src/App.tsx:222 (App)</code> · <code>onSelect</code> is a new function with the same code in <code>App</code>: wrap it in useCallback, then wrap Row in React.memo.'
+        : 'props changed only when a row was selected · <code>React.memo</code> + stable <code>onSelect</code>.'],
+      ['Status', state.counts.Status, state.avoidable.Status, naive
+        ? 'recreated props · <code>style</code> is recreated with equal data in <code>App</code>: hoist it out of the component or wrap it in useMemo.'
+        : 'hoisted <code>style</code> · renders only when <code>count</code> changes.'],
+      ['Header', state.counts.Header, state.avoidable.Header, naive ? 'parent rendered · props equal on select: wrap in React.memo.' : 'own prop <code>query</code> changed.'],
+      ['App', state.counts.App, 0, `own state · state updates here cause ${rowAvoid + state.avoidable.Status + state.avoidable.Header} avoidable render(s) below.`],
+    ];
+    $('#report').innerHTML = data.map(([n, r, a, why]) => `<tr><td><b class="mono">${n}</b></td><td class="num">${r}</td><td class="num" style="color:${a ? 'var(--red)' : 'var(--green)'}">${a}</td><td><span class="why">${why}</span></td></tr>`).join('');
+    const totalAvoid = rowAvoid + state.avoidable.Status + state.avoidable.Header;
+    $('#rootcause').innerHTML = naive
+      ? `<b>Root causes — fix these first:</b> <code>App</code> recreates <code>onSelect</code> and <code>style</code> on every render → ${totalAvoid} avoidable render(s) in this scenario.`
+      : `<b>Root causes:</b> none. ${state.counts.App} App render(s), ${totalAvoid} avoidable below.`;
+    const v = $('#verdict');
+    if (!state.sawEvent) { v.className = 'verdict gray'; v.textContent = 'Type something above to profile the scenario.'; return; }
+    if (naive) { v.className = 'verdict red'; v.innerHTML = `🔴 crispy test --ci: regressed · Row renders ${rowRenders} (${rowAvoid} avoidable) → exit 1, PR comment posted with the fix`; }
+    else { v.className = 'verdict green'; v.innerHTML = `🟢 crispy test --ci: pass · Row renders ${rowRenders}, 0 avoidable → exit 0`; }
+  }
+  reset(); paintCode();
+
+  // ---------- how it works JSON ----------
+  const STEPS = [
+`<span class="c">// crispy.config.json (written by scan)</span>
+{
+  <span class="k">"baseUrl"</span>: <span class="s">"http://localhost:5173"</span>,
+  <span class="k">"webServer"</span>: { <span class="k">"command"</span>: <span class="s">"npm run dev"</span> },
+  <span class="k">"scenarios"</span>: [{
+    <span class="k">"name"</span>: <span class="s">"search"</span>,
+    <span class="k">"path"</span>: <span class="s">"/"</span>,
+    <span class="k">"steps"</span>: [
+      { <span class="k">"fill"</span>: <span class="s">"input[placeholder*=search]"</span>, <span class="k">"value"</span>: <span class="s">"ada"</span> },
+      { <span class="k">"expect"</span>: <span class="s">"text=Ada"</span> }
+    ]
+  }]
+}`,
+`<span class="c">// what the injected hook records, per commit</span>
+{
+  <span class="k">"commit"</span>: <span class="n">7</span>,
+  <span class="k">"renders"</span>: [
+    { <span class="k">"component"</span>: <span class="s">"App"</span>,  <span class="k">"reason"</span>: <span class="s">"state"</span> },
+    { <span class="k">"component"</span>: <span class="s">"Row"</span>,  <span class="k">"reason"</span>: <span class="s">"props"</span>,
+      <span class="k">"changed"</span>: [<span class="s">"onSelect"</span>], <span class="k">"equal"</span>: <span class="n">true</span> },
+    { <span class="k">"component"</span>: <span class="s">"Status"</span>, <span class="k">"reason"</span>: <span class="s">"props"</span>,
+      <span class="k">"changed"</span>: [<span class="s">"style"</span>],    <span class="k">"equal"</span>: <span class="n">true</span> }
+  ]
+}`,
+`<span class="c">// classified: why did Row render?</span>
+{
+  <span class="k">"component"</span>: <span class="s">"Row"</span>,
+  <span class="k">"renders"</span>: { <span class="k">"median"</span>: <span class="n">20</span> },
+  <span class="k">"avoidable"</span>: <span class="n">0</span>,
+  <span class="k">"callback"</span>: <span class="n">20</span>,
+  <span class="k">"causes"</span>: { <span class="k">"recreatedCallbacks"</span>: <span class="n">20</span> },
+  <span class="k">"renderedAt"</span>: <span class="s">"src/App.tsx:222 (App)"</span>,
+  <span class="k">"hint"</span>: <span class="s">"onSelect is a new function with the same code in App: wrap it in useCallback…"</span>
+}`,
+`<span class="c">// crispy.snap.json (commit it) — the gate in CI</span>
+{
+  <span class="k">"version"</span>: <span class="n">1</span>,
+  <span class="k">"scenarios"</span>: {
+    <span class="k">"search"</span>: {
+      <span class="k">"interaction"</span>: {
+        <span class="k">"App"</span>:    { <span class="k">"renders"</span>: <span class="n">1</span> },
+        <span class="k">"Header"</span>: { <span class="k">"renders"</span>: <span class="n">1</span> },
+        <span class="k">"Row"</span>:    { <span class="k">"renders"</span>: <span class="n">0</span> },   <span class="c">// after the fix</span>
+        <span class="k">"Status"</span>: { <span class="k">"renders"</span>: <span class="n">0</span> }
+      }
+    }
+  }
+}
+<span class="c">// a PR that brings Row back to 20 → 🔴 regressed, exit 1</span>`];
+  const jsonEl = $('#json');
+  const showStep = (i) => { jsonEl.innerHTML = STEPS[i]; $$('#tl .item').forEach((it) => it.classList.toggle('on', +it.dataset.step === i)); };
+  $$('#tl .item').forEach((it) => { it.addEventListener('click', () => showStep(+it.dataset.step)); it.addEventListener('mouseenter', () => showStep(+it.dataset.step)); });
+  showStep(0);
+
+  // ---------- tabs ----------
+  $$('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    $$('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    $$('.tabpanel').forEach((p) => p.classList.toggle('on', p.dataset.tab === b.dataset.tab));
+  }));
+})();
+</script>
+</body>
+</html>
