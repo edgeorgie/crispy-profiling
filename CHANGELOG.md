@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- GitHub Action input `scenarios`: run only those scenarios, so a slow snapshot test can be split
+  across runners with a job matrix (README shows the workflow and a time budget per scenario).
+- `examples/` (the workflow and a sample config) now ships inside the npm package.
+
 ### Changed
 - `crispy scan` now clicks clickable-looking elements that are not buttons or links (a `li` or `div`
   with a pointer cursor and a short text, like a list row), by their text. Those without a short text

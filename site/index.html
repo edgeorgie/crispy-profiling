@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>crispy-profiling — the invisible work of React, made visible</title>
+<meta name="description" content="One keystroke can wake up a thousand React components that have nothing new to show. crispy counts them, names the line, and keeps the fix fixed. CLI, GitHub Action, MCP server." />
+<meta property="og:title" content="crispy-profiling — the invisible work of React, made visible" />
+<meta property="og:description" content="Snapshot testing for React re-renders. Zero config: npx crispy scan." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#0e0d0b" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='34' fill='%23ff4d1c'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #0e0d0b;
+    --ink-2: #16140f;
+    --paper: #efe9df;
+    --paper-2: #e4ddd0;
+    --line: rgba(239, 233, 223, 0.14);
+    --line-paper: rgba(14, 13, 11, 0.16);
+    --fg: #efe9df;
+    --fg-dim: rgba(239, 233, 223, 0.55);
+    --signal: #ff4d1c;
+    --signal-glow: rgba(255, 77, 28, 0.55);
+    --fix: #b6f27a;
+    --display: "Bricolage Grotesque", "Inter Tight", system-ui, sans-serif;
+    --serif: "Instrument Serif", Georgia, serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --gutter: clamp(16px, 4vw, 56px);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: auto; }
+  body {
+    margin: 0; background: var(--ink); color: var(--fg);
+    font-family: var(--display); font-variation-settings: "opsz" 14, "wdth" 100;
+    line-height: 1.4; -webkit-font-smoothing: antialiased; overflow-x: clip;
+  }
+  ::selection { background: var(--signal); color: var(--ink); }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3, p { margin: 0; }
+  em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: 0; }
+  .mono { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.01em; }
+  .num { font-variant-numeric: tabular-nums; }
+  .grain {
+    pointer-events: none; position: fixed; inset: -50%; width: 200%; height: 200%; z-index: 50; opacity: 0.07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 0.6s steps(3) infinite;
+  }
+  @keyframes grain { 0% { transform: translate(0, 0); } 33% { transform: translate(-2%, 1%); } 66% { transform: translate(1%, -2%); } 100% { transform: translate(0, 0); } }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 40; display: flex; align-items: center; justify-content: space-between;
+    padding: 18px var(--gutter); mix-blend-mode: difference; color: #fff; font-size: 0.85rem;
+  }
+  nav .wordmark { font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+  nav .wordmark i { width: 10px; height: 10px; border-radius: 50%; background: var(--signal); display: inline-block; box-shadow: 0 0 14px var(--signal-glow); }
+  nav .right { display: flex; gap: 22px; align-items: center; }
+  nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  @media (max-width: 640px) { nav .right a.hide { display: none; } }
+
+  /* ---------- cursor ---------- */
+  .cursor { position: fixed; z-index: 60; left: 0; top: 0; pointer-events: none; mix-blend-mode: difference; display: none; }
+  .cursor .dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); transition: width 0.2s, height 0.2s; }
+  .cursor.big .dot { width: 56px; height: 56px; }
+  .cursor .label { position: absolute; left: 18px; top: -8px; font: 500 0.7rem var(--mono); color: #fff; white-space: nowrap; opacity: 0; transition: opacity 0.2s; }
+  .cursor.has .label { opacity: 1; }
+  @media (hover: hover) and (pointer: fine) { .cursor { display: block; } body.cursor-on { cursor: none; } body.cursor-on a, body.cursor-on button, body.cursor-on summary { cursor: none; } body.cursor-on input { cursor: text; } }
+  body.cursor-on input:hover ~ .cursor, body.typing .cursor { opacity: 0; }
+
+  /* ---------- pinned scenes ---------- */
+  .pin { position: relative; }
+  .pin > .stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
+
+  /* ---------- hero ---------- */
+  #hero { height: 420vh; }
+  #hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #hero .ui { position: absolute; inset: 0; padding: 0 var(--gutter); display: grid; grid-template-rows: 1fr auto 1fr; pointer-events: none; }
+  .fakebox {
+    align-self: end; justify-self: start; margin-bottom: 22px; display: inline-flex; align-items: center; gap: 10px;
+    border: 1px solid var(--line); padding: 10px 14px; border-radius: 4px; font: 400 0.85rem var(--mono); color: var(--fg-dim); background: rgba(14,13,11,0.6); backdrop-filter: blur(6px);
+  }
+  .fakebox b { color: var(--fg); font-weight: 400; }
+  .fakebox .caret { width: 1px; height: 1em; background: var(--signal); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .headline { position: relative; height: clamp(2.4em, 20vw, 4.2em); font-size: clamp(2.6rem, 9vw, 9rem); letter-spacing: -0.04em; line-height: 0.92; font-weight: 200; }
+  .headline .h { position: absolute; inset: 0; opacity: 0; transform: translateY(0.25em); transition: none; white-space: nowrap; }
+  .headline .h span { display: inline-block; overflow: hidden; vertical-align: bottom; }
+  .headline .h span > b { display: inline-block; font-weight: inherit; transform: translateY(110%); transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .headline .h.on { opacity: 1; transform: none; }
+  .headline .h.on span > b { transform: none; }
+  .headline .h em { color: var(--signal); font-size: 1.06em; }
+  .headline .h.fixed em { color: var(--fix); }
+  .sub { position: relative; margin-top: 18px; max-width: 34ch; font-size: clamp(1rem, 1.8vw, 1.3rem); color: var(--fg-dim); min-height: 5.6em; }
+  .sub .s { position: absolute; inset: 0 auto auto 0; opacity: 0; transition: opacity 0.4s; max-width: 34ch; }
+  .sub .s.on { opacity: 1; }
+  .sub .s b { color: var(--fg); font-weight: 500; }
+  .sub code { font: 400 0.9em var(--mono); color: var(--fg); background: rgba(239,233,223,0.08); padding: 1px 5px; border-radius: 3px; }
+  .hud {
+    position: absolute; right: var(--gutter); top: 50%; transform: translateY(-50%); text-align: right; pointer-events: none;
+  }
+  .hud .big { font: 200 clamp(4rem, 14vw, 13rem)/0.9 var(--display); letter-spacing: -0.06em; font-variation-settings: "wdth" 80; color: var(--signal); transition: color 0.4s; }
+  .hud.fixed .big { color: var(--fix); }
+  .hud .lbl { font: 400 0.75rem var(--mono); color: var(--fg-dim); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 6px; }
+  .codecard {
+    margin-top: 18px; max-width: min(92vw, 640px); opacity: 0; transform: translateY(16px); transition: opacity 0.5s, transform 0.5s;
+    border: 1px solid var(--line); background: rgba(22,20,15,0.85); backdrop-filter: blur(8px); border-radius: 6px; padding: 14px 16px; font: 400 0.8rem/1.6 var(--mono);
+  }
+  .codecard.on { opacity: 1; transform: none; }
+  .codecard .path { color: var(--fg-dim); margin-bottom: 6px; display: flex; justify-content: space-between; gap: 16px; }
+  .codecard .l { white-space: pre; overflow-x: auto; }
+  .codecard .bad { background: rgba(255,77,28,0.18); text-decoration: line-through; text-decoration-color: var(--signal); }
+  .codecard .good { background: rgba(182,242,122,0.14); color: var(--fix); }
+  .codecard .good.off { display: none; }
+  .stamp {
+    position: absolute; right: var(--gutter); bottom: 12vh; transform: rotate(-8deg) scale(1.6); opacity: 0; transition: opacity 0.25s, transform 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
+    border: 3px solid var(--fix); color: var(--fix); padding: 10px 16px; font: 700 1.1rem var(--mono); letter-spacing: 0.05em; text-transform: uppercase; border-radius: 6px;
+  }
+  .stamp.on { opacity: 1; transform: rotate(-8deg) scale(1); }
+  /* Step indicator: tells the visitor the hero is a 4-step story driven by scroll, and lets them jump. */
+  .steps { position: absolute; left: var(--gutter); right: var(--gutter); bottom: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .steps button { background: none; border: 0; padding: 10px 0 0; text-align: left; cursor: pointer; color: var(--fg-dim); font: 400 0.68rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; position: relative; }
+  .steps button::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--line); }
+  .steps button::after { content: ""; position: absolute; left: 0; top: 0; height: 2px; width: calc(var(--fill, 0) * 100%); background: var(--signal); transition: width 0.1s linear; }
+  .steps button.done::after, .steps button.fixed.done::after { background: var(--fix); }
+  .steps button.on { color: var(--fg); }
+  .steps button:hover { color: var(--fg); }
+  .steps .hint { position: absolute; right: 0; top: -22px; color: var(--fg-dim); font: 400 0.68rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; transition: opacity 0.4s; display: flex; gap: 8px; align-items: center; }
+  .steps .hint i { display: inline-block; animation: nudge 1.4s ease-in-out infinite; }
+  @keyframes nudge { 50% { transform: translateY(4px); } }
+  .steps .hint.off { opacity: 0; }
+  .cta-hero { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; pointer-events: auto; }
+  .cta-hero .btn { padding: 11px 18px; font-size: 0.88rem; }
+  .legend-hero { position: absolute; right: var(--gutter); top: calc(50% + clamp(3rem, 8vw, 7.4rem)); text-align: right; font: 400 0.68rem var(--mono); color: var(--fg-dim); letter-spacing: 0.06em; line-height: 1.9; pointer-events: none; transition: opacity 0.4s; }
+  .legend-hero i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); margin-left: 8px; vertical-align: 1px; }
+  .legend-hero i.k { background: var(--fix); } .legend-hero i.d { background: rgba(239,233,223,0.35); }
+  @media (max-width: 760px) {
+    .steps { gap: 6px; }
+    .steps button { font-size: 0.58rem; letter-spacing: 0.04em; }
+    .legend-hero { top: auto; bottom: 84px; left: var(--gutter); text-align: left; }
+  }
+  @media (max-width: 760px) {
+    .hud { top: 18%; transform: none; right: var(--gutter); }
+    .hud .big { font-size: 4.4rem; }
+    .codecard { font-size: 0.72rem; }
+    .stamp { bottom: 30vh; }
+    .sub { min-height: 4.6em; }
+  }
+
+  /* ---------- manifesto ---------- */
+  #loop { height: 320vh; background: var(--ink-2); }
+  #loop .stage { display: flex; align-items: center; }
+  .track { display: flex; gap: clamp(60px, 8vw, 140px); padding: 0 var(--gutter); will-change: transform; }
+  .word { flex: 0 0 auto; width: min(82vw, 760px); }
+  .word .n { font: 400 0.75rem var(--mono); color: var(--signal); letter-spacing: 0.1em; }
+  .word h2 { font-size: clamp(4rem, 14vw, 13rem); line-height: 0.9; letter-spacing: -0.05em; font-weight: 800; font-variation-settings: "wdth" 85; margin-top: 8px; }
+  .word h2 em { font-weight: 400; font-variation-settings: "wdth" 100; }
+  .word p { margin-top: 22px; max-width: 46ch; font-size: clamp(1rem, 1.6vw, 1.2rem); color: var(--fg-dim); }
+  .word p b { color: var(--fg); font-weight: 500; }
+  .word p code { font: 400 0.9em var(--mono); color: var(--fg); }
+  .loophint { position: absolute; left: var(--gutter); top: 84px; font: 400 0.68rem var(--mono); color: var(--fg-dim); letter-spacing: 0.1em; text-transform: uppercase; transition: opacity 0.4s; display: flex; gap: 10px; align-items: center; }
+  .loophint i { display: inline-block; animation: nudge 1.4s ease-in-out infinite; }
+  .loophint.off { opacity: 0; }
+  .loopnav { position: absolute; right: var(--gutter); top: 84px; display: flex; gap: 14px; font: 400 0.68rem var(--mono); color: var(--fg-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+  .loopnav b { font-weight: 400; transition: color 0.2s; } .loopnav b.on { color: var(--signal); }
+  .rail { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
+  .rail i { position: absolute; top: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 16px var(--signal-glow); }
+  @media (max-width: 760px) {
+    #loop { height: auto; }
+    #loop .stage { position: static; height: auto; display: block; padding: 90px 0; }
+    .track { flex-direction: column; gap: 70px; transform: none !important; }
+    .word { width: auto; }
+    .rail, .loophint, .loopnav { display: none; }
+  }
+
+  /* ---------- report (paper) ---------- */
+  #report { background: var(--paper); color: var(--ink); padding: 110px 0 120px; color-scheme: light; }
+  #report .inner { padding: 0 var(--gutter); display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(28px, 5vw, 80px); align-items: start; }
+  #report .lede { position: sticky; top: 90px; }
+  #report .kick { font: 400 0.75rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--signal); }
+  #report h2 { font-size: clamp(2.4rem, 5.6vw, 5rem); line-height: 0.95; letter-spacing: -0.04em; font-weight: 700; margin-top: 14px; }
+  #report h2 em { font-weight: 400; }
+  #report .lede p { margin-top: 18px; max-width: 40ch; font-size: 1.05rem; color: rgba(14,13,11,0.7); }
+  #report .lede p b { color: var(--ink); }
+  /* How-to chips: the three things to do in the demo, ticked as the visitor does them. */
+  .howto { display: grid; gap: 8px; margin-top: 24px; }
+  .howto div { display: flex; gap: 12px; align-items: baseline; font-size: 0.95rem; color: rgba(14,13,11,0.75); transition: color 0.3s; }
+  .howto div b { font: 500 0.7rem var(--mono); width: 22px; height: 22px; flex: none; border: 1px solid var(--ink); border-radius: 50%; display: inline-grid; place-items: center; transform: translateY(3px); transition: background 0.3s, color 0.3s; }
+  .howto div.done { color: rgba(14,13,11,0.45); text-decoration: line-through; }
+  .howto div.done b { background: var(--ink); color: var(--fix); }
+  .howto div.next b { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+  .play { margin-top: 18px; display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 999px; font: 500 0.82rem var(--mono); cursor: pointer; }
+  .play:hover { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+  .play:disabled { opacity: 0.5; cursor: default; }
+  .sheet { border: 1px solid var(--line-paper); background: var(--paper); box-shadow: 0 30px 60px -30px rgba(14,13,11,0.35); }
+  .sheet .head .lbl { color: rgba(14,13,11,0.55); margin-right: 6px; }
+  .sheet .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line-paper); font: 400 0.75rem var(--mono); flex-wrap: wrap; }
+  .toggle { display: inline-flex; border: 1px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .toggle button { font: 500 0.75rem var(--mono); background: transparent; border: 0; padding: 7px 14px; cursor: pointer; color: var(--ink); }
+  .toggle button.on { background: var(--ink); color: var(--paper); }
+  .app { padding: 18px; display: grid; gap: 12px; }
+  .app input { width: 100%; border: 1px solid var(--ink); background: transparent; padding: 12px 14px; font: 400 1rem var(--mono); color: var(--ink); border-radius: 0; outline: none; }
+  .app input.pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 4px 4px 0 var(--signal); } }
+  .app input:focus { box-shadow: 4px 4px 0 var(--signal); }
+  .cmp { position: relative; border: 1px dashed var(--line-paper); padding: 12px 12px 10px; transition: background 0.12s, border-color 0.12s; }
+  .cmp.flash { background: rgba(255,77,28,0.16); border-color: var(--signal); }
+  .cmp.flash.ok { background: rgba(14,13,11,0.06); border-color: var(--ink); }
+  .cmp .tag { position: absolute; top: -8px; left: 10px; background: var(--paper); padding: 0 6px; font: 400 0.65rem var(--mono); color: rgba(14,13,11,0.6); }
+  .cmp .cnt { position: absolute; top: -9px; right: 10px; background: var(--ink); color: var(--paper); padding: 1px 8px; font: 500 0.65rem var(--mono); border-radius: 999px; }
+  .cmp.many .cnt { background: var(--signal); }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 6px; }
+  .cmp.row { cursor: pointer; display: flex; justify-content: space-between; align-items: baseline; user-select: none; }
+  .cmp.row.sel { background: rgba(14,13,11,0.08); border-style: solid; border-color: var(--ink); }
+  .cmp.row small { font: 400 0.7rem var(--mono); color: rgba(14,13,11,0.5); }
+  .legend { padding: 0 18px 14px; font: 400 0.72rem var(--mono); color: rgba(14,13,11,0.6); }
+  .legend i { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin-right: 4px; background: rgba(255,77,28,0.4); border: 1px solid var(--signal); }
+  .legend i.ok { background: rgba(14,13,11,0.06); border-color: var(--ink); }
+  .out { border-top: 1px solid var(--ink); }
+  .out .rc { padding: 12px 18px; font: 400 0.8rem var(--mono); border-bottom: 1px solid var(--line-paper); line-height: 1.6; }
+  .out .rc b { color: var(--signal); font-weight: 500; }
+  .out table { width: 100%; border-collapse: collapse; font: 400 0.78rem var(--mono); }
+  .out th, .out td { text-align: left; padding: 10px 18px; border-bottom: 1px solid var(--line-paper); vertical-align: top; }
+  .out th { font-weight: 500; color: rgba(14,13,11,0.55); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .out td.n, .out th.n { text-align: right; width: 1%; white-space: nowrap; }
+  .out td .why { display: block; color: rgba(14,13,11,0.7); font-size: 0.72rem; margin-top: 3px; line-height: 1.5; }
+  .out td .why code { background: rgba(14,13,11,0.07); padding: 0 4px; }
+  .verdict { padding: 14px 18px; font: 500 0.82rem var(--mono); display: flex; align-items: center; gap: 10px; }
+  .verdict.red { background: var(--signal); color: var(--ink); } .verdict.green { background: var(--ink); color: var(--fix); } .verdict.gray { color: rgba(14,13,11,0.55); }
+  .tbl { overflow-x: auto; }
+  .codebox { margin: 0; padding: 16px 18px; background: var(--ink); color: var(--paper); font: 400 0.74rem/1.65 var(--mono); overflow-x: auto; }
+  .codebox .k { color: #c9b8ff; } .codebox .f { color: #8fd3ff; } .codebox .s { color: var(--fix); } .codebox .c { color: rgba(239,233,223,0.45); }
+  .codebox .bad { background: rgba(255,77,28,0.22); display: inline-block; width: 100%; } .codebox .good { background: rgba(182,242,122,0.14); display: inline-block; width: 100%; }
+  @media (max-width: 900px) { #report .inner { grid-template-columns: minmax(0, 1fr); } #report .lede { position: static; } }
+
+  /* ---------- doors ---------- */
+  #doors { padding: 120px 0; }
+  #doors .inner { padding: 0 var(--gutter); }
+  #doors h2 { font-size: clamp(2.2rem, 6vw, 5.5rem); letter-spacing: -0.04em; line-height: 0.95; font-weight: 700; max-width: 14ch; }
+  #doors h2 em { font-weight: 400; }
+  #doors .lead { margin-top: 18px; color: var(--fg-dim); max-width: 48ch; font-size: 1.05rem; }
+  .door { border-top: 1px solid var(--line); }
+  .door:last-child { border-bottom: 1px solid var(--line); }
+  .door summary { list-style: none; display: grid; grid-template-columns: 70px 1fr auto; gap: 16px; align-items: baseline; padding: 26px 0; cursor: pointer; }
+  .door summary::-webkit-details-marker { display: none; }
+  .door summary .i { font: 400 0.8rem var(--mono); color: var(--signal); }
+  .door summary h3 { font-size: clamp(1.4rem, 3.4vw, 2.6rem); letter-spacing: -0.03em; font-weight: 600; transition: transform 0.3s; }
+  .door summary:hover h3 { transform: translateX(10px); }
+  .door summary .plus { font: 300 2rem/1 var(--display); color: var(--fg-dim); transition: transform 0.3s; }
+  .door[open] summary .plus { transform: rotate(45deg); }
+  .door .body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 32px; padding: 0 0 36px 70px; }
+  .door .body p { color: var(--fg-dim); max-width: 44ch; font-size: 1.02rem; }
+  .door .body p b { color: var(--fg); font-weight: 500; }
+  .door .body ul { margin: 14px 0 0; padding-left: 16px; color: var(--fg-dim); font-size: 0.95rem; }
+  .door .body li { margin: 6px 0; }
+  .door .body code { font: 400 0.88em var(--mono); color: var(--fg); }
+  .door pre { margin: 0; border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; font: 400 0.76rem/1.65 var(--mono); overflow-x: auto; background: var(--ink-2); position: relative; }
+  .door pre .c { color: var(--fg-dim); } .door pre .s { color: var(--fix); } .door pre .k { color: #c9b8ff; }
+  .copy { position: absolute; top: 10px; right: 10px; background: rgba(239,233,223,0.08); color: var(--fg-dim); border: 0; border-radius: 4px; padding: 5px 9px; font: 500 0.68rem var(--mono); cursor: pointer; }
+  .copy:hover { color: var(--fg); }
+  @media (max-width: 760px) { .door summary { grid-template-columns: 40px 1fr auto; } .door .body { grid-template-columns: 1fr; padding-left: 0; } }
+
+  /* ---------- evidence ---------- */
+  #evidence { padding: 0 0 120px; }
+  .ticker { overflow: hidden; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 0; white-space: nowrap; }
+  .ticker .in { display: inline-flex; gap: 48px; padding-right: 48px; animation: tick 40s linear infinite; font-size: clamp(1.2rem, 3vw, 2rem); letter-spacing: -0.02em; font-weight: 500; }
+  .ticker .in span::after { content: "✦"; color: var(--signal); margin-left: 48px; font-size: 0.8em; }
+  @keyframes tick { to { transform: translateX(-50%); } }
+  .figures { display: grid; grid-template-columns: repeat(4, 1fr); border-left: 1px solid var(--line); margin: 0 var(--gutter); margin-top: 80px; }
+  .figures div { border-right: 1px solid var(--line); padding: 28px 24px 32px; }
+  .figures b { display: block; font: 200 clamp(3rem, 7vw, 6.4rem)/1 var(--display); letter-spacing: -0.05em; font-variation-settings: "wdth" 80; }
+  .figures b em { color: var(--signal); font-size: 0.9em; }
+  .figures span { display: block; margin-top: 14px; color: var(--fg-dim); font-size: 0.95rem; max-width: 24ch; }
+  @media (max-width: 900px) { .figures { grid-template-columns: repeat(2, 1fr); } .figures div:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+
+  /* ---------- receipt ---------- */
+  #receipt { padding: 0 var(--gutter) 140px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
+  #receipt h2 { font-size: clamp(2.2rem, 5.5vw, 5rem); letter-spacing: -0.04em; line-height: 0.95; font-weight: 700; max-width: 12ch; }
+  #receipt h2 em { font-weight: 400; }
+  #receipt p { margin-top: 18px; color: var(--fg-dim); max-width: 40ch; font-size: 1.05rem; }
+  #receipt p b { color: var(--fg); font-weight: 500; }
+  .paperroll { background: var(--paper); color: var(--ink); padding: 26px 24px 34px; font: 400 0.76rem/1.7 var(--mono); position: relative; transform: rotate(-1deg); box-shadow: 0 30px 50px -30px rgba(0,0,0,0.8); min-height: 420px;
+    -webkit-mask: linear-gradient(#000 0 0) top/100% calc(100% - 14px) no-repeat, radial-gradient(circle at 7px 100%, transparent 7px, #000 7.5px) bottom/14px 14px repeat-x; mask: linear-gradient(#000 0 0) top/100% calc(100% - 14px) no-repeat, radial-gradient(circle at 7px 100%, transparent 7px, #000 7.5px) bottom/14px 14px repeat-x; }
+  .paperroll .line { opacity: 0; transform: translateY(6px); transition: opacity 0.3s, transform 0.3s; white-space: pre-wrap; }
+  .paperroll .line.on { opacity: 1; transform: none; }
+  .paperroll .r { color: var(--signal); } .paperroll .d { color: rgba(14,13,11,0.55); } .paperroll b { font-weight: 500; }
+  .paperroll .hr { border-top: 1px dashed rgba(14,13,11,0.3); margin: 10px 0; }
+  @media (max-width: 900px) { #receipt { grid-template-columns: 1fr; } }
+
+  /* ---------- end ---------- */
+  #end { min-height: 90vh; display: grid; place-items: center; text-align: center; padding: 80px var(--gutter); border-top: 1px solid var(--line); position: relative; overflow: hidden; }
+  #end::before { content: ""; position: absolute; inset: auto -20% -60% -20%; height: 80%; background: radial-gradient(ellipse at 50% 100%, var(--signal-glow), transparent 60%); opacity: 0.6; pointer-events: none; }
+  #end .cmd { font: 200 clamp(1.9rem, 8.5vw, 9rem)/1 var(--display); letter-spacing: -0.05em; font-variation-settings: "wdth" 80; cursor: pointer; display: inline-block; transition: font-variation-settings 0.5s, color 0.3s; }
+  #end .cmd:hover { font-variation-settings: "wdth" 100, "wght" 800; color: var(--signal); }
+  #end .cmd .mark { font: inherit; color: var(--signal); }
+  #end small { display: block; margin-top: 22px; font: 400 0.75rem var(--mono); color: var(--fg-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+  #end .btns { margin-top: 44px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--fg); padding: 14px 22px; border-radius: 999px; font-weight: 500; font-size: 0.95rem; transition: background 0.25s, color 0.25s; }
+  .btn:hover { background: var(--fg); color: var(--ink); }
+  .btn.fill { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+  .btn.fill:hover { background: var(--fg); border-color: var(--fg); }
+  footer { padding: 30px var(--gutter) 40px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font: 400 0.75rem var(--mono); color: var(--fg-dim); border-top: 1px solid var(--line); }
+  footer a:hover { color: var(--fg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .grain, .ticker .in, .steps .hint i, .loophint i, .fakebox .caret, .app input.pulse { animation: none; }
+    .headline .h span > b, .headline .h, .sub .s, .codecard, .stamp, .paperroll .line, .door summary h3 { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<div class="cursor" aria-hidden="true"><div class="dot"></div><div class="label"></div></div>
+
+<nav>
+  <a class="wordmark" href="#top"><i></i>crispy‑profiling <span class="mono" style="opacity:.6">v0.4.0</span></a>
+  <div class="right">
+    <a class="hide" href="#loop">How it works</a>
+    <a class="hide" href="#report">Try it</a>
+    <a class="hide" href="#doors">Install</a>
+    <a href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://www.npmjs.com/package/crispy-profiling" target="_blank" rel="noopener">npm</a>
+  </div>
+</nav>
+
+<!-- ======================= HERO: the invisible work ======================= -->
+<section id="hero" class="pin" aria-label="One keystroke wakes up a thousand components">
+  <div class="stage" id="top">
+    <canvas id="storm"></canvas>
+    <div class="hud num" id="hud"><div class="big" id="hudn">0</div><div class="lbl" id="hudl">components rendered</div></div>
+    <div class="legend-hero" id="legend">a React app, as crispy sees it: 227 components<br>rendered with nothing new to show <i></i><br>rendered for a reason <i class="k"></i> · idle <i class="d"></i></div>
+    <div class="ui">
+      <div></div>
+      <div>
+        <div class="fakebox" aria-hidden="true"><span style="opacity:.6">the app's search box ·</span> <b id="typed"></b><i class="caret"></i></div>
+        <h1 class="headline" aria-label="One keystroke. One line. One fix. One test that keeps it fixed.">
+          <div class="h on" data-h="0"><span><b>One&nbsp;</b></span><span><b><em>keystroke.</em></b></span></div>
+          <div class="h" data-h="1"><span><b>One&nbsp;</b></span><span><b><em>line.</em></b></span></div>
+          <div class="h fixed" data-h="2"><span><b>One&nbsp;</b></span><span><b><em>fix.</em></b></span></div>
+          <div class="h fixed" data-h="3"><span><b>Kept&nbsp;</b></span><span><b><em>fixed.</em></b></span></div>
+        </h1>
+        <div class="sub">
+          <p class="s on" data-s="0">You typed <b>one letter</b>. React ran <b>1,227 components</b>. <b>1,206</b> of them had nothing new to show. You felt it as lag. Nobody saw it.</p>
+          <p class="s" data-s="1"><b>crispy</b> saw it. It opens your app in headless Chromium, counts every render, and names the line: <code>src/App.tsx:222</code>.</p>
+          <p class="s" data-s="2">Wrap the callback. Memoize the row. Same keystroke, <b>21 renders</b>. The report is byte-for-byte reproducible, so the number is a fact, not a feeling.</p>
+          <p class="s" data-s="3"><code>npx crispy test</code> snapshots the counts. The pull request that brings the 1,206 back <b>fails</b>, with the cause and the fix in the comment.</p>
+        </div>
+        <div class="codecard" id="codecard">
+          <div class="path"><span>src/App.tsx:222 (App)</span><span>Row · 20 renders · 20 avoidable</span></div>
+          <div class="l bad" id="badline">onSelect={(id) =&gt; setSelected(id)}</div>
+          <div class="l good off" id="goodline">onSelect={useCallback((id) =&gt; setSelected(id), [])}</div>
+        </div>
+        <div class="cta-hero" id="ctahero">
+          <a class="btn fill" href="#report">Try it on a demo app</a>
+          <a class="btn" href="#doors">Run it on yours</a>
+        </div>
+      </div>
+      <div></div>
+    </div>
+    <div class="stamp" id="stamp">🟢 crispy test · pass</div>
+    <div class="steps" id="steps" aria-label="Story steps">
+      <div class="hint" id="cue"><i>↓</i> scroll to see what happened</div>
+      <button data-p="0.0">01 keystroke</button>
+      <button data-p="0.32">02 the line</button>
+      <button class="fixed" data-p="0.57">03 the fix</button>
+      <button class="fixed" data-p="0.82">04 kept fixed</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= THE LOOP ======================= -->
+<section id="loop" class="pin" aria-label="Find, explain, fix, verify">
+  <div class="stage">
+    <div class="loophint" id="loophint"><i>↓</i> keep scrolling · the four steps move sideways</div>
+    <div class="loopnav" id="loopnav" aria-hidden="true"><b class="on">find</b><b>explain</b><b>fix</b><b>verify</b></div>
+    <div class="rail" aria-hidden="true"><i id="railDot"></i></div>
+    <div class="track" id="track">
+      <div class="word"><div class="n">01 — 04</div><h2>Find <em>it.</em></h2><p><code>npx crispy scan</code> detects Vite or Next.js, starts your dev server, visits a few routes and tries the safe interactions: buttons, tabs, inputs, links. <b>Never</b> anything named delete, pay, sign out or submit, in several languages. Read-only: writes never leave the browser.</p></div>
+      <div class="word"><div class="n">02 — 04</div><h2>Explain <em>it.</em></h2><p>Every render gets a reason: <b>props</b>, <b>state</b>, <b>context</b> or <b>parent</b>. The avoidable ones get a root cause: a callback recreated on every render, an inline object with equal data, a context value rebuilt each time. Plain English first, the technical detail after.</p></div>
+      <div class="word"><div class="n">03 — 04</div><h2>Fix <em>it.</em></h2><p>Each finding points at a file and a line and says what to do: <code>useCallback</code>, <code>useMemo</code>, hoist, <code>React.memo</code>. Your coding agent can apply it through the MCP server and <b>measure</b> that it worked, instead of guessing.</p></div>
+      <div class="word"><div class="n">04 — 04</div><h2>Keep it <em>fixed.</em></h2><p><code>npx crispy test</code> records <code>crispy.snap.json</code>. Commit it. In CI the GitHub Action fails the pull request that adds renders and posts one comment with the cause and the fix. The snapshot is the <b>gate</b>; milliseconds are only information.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= REPORT: interactive ======================= -->
+<section id="report" aria-label="Interactive report">
+  <div class="inner">
+    <div class="lede">
+      <div class="kick">Try it here</div>
+      <h2>Type. Click. <em>Read the bill.</em></h2>
+      <p>A small list app, instrumented the way crispy sees it. Every keystroke updates <b>App</b> state; the report on the right is what crispy would print.</p>
+      <div class="howto" id="howto">
+        <div class="next"><b>1</b><span>Type a letter in the app's search box. Watch the rows flash red: they rendered with nothing new to show.</span></div>
+        <div><b>2</b><span>Click a row. A dark flash means it rendered for a real change.</span></div>
+        <div><b>3</b><span>Switch the code to <em>with the fix</em> and type again. Read the verdict at the bottom of the report.</span></div>
+      </div>
+      <button class="play" id="play">▶ do it for me</button>
+    </div>
+    <div class="sheet">
+      <div class="head"><span>scenario · search · 3 runs</span>
+        <div><span class="lbl">code:</span><div class="toggle" role="tablist"><button class="on" data-variant="naive">as written</button><button data-variant="fixed">with the fix</button></div></div>
+      </div>
+      <div class="app">
+        <div class="cmp" id="c-App"><span class="tag">App</span><span class="cnt" id="n-App">0</span>
+          <div class="cmp" id="c-Header" style="margin-top:8px"><span class="tag">Header</span><span class="cnt" id="n-Header">0</span>
+            <input id="search" class="pulse" placeholder="type a letter here, e.g. a" autocomplete="off" aria-label="Search members" />
+          </div>
+          <div class="grid" id="rows"></div>
+          <div class="cmp" id="c-Status" style="margin-top:10px"><span class="tag">Status</span><span class="cnt" id="n-Status">0</span><small class="mono" id="status">8 members · none selected</small></div>
+        </div>
+      </div>
+      <div class="legend"><i></i> avoidable &nbsp; <i class="ok"></i> real change &nbsp; · click a row to select it</div>
+      <pre class="codebox" id="code"></pre>
+      <div class="out">
+        <div class="rc" id="rootcause"></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Component</th><th class="n">Renders</th><th class="n">Avoidable</th><th>Why it rendered · how to fix</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table></div>
+        <div class="verdict gray" id="verdict">Type in the box to profile the scenario.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= FOUR DOORS ======================= -->
+<section id="doors" aria-label="Ways to use crispy">
+  <div class="inner">
+    <h2>One tool. <em>Four doors.</em></h2>
+    <p class="lead">Pick the one you will use first. Each opens with the commands to copy. Start with the terminal: three lines to the first finding.</p>
+    <div style="height:48px"></div>
+    <details class="door" open>
+      <summary><span class="i">01</span><h3>Terminal</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>Zero config to the first finding.</b> Then a snapshot you commit, and a test that reads it.</p>
+          <ul><li><code>scan</code> finds and profiles interactions, writes <code>crispy.config.json</code>.</li><li><code>run</code> prints every component with its causes and the fix.</li><li><code>test</code> records or checks <code>crispy.snap.json</code>; <code>--ci</code> fails on regressions.</li><li><code>compare</code> diffs two reports. Exit codes: 0 ok · 1 regression · 2 usage.</li></ul></div>
+        <pre><button class="copy" data-copy="npm i -D crispy-profiling
+npx crispy install
+npx crispy scan
+npx crispy test">copy</button>npm i -D crispy-profiling
+npx crispy install        <span class="c"># Chromium once; or CRISPY_CHROMIUM_PATH</span>
+npx crispy scan           <span class="c"># find · explain · write the config</span>
+npx crispy test           <span class="c"># record crispy.snap.json, commit it</span>
+npx crispy test --ci      <span class="c"># fail when a component adds renders</span></pre>
+      </div>
+    </details>
+    <details class="door">
+      <summary><span class="i">02</span><h3>GitHub Action</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>Fails the pull request that adds renders.</b> Installs Chromium itself. One PR comment, updated on every push, with the cause, the place and the fix.</p>
+          <ul><li>Pin <code>@v0</code> or a release tag.</li><li><code>scenarios</code> input splits a slow suite across a job matrix.</li><li>About 20–25 s per scenario on a GitHub runner.</li></ul></div>
+        <pre><button class="copy" data-copy="name: crispy
+on: pull_request
+permissions: { contents: read, pull-requests: write }
+jobs:
+  renders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - uses: edgeorgie/crispy-profiling@v0">copy</button><span class="k">name</span>: crispy
+<span class="k">on</span>: pull_request
+<span class="k">permissions</span>: { contents: read, pull-requests: write }
+<span class="k">jobs</span>:
+  <span class="k">renders</span>:
+    <span class="k">runs-on</span>: ubuntu-latest
+    <span class="k">steps</span>:
+      - <span class="k">uses</span>: actions/checkout@v4
+      - <span class="k">uses</span>: actions/setup-node@v4
+        <span class="k">with</span>: { node-version: 22 }
+      - <span class="k">run</span>: npm ci
+      - <span class="k">uses</span>: <span class="s">edgeorgie/crispy-profiling@v0</span></pre>
+      </div>
+    </details>
+    <details class="door">
+      <summary><span class="i">03</span><h3>MCP server</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>For the agent that writes the fix.</b> Claude Code, Cursor, Codex, Copilot & co. profile before and after, and get the same numbers for the same code.</p>
+          <ul><li>Tools: <code>scan_app</code>, <code>profile_url</code>, <code>test_render_snapshots</code>, <code>compare_reports</code>, <code>inspect_component</code>.</li><li>Listed in the MCP Registry as <code>io.github.edgeorgie/crispy-profiling</code>.</li></ul></div>
+        <pre><button class="copy" data-copy='{
+  "mcpServers": {
+    "crispy-profiling": { "command": "npx", "args": ["-y", "crispy-profiling@latest", "mcp"] }
+  }
+}'>copy</button><span class="c">// .mcp.json</span>
+{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"crispy-profiling"</span>: {
+      <span class="k">"command"</span>: <span class="s">"npx"</span>,
+      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"crispy-profiling@latest"</span>, <span class="s">"mcp"</span>]
+    }
+  }
+}
+<span class="c"># Claude Code</span>
+claude mcp add crispy-profiling -- npx -y crispy-profiling@latest mcp</pre>
+      </div>
+    </details>
+    <details class="door">
+      <summary><span class="i">04</span><h3>Skill & plugin</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>The know-how, packaged.</b> The <code>react-render-profiling</code> Agent Skill teaches when to profile, how to read a report and how to apply each hint. The Claude Code plugin bundles it with the MCP server.</p></div>
+        <pre><button class="copy" data-copy="/plugin marketplace add edgeorgie/crispy-profiling
+/plugin install crispy-profiling@crispy-profiling">copy</button><span class="c"># inside Claude Code</span>
+/plugin marketplace add edgeorgie/crispy-profiling
+/plugin install crispy-profiling@crispy-profiling
+
+<span class="c"># then just ask</span>
+<span class="s">"Why does the list re-render when I type? Profile it, fix it, prove it."</span></pre>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ======================= EVIDENCE ======================= -->
+<section id="evidence" aria-label="Validated on real apps">
+  <div class="ticker" aria-hidden="true"><div class="in" id="ticker"></div></div>
+  <div class="figures">
+    <div><b>0</b><span>lines of config before the first finding</span></div>
+    <div><b>0</b><span>changes to your app: it uses the hook React DevTools uses</span></div>
+    <div><b>5<em>/5</em></b><span>open-source apps profiled, a fixable re-render problem found in each</span></div>
+    <div><b>2.5<em>′</em></b><span>to the first root causes on shadcn-admin, without a line of config</span></div>
+  </div>
+</section>
+
+<!-- ======================= RECEIPT ======================= -->
+<section id="receipt" aria-label="What a scan prints">
+  <div>
+    <h2>What it <em>prints.</em></h2>
+    <p>No dashboards. A short receipt: the root causes first, each with the file, the line and the fix. Everything else is in the JSON for when you want it. <b>Reports are deterministic</b>: sorted, no timestamps, so two runs of the same code are identical.</p>
+  </div>
+  <div class="paperroll" id="roll" aria-label="Terminal output of npx crispy scan"></div>
+</section>
+
+<!-- ======================= END ======================= -->
+<section id="end" aria-label="Get started">
+  <div>
+    <div class="cmd" id="cmd" data-copy="npm i -D crispy-profiling && npx crispy install && npx crispy scan"><span class="mark">$</span> npx crispy scan</div>
+    <small id="cmdhint">click the command to copy the three install lines</small>
+    <div class="btns">
+      <a class="btn fill" href="https://github.com/edgeorgie/crispy-profiling#quick-start" target="_blank" rel="noopener">Quick start</a>
+      <a class="btn" href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">Star on GitHub</a>
+    </div>
+  </div>
+</section>
+<footer>
+  <span>crispy‑profiling · MIT · early (0.x), improving every week</span>
+  <span>Built in the open, with AI coding agents, by <a href="https://github.com/edgeorgie" target="_blank" rel="noopener">Edwin Jorge</a> · <a href="https://github.com/edgeorgie/crispy-profiling/blob/develop/CHANGELOG.md" target="_blank" rel="noopener">changelog</a></span>
+</footer>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const ease = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const span = (p, a, b) => clamp((p - a) / (b - a), 0, 1);
+
+  /* ---------- cursor ---------- */
+  const cur = $('.cursor');
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches && !reduced) {
+    document.body.classList.add('cursor-on');
+    let cx = innerWidth / 2, cy = innerHeight / 2, tx = cx, ty = cy;
+    addEventListener('mousemove', (e) => { tx = e.clientX; ty = e.clientY; const t = e.target.closest('a, button, summary, .cmp.row, .cmd'); cur.classList.toggle('big', !!t); const lbl = e.target.closest('[data-cursor]'); cur.classList.toggle('has', !!lbl); if (lbl) $('.label', cur).textContent = lbl.dataset.cursor; });
+    (function loop() { cx = lerp(cx, tx, 0.35); cy = lerp(cy, ty, 0.35); cur.style.transform = `translate(${cx}px, ${cy}px)`; requestAnimationFrame(loop); })();
+  }
+
+  /* ---------- copy ---------- */
+  const copy = async (text, el, done = 'copied') => { try { await navigator.clipboard.writeText(text); const old = el.textContent; el.textContent = done; setTimeout(() => (el.textContent = old), 1400); } catch {} };
+  $$('.copy').forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, b)));
+  $('#cmd').addEventListener('click', () => copy($('#cmd').dataset.copy, $('#cmdhint'), 'copied: npm i -D crispy-profiling && npx crispy install && npx crispy scan'));
+
+  /* ---------- scroll engine: one smoothed progress per pinned scene ---------- */
+  const scenes = $$('.pin').map((el) => ({ el, p: 0, t: 0, fn: null }));
+  const measure = () => scenes.forEach((s) => { const r = s.el.getBoundingClientRect(); s.top = r.top + scrollY; s.len = Math.max(1, s.el.offsetHeight - innerHeight); });
+  addEventListener('resize', measure); measure();
+  const onFrame = () => {
+    for (const s of scenes) {
+      s.t = clamp((scrollY - s.top) / s.len, 0, 1);
+      s.p = reduced ? s.t : lerp(s.p, s.t, 0.12);
+      if (Math.abs(s.p - s.t) < 0.0005) s.p = s.t;
+      s.fn && s.fn(s.p);
+    }
+    requestAnimationFrame(onFrame);
+  };
+
+  /* ---------- HERO: the storm ---------- */
+  const canvas = $('#storm'), ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+  const fit = () => { DPR = Math.min(devicePixelRatio || 1, 2); W = canvas.clientWidth; H = canvas.clientHeight; canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); layout(); };
+  // Deterministic pseudo-random, so the tree is the same on every visit.
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const nodes = [], edges = [];
+  const NAMES = ['App', 'Layout', 'Header', 'Search', 'List', 'Row', 'Avatar', 'Badge', 'Status', 'Footer', 'Menu', 'Item', 'Cell', 'Icon', 'Tooltip'];
+  (function build() {
+    nodes.push({ d: 0, name: 'App', parent: -1, keep: true });
+    const ring = (count, depth, parentsFrom, parentsTo) => { for (let i = 0; i < count; i++) { const parent = parentsFrom + Math.floor(rnd() * (parentsTo - parentsFrom)); const name = depth === 1 ? NAMES[1 + (i % 4)] : depth === 2 ? NAMES[4 + (i % 6)] : NAMES[9 + (i % 6)]; nodes.push({ d: depth, name, parent, keep: false, jit: rnd() }); edges.push([parent, nodes.length - 1]); } };
+    ring(6, 1, 0, 1); ring(36, 2, 1, 7); ring(84, 3, 7, 43); ring(100, 4, 43, 127);
+    // The components that still render after the fix: App, Header, Search, and the rows that match.
+    nodes[1].keep = true; nodes[2].keep = true; nodes[3].keep = true;
+    let kept = 3; for (let i = 7; i < nodes.length && kept < 20; i++) if (nodes[i].name === 'Row' || nodes[i].name === 'Item') { nodes[i].keep = true; kept++; }
+  })();
+  function layout() {
+    const cx = W * (W < 760 ? 0.5 : 0.62), cy = H * (W < 760 ? 0.36 : 0.5), R = Math.min(W, H) * (W < 760 ? 0.46 : 0.42);
+    const perDepth = [1, 6, 36, 84, 100];
+    const idx = [0, 0, 0, 0, 0];
+    for (const n of nodes) {
+      const k = idx[n.d]++;
+      const r = n.d === 0 ? 0 : R * (0.22 + 0.78 * (n.d - 1) / 3) * (1 + (n.jit || 0) * 0.08);
+      const a = (k / perDepth[n.d]) * Math.PI * 2 + n.d * 0.6;
+      n.x = cx + Math.cos(a) * r; n.y = cy + Math.sin(a) * r * 0.86;
+      n.delay = n.d / 5 + (n.jit || 0) * 0.08; // cascade order: parent → children
+    }
+  }
+  addEventListener('resize', fit); fit();
+  const hudn = $('#hudn'), hudl = $('#hudl'), hud = $('#hud'), typed = $('#typed'), codecard = $('#codecard'), goodline = $('#goodline'), badline = $('#badline'), stamp = $('#stamp'), cue = $('#cue'), headline = $('.headline');
+  const heads = $$('.headline .h'), subs = $$('.sub .s');
+  const fmt = (n) => Math.round(n).toLocaleString('en-US');
+  let shown = -1;
+  function showState(i) { if (i === shown) return; shown = i; heads.forEach((h, k) => h.classList.toggle('on', k === i)); subs.forEach((s, k) => s.classList.toggle('on', k === i)); }
+  function drawStorm(p) {
+    // Phases of the scroll: 0–.28 storm · .28–.52 the line · .52–.76 the fix · .76–1 the test
+    const storm = span(p, 0.02, 0.26), focus = span(p, 0.3, 0.5), fix = span(p, 0.55, 0.74), test = span(p, 0.8, 0.95);
+    ctx.clearRect(0, 0, W, H);
+    typed.textContent = storm > 0.02 ? 'a' : '';
+    // Kinetic weight: the headline gets heavier as the renders pile up, then light again when fixed.
+    const w = fix > 0 ? lerp(800, 300, ease(fix)) : lerp(200, 800, ease(storm));
+    headline.style.fontWeight = Math.round(w);
+    // Edges
+    ctx.lineWidth = 1;
+    for (const [a, b] of edges) {
+      const A = nodes[a], B = nodes[b];
+      const lit = clamp((storm - B.delay) * 4, 0, 1) * (1 - focus) + (B.keep ? fix : 0) * 0.5;
+      const path = (B.name === 'Row' && A.name === 'List') || B.name === 'List' ? focus : 0;
+      ctx.strokeStyle = `rgba(239,233,223,${0.05 + lit * 0.18 + path * 0.5})`;
+      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    }
+    // Nodes
+    let count = 0;
+    for (const n of nodes) {
+      const t = clamp((storm - n.delay) * 4, 0, 1);
+      const isPath = focus > 0 && (n.name === 'Row' || n.name === 'List' || n.d === 0);
+      let glow = t * (1 - focus * 0.92);
+      if (isPath) glow = Math.max(glow, focus);
+      if (fix > 0) glow = n.keep ? fix * 0.9 : glow * (1 - fix);
+      if (t > 0.5) count++;
+      const r = 1.6 + n.d * 0.1 + glow * (n.d === 0 ? 7 : isPath ? 4 : 2.6);
+      const green = fix > 0 && n.keep;
+      if (glow > 0.02) { ctx.shadowBlur = 14 * glow; ctx.shadowColor = green ? 'rgba(182,242,122,0.9)' : 'rgba(255,77,28,0.9)'; }
+      ctx.fillStyle = green ? `rgba(182,242,122,${0.35 + glow * 0.65})` : glow > 0.02 ? `rgba(255,77,28,${0.3 + glow * 0.7})` : 'rgba(239,233,223,0.28)';
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    }
+    // Fade the storm during the fix so the page breathes.
+    if (fix > 0 && fix < 1) { ctx.fillStyle = `rgba(14,13,11,${0.35 * Math.sin(fix * Math.PI)})`; ctx.fillRect(0, 0, W, H); }
+    // HUD
+    const total = 1227, kept = 21;
+    let n = storm * total; if (focus > 0) n = total; if (fix > 0) n = lerp(total, kept, ease(fix));
+    hudn.textContent = fmt(n);
+    hud.classList.toggle('fixed', fix > 0.5);
+    hudl.textContent = fix > 0.5 ? 'renders · same keystroke' : focus > 0.5 ? '1,206 avoidable · 1 cause' : 'components rendered';
+    hud.style.opacity = storm > 0.05 ? 1 : 0;
+    // States
+    showState(p < 0.3 ? 0 : p < 0.55 ? 1 : p < 0.8 ? 2 : 3);
+    codecard.classList.toggle('on', p > 0.34 && p < 0.86);
+    const swapped = fix > 0.45; goodline.classList.toggle('off', !swapped); badline.style.display = swapped ? 'none' : '';
+    stamp.classList.toggle('on', test > 0.3);
+    cue.classList.toggle('off', p > 0.04 && p < 0.97 ? false : p >= 0.97);
+    cue.innerHTML = p < 0.04 ? '<i>↓</i> scroll to see what happened' : p < 0.9 ? '<i>↓</i> keep scrolling' : '<i>↓</i> next: try it yourself';
+    legend.style.opacity = storm > 0.05 && p < 0.8 ? 1 : 0;
+    ctahero.style.opacity = p < 0.3 || p > 0.8 ? 1 : 0; ctahero.style.pointerEvents = p < 0.3 || p > 0.8 ? 'auto' : 'none';
+    // Step indicator: fill each segment with the progress inside its range.
+    stepBtns.forEach((b, i) => {
+      const a = STEP_P[i], z = STEP_P[i + 1] ?? 1;
+      const f = span(p, a, z);
+      b.style.setProperty('--fill', f.toFixed(3));
+      b.classList.toggle('on', p >= a && p < z); b.classList.toggle('done', f >= 1);
+    });
+  }
+  const legend = $('#legend'), ctahero = $('#ctahero');
+  const stepBtns = $$('#steps button'), STEP_P = stepBtns.map((b) => +b.dataset.p);
+  stepBtns.forEach((b, i) => b.addEventListener('click', () => { const s = scenes[0]; scrollTo({ top: s.top + s.len * (STEP_P[i] + 0.06), behavior: reduced ? 'auto' : 'smooth' }); }));
+  scenes[0].fn = drawStorm;
+
+  /* ---------- THE LOOP: horizontal scroll ---------- */
+  const track = $('#track'), railDot = $('#railDot'), loophint = $('#loophint'), loopnav = $$('#loopnav b');
+  scenes[1].fn = (p) => {
+    if (innerWidth <= 760) return;
+    const max = track.scrollWidth - innerWidth + parseFloat(getComputedStyle(track).paddingLeft);
+    track.style.transform = `translateX(${-max * p}px)`;
+    railDot.style.left = `calc(${p * 100}% - 4px)`;
+    loophint.classList.toggle('off', p > 0.08);
+    const k = Math.min(3, Math.floor(p * 4 + 0.15)); loopnav.forEach((b, i) => b.classList.toggle('on', i === k));
+  };
+
+  /* ---------- REPORT: simulated app ---------- */
+  const MEMBERS = ['Ada', 'Grace', 'Linus', 'Margaret', 'Dennis', 'Barbara', 'Ken', 'Hedy'];
+  const S = { variant: 'naive', query: '', selected: null, prevSel: null, counts: {}, avoid: {}, touched: false };
+  const rowsEl = $('#rows');
+  MEMBERS.forEach((m, i) => {
+    const el = document.createElement('div'); el.className = 'cmp row'; el.id = 'c-Row' + i; el.dataset.cursor = 'select';
+    el.innerHTML = `<span class="tag">Row</span><span class="cnt" id="n-Row${i}">0</span><span>${m}</span><small>#${i + 1}</small>`;
+    el.addEventListener('click', () => { S.selected = S.selected === i ? null : i; commit('select'); });
+    rowsEl.appendChild(el);
+  });
+  const NAMES2 = ['App', 'Header', 'Status', ...MEMBERS.map((_, i) => 'Row' + i)];
+  const resetCounts = () => { NAMES2.forEach((n) => { S.counts[n] = 0; S.avoid[n] = 0; }); S.touched = false; paint(); report(); };
+  function render(name, avoidable) {
+    S.counts[name]++; if (avoidable) S.avoid[name]++;
+    const el = $('#c-' + name); if (!el) return;
+    el.classList.remove('flash', 'ok'); void el.offsetWidth; el.classList.add('flash'); if (!avoidable) el.classList.add('ok');
+    setTimeout(() => el.classList.remove('flash', 'ok'), 240);
+  }
+  function commit(kind) {
+    S.touched = true; const naive = S.variant === 'naive';
+    render('App', false);
+    if (kind === 'type') render('Header', false); else if (naive) render('Header', true);
+    MEMBERS.forEach((m, i) => {
+      const visible = m.toLowerCase().includes(S.query.toLowerCase());
+      const el = $('#c-Row' + i); el.style.display = visible ? '' : 'none'; el.classList.toggle('sel', S.selected === i);
+      if (!visible) return;
+      const changed = kind === 'select' && (S.selected === i || S.prevSel === i);
+      if (naive) render('Row' + i, !changed); else if (changed) render('Row' + i, false);
+    });
+    S.prevSel = S.selected;
+    if (naive) render('Status', kind !== 'select'); else if (kind === 'select') render('Status', false);
+    const visible = MEMBERS.filter((m) => m.toLowerCase().includes(S.query.toLowerCase())).length;
+    $('#status').textContent = `${visible} members · ${S.selected == null ? 'none selected' : MEMBERS[S.selected] + ' selected'}`;
+    paint(); report();
+  }
+  function paint() { NAMES2.forEach((n) => { const el = $('#n-' + n); if (!el) return; el.textContent = S.counts[n]; $('#c-' + n).classList.toggle('many', S.avoid[n] >= 3); }); }
+  // How-to chips: tick each step as the visitor does it, point at the next one.
+  const did = { type: false, select: false, fix: false }, chips = $$('#howto > div');
+  function tick(step) {
+    did[step] = true; const keys = ['type', 'select', 'fix']; let nextShown = false;
+    chips.forEach((c, i) => { const done = did[keys[i]]; c.classList.toggle('done', done); const next = !done && !nextShown; c.classList.toggle('next', next); if (next) nextShown = true; });
+    $('#search').classList.toggle('pulse', !did.type);
+  }
+  const search = $('#search');
+  search.addEventListener('input', (e) => { S.query = e.target.value; commit('type'); tick('type'); if (S.variant === 'fixed') tick('fix'); });
+  search.addEventListener('focus', () => document.body.classList.add('typing'));
+  search.addEventListener('blur', () => document.body.classList.remove('typing'));
+  rowsEl.addEventListener('click', () => tick('select'));
+  const setVariant = (v) => { $$('.toggle button').forEach((x) => x.classList.toggle('on', x.dataset.variant === v)); S.variant = v; resetCounts(); paintCode(); if (v === 'fixed') { S.query = ''; search.value = ''; } };
+  $$('.toggle button').forEach((b) => b.addEventListener('click', () => setVariant(b.dataset.variant)));
+  // "Do it for me": plays the three steps so nobody has to guess.
+  const wait = (ms) => new Promise((r) => setTimeout(r, reduced ? 0 : ms));
+  $('#play').addEventListener('click', async (e) => {
+    const btn = e.currentTarget; btn.disabled = true; btn.textContent = '… typing';
+    setVariant('naive'); $('#report').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    await wait(700);
+    for (const ch of ['a', 'ar']) { search.value = ch; S.query = ch; commit('type'); tick('type'); await wait(650); }
+    btn.textContent = '… clicking a row';
+    const first = MEMBERS.findIndex((m) => m.toLowerCase().includes('ar')); S.selected = first; commit('select'); tick('select'); await wait(900);
+    btn.textContent = '… switching to the fix';
+    setVariant('fixed'); await wait(700);
+    for (const ch of ['a', 'ar']) { search.value = ch; S.query = ch; commit('type'); await wait(650); }
+    S.selected = first; commit('select'); tick('fix'); await wait(400);
+    btn.textContent = '▶ play it again'; btn.disabled = false;
+  });
+  function paintCode() {
+    $('#code').innerHTML = S.variant === 'naive'
+      ? `<span class="c">// App.tsx — as written</span>
+<span class="k">function</span> <span class="f">App</span>() {
+  <span class="k">const</span> [query, setQuery] = <span class="f">useState</span>(<span class="s">''</span>);
+  <span class="k">const</span> [selected, setSelected] = <span class="f">useState</span>(<span class="k">null</span>);
+  <span class="k">return</span> &lt;&gt;
+    &lt;<span class="f">Header</span> query={query} onChange={setQuery} /&gt;
+    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m} selected={selected === m.id}
+<span class="bad">      onSelect={(id) =&gt; setSelected(id)} /&gt;)}       <span class="c">// new function every render</span></span>
+<span class="bad">    &lt;<span class="f">Status</span> style={{ opacity: 0.7 }} count={n} /&gt;   <span class="c">// new object every render</span></span>
+  &lt;/&gt;;
+}`
+      : `<span class="c">// App.tsx — with the fix crispy suggested</span>
+<span class="good"><span class="k">const</span> statusStyle = { opacity: 0.7 };                   <span class="c">// hoisted</span></span>
+<span class="k">function</span> <span class="f">App</span>() {
+  <span class="k">const</span> [query, setQuery] = <span class="f">useState</span>(<span class="s">''</span>);
+  <span class="k">const</span> [selected, setSelected] = <span class="f">useState</span>(<span class="k">null</span>);
+<span class="good">  <span class="k">const</span> onSelect = <span class="f">useCallback</span>((id) =&gt; setSelected(id), []);</span>
+  <span class="k">return</span> &lt;&gt;
+    &lt;<span class="f">Header</span> query={query} onChange={setQuery} /&gt;
+    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m} selected={selected === m.id} onSelect={onSelect} /&gt;)}
+    &lt;<span class="f">Status</span> style={statusStyle} count={n} /&gt;
+  &lt;/&gt;;
+}
+<span class="good"><span class="k">const</span> Row = <span class="f">memo</span>(RowImpl); <span class="k">const</span> Status = <span class="f">memo</span>(StatusImpl); <span class="k">const</span> Header = <span class="f">memo</span>(HeaderImpl);</span>`;
+  }
+  function report() {
+    const naive = S.variant === 'naive';
+    const rows = MEMBERS.map((_, i) => 'Row' + i);
+    const rr = rows.reduce((a, n) => a + S.counts[n], 0), ra = rows.reduce((a, n) => a + S.avoid[n], 0);
+    const below = ra + S.avoid.Status + S.avoid.Header;
+    const data = [
+      ['Row', rr, ra, naive ? 'recreated callbacks · <code>src/App.tsx:222 (App)</code> · <code>onSelect</code> is a new function with the same code in <code>App</code>: wrap it in useCallback, then wrap Row in React.memo.' : 'props changed only when a row was selected · <code>memo</code> + stable <code>onSelect</code>.'],
+      ['Status', S.counts.Status, S.avoid.Status, naive ? 'recreated props · <code>style</code> is recreated with equal data in <code>App</code>: hoist it out of the component or wrap it in useMemo.' : 'hoisted <code>style</code> · renders only when <code>count</code> changes.'],
+      ['Header', S.counts.Header, S.avoid.Header, naive ? 'parent rendered · props equal on select: wrap it in React.memo.' : 'own prop <code>query</code> changed.'],
+      ['App', S.counts.App, 0, `own state · state updates here cause ${below} avoidable render(s) below.`],
+    ];
+    $('#tbody').innerHTML = data.map(([n, r, a, why]) => `<tr><td><b>${n}</b></td><td class="n">${r}</td><td class="n" style="color:${a ? 'var(--signal)' : 'inherit'}">${a}</td><td><span class="why">${why}</span></td></tr>`).join('');
+    $('#rootcause').innerHTML = naive
+      ? `<b>Root causes — fix these first.</b> <code>App</code> hands <code>Row</code> a new function and <code>Status</code> a new object on every render → ${below} avoidable render(s) in this scenario.`
+      : `<b>Root causes:</b> none. ${S.counts.App} App render(s), ${below} avoidable below.`;
+    const v = $('#verdict');
+    if (!S.touched) { v.className = 'verdict gray'; v.textContent = 'Type in the box to profile the scenario.'; return; }
+    if (naive) { v.className = 'verdict red'; v.textContent = `🔴 crispy test --ci · regressed · Row ${rr} renders, ${ra} avoidable → exit 1, PR comment with the fix`; }
+    else { v.className = 'verdict green'; v.textContent = `🟢 crispy test --ci · pass · Row ${rr} renders, 0 avoidable → exit 0`; }
+  }
+  resetCounts(); paintCode();
+
+  /* ---------- ticker ---------- */
+  const apps = ['Redux Essentials', 'Next.js App Router Playground', 'Excalidraw', 'shadcn-admin', 'react-admin'];
+  $('#ticker').innerHTML = [...apps, ...apps].map((a) => `<span>${a}</span>`).join('');
+
+  /* ---------- receipt ---------- */
+  const LINES = [
+    '<b>$ npx crispy scan</b>',
+    '<span class="d">[crispy] Vite app detected · npm run dev → http://localhost:5173</span>',
+    '<span class="d">[crispy] visiting / · 3 interactions found: search, select-row, sort</span>',
+    '<span class="d">[crispy] profiling search · select-row · sort · 3 runs each</span>',
+    '<div class="hr"></div>',
+    '<b>Root causes — fix these first</b>',
+    '<span class="r">●</span> <b>Row</b> re-rendered 20 times with nothing new to show, because <b>App</b> hands it a new function on every render.',
+    '  <span class="d">src/App.tsx:222 (App)</span> · `onSelect` is a new function with the same code in `App`: wrap it in useCallback with the values it uses as dependencies. Then wrap this component in React.memo.',
+    '<span class="r">●</span> <b>Status</b> · `style` is recreated with equal data in `App`: hoist it out of the component or wrap it in useMemo.',
+    '<div class="hr"></div>',
+    '<span class="d">Tried: search, select-row, sort · Not tried: 1 risky name skipped (sign out)</span>',
+    '<span class="d">Time per phase: search 41 ms JavaScript (58 ms main thread)</span>',
+    '✓ saved crispy.config.json · next: <b>npx crispy test</b>',
+  ];
+  const roll = $('#roll');
+  roll.innerHTML = LINES.map((l) => `<div class="line">${l}</div>`).join('');
+  const lines = $$('.line', roll);
+  new IntersectionObserver((es) => { if (!es[0].isIntersecting) return; lines.forEach((l, i) => setTimeout(() => l.classList.add('on'), reduced ? 0 : 120 * i)); }, { threshold: 0.3 }).observe(roll);
+
+  measure(); onFrame();
+})();
+</script>
+</body>
+</html>
