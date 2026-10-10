@@ -3,432 +3,401 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>crispy-profiling</title>
-<meta name="description" content="Snapshot testing for React re-renders: find the components that render for no reason, read why, apply the fix, verify it in CI. CLI, GitHub Action, MCP server and Agent Skill." />
-<meta property="og:title" content="crispy-profiling — snapshot testing for React re-renders" />
-<meta property="og:description" content="Deterministic React render profiling with the fix attached. Zero config: npx crispy scan." />
+<title>crispy-profiling — the invisible work of React, made visible</title>
+<meta name="description" content="One keystroke can wake up a thousand React components that have nothing new to show. crispy counts them, names the line, and keeps the fix fixed. CLI, GitHub Action, MCP server." />
+<meta property="og:title" content="crispy-profiling — the invisible work of React, made visible" />
+<meta property="og:description" content="Snapshot testing for React re-renders. Zero config: npx crispy scan." />
 <meta property="og:type" content="website" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🥓%3C/text%3E%3C/svg%3E" />
+<meta name="theme-color" content="#0e0d0b" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='34' fill='%23ff4d1c'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #fbf8f3;
-    --bg-2: #f3eee6;
-    --surface: #ffffff;
-    --surface-2: #f7f2ea;
-    --border: #e6ddd0;
-    --text: #1d1a16;
-    --muted: #6b6259;
-    --accent: #e8590c;
-    --accent-2: #fd7e14;
-    --accent-soft: rgba(232, 89, 12, 0.12);
-    --green: #1f9d55;
-    --green-soft: rgba(31, 157, 85, 0.14);
-    --red: #d7263d;
-    --red-soft: rgba(215, 38, 61, 0.12);
-    --amber: #b7791f;
-    --amber-soft: rgba(183, 121, 31, 0.14);
-    --term-bg: #15120f;
-    --term-text: #f1e9dd;
-    --term-dim: #9b8f80;
-    --term-green: #7ee2a8;
-    --term-red: #ff7b8a;
-    --term-amber: #ffc46b;
-    --shadow: 0 10px 30px rgba(50, 30, 10, 0.08);
-    --radius: 14px;
-    color-scheme: light;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #100e0c;
-      --bg-2: #171310;
-      --surface: #1b1714;
-      --surface-2: #221d18;
-      --border: #332b24;
-      --text: #f3ece2;
-      --muted: #a2978a;
-      --accent: #ff8a3d;
-      --accent-2: #ffa94d;
-      --accent-soft: rgba(255, 138, 61, 0.16);
-      --green: #4ade80;
-      --green-soft: rgba(74, 222, 128, 0.14);
-      --red: #ff6b7a;
-      --red-soft: rgba(255, 107, 122, 0.14);
-      --amber: #fbbf24;
-      --amber-soft: rgba(251, 191, 36, 0.14);
-      --term-bg: #0b0a09;
-      --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-      color-scheme: dark;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #100e0c;
-    --bg-2: #171310;
-    --surface: #1b1714;
-    --surface-2: #221d18;
-    --border: #332b24;
-    --text: #f3ece2;
-    --muted: #a2978a;
-    --accent: #ff8a3d;
-    --accent-2: #ffa94d;
-    --accent-soft: rgba(255, 138, 61, 0.16);
-    --green: #4ade80;
-    --green-soft: rgba(74, 222, 128, 0.14);
-    --red: #ff6b7a;
-    --red-soft: rgba(255, 107, 122, 0.14);
-    --amber: #fbbf24;
-    --amber-soft: rgba(251, 191, 36, 0.14);
-    --term-bg: #0b0a09;
-    --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    --ink: #0e0d0b;
+    --ink-2: #16140f;
+    --paper: #efe9df;
+    --paper-2: #e4ddd0;
+    --line: rgba(239, 233, 223, 0.14);
+    --line-paper: rgba(14, 13, 11, 0.16);
+    --fg: #efe9df;
+    --fg-dim: rgba(239, 233, 223, 0.55);
+    --signal: #ff4d1c;
+    --signal-glow: rgba(255, 77, 28, 0.55);
+    --fix: #b6f27a;
+    --display: "Bricolage Grotesque", "Inter Tight", system-ui, sans-serif;
+    --serif: "Instrument Serif", Georgia, serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --gutter: clamp(16px, 4vw, 56px);
     color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: auto; }
   body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
+    margin: 0; background: var(--ink); color: var(--fg);
+    font-family: var(--display); font-variation-settings: "opsz" 14, "wdth" 100;
+    line-height: 1.4; -webkit-font-smoothing: antialiased; overflow-x: clip;
   }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
-  code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 0.9em; }
-  h1, h2, h3 { line-height: 1.15; letter-spacing: -0.02em; margin: 0; }
-  h2 { font-size: clamp(1.6rem, 3vw, 2.3rem); font-weight: 800; }
-  h3 { font-size: 1.1rem; font-weight: 600; }
-  p { margin: 0; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
-  /* grid children must be allowed to shrink below their <pre> content width */
-  .hero .wrap > *, .demo-grid > *, .how > *, .tabpanel.on > * { min-width: 0; }
-  section { padding: 72px 0; }
-  .kicker { color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.75rem; margin-bottom: 12px; }
-  .lead { color: var(--muted); font-size: 1.1rem; max-width: 62ch; margin-top: 14px; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px;
-    font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);
-    cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; font-size: 0.95rem;
+  ::selection { background: var(--signal); color: var(--ink); }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3, p { margin: 0; }
+  em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: 0; }
+  .mono { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.01em; }
+  .num { font-variant-numeric: tabular-nums; }
+  .grain {
+    pointer-events: none; position: fixed; inset: -50%; width: 200%; height: 200%; z-index: 50; opacity: 0.07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 0.6s steps(3) infinite;
   }
-  .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); text-decoration: none; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn.primary:hover { background: var(--accent-2); }
-  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); }
+  @keyframes grain { 0% { transform: translate(0, 0); } 33% { transform: translate(-2%, 1%); } 66% { transform: translate(1%, -2%); } 100% { transform: translate(0, 0); } }
 
-  /* nav */
+  /* ---------- nav ---------- */
   nav {
-    position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px);
-    background: color-mix(in srgb, var(--bg) 80%, transparent); border-bottom: 1px solid var(--border);
+    position: fixed; inset: 0 0 auto 0; z-index: 40; display: flex; align-items: center; justify-content: space-between;
+    padding: 18px var(--gutter); mix-blend-mode: difference; color: #fff; font-size: 0.85rem;
   }
-  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
-  .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
-  .brand span { font-size: 1.4rem; }
-  .links { display: flex; gap: 20px; align-items: center; font-size: 0.92rem; }
-  .links a { color: var(--muted); font-weight: 500; }
-  .links a:hover { color: var(--text); text-decoration: none; }
-  .theme { background: none; border: 1px solid var(--border); border-radius: 8px; width: 34px; height: 34px; cursor: pointer; color: var(--text); font-size: 1rem; }
-  @media (max-width: 760px) { .links a:not(.keep) { display: none; } }
+  nav .wordmark { font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+  nav .wordmark i { width: 10px; height: 10px; border-radius: 50%; background: var(--signal); display: inline-block; box-shadow: 0 0 14px var(--signal-glow); }
+  nav .right { display: flex; gap: 22px; align-items: center; }
+  nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  @media (max-width: 640px) { nav .right a.hide { display: none; } }
 
-  /* hero */
-  .hero { padding: 80px 0 48px; position: relative; overflow: hidden; }
-  .hero::before {
-    content: ""; position: absolute; inset: -40% -20% auto -20%; height: 520px; pointer-events: none;
-    background: radial-gradient(ellipse at 30% 20%, var(--accent-soft), transparent 60%);
-  }
-  .hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; position: relative; }
-  @media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } }
-  h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; }
-  h1 em { font-style: normal; color: var(--accent); }
-  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
-  .install {
-    margin-top: 24px; display: inline-flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px;
-    border: 1px solid var(--border); background: var(--surface); border-radius: 10px; font-size: 0.95rem; max-width: 100%;
-  }
-  .install span { overflow-x: auto; white-space: nowrap; }
-  .install .copy { border: none; background: var(--surface-2); color: var(--muted); border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.8rem; font-family: inherit; }
-  .install .copy:hover { color: var(--text); }
-  .stats { display: flex; gap: 22px; margin-top: 28px; flex-wrap: wrap; color: var(--muted); font-size: 0.9rem; }
-  .stats b { color: var(--text); display: block; font-size: 1.25rem; letter-spacing: -0.02em; }
+  /* ---------- cursor ---------- */
+  .cursor { position: fixed; z-index: 60; left: 0; top: 0; pointer-events: none; mix-blend-mode: difference; display: none; }
+  .cursor .dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); transition: width 0.2s, height 0.2s; }
+  .cursor.big .dot { width: 56px; height: 56px; }
+  .cursor .label { position: absolute; left: 18px; top: -8px; font: 500 0.7rem var(--mono); color: #fff; white-space: nowrap; opacity: 0; transition: opacity 0.2s; }
+  .cursor.has .label { opacity: 1; }
+  @media (hover: hover) and (pointer: fine) { .cursor { display: block; } body.cursor-on { cursor: none; } body.cursor-on a, body.cursor-on button { cursor: none; } }
 
-  /* terminal */
-  .terminal {
-    background: var(--term-bg); color: var(--term-text); border-radius: var(--radius); box-shadow: var(--shadow);
-    border: 1px solid rgba(255,255,255,0.06); overflow: hidden; font-size: 0.8rem;
+  /* ---------- pinned scenes ---------- */
+  .pin { position: relative; }
+  .pin > .stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
+
+  /* ---------- hero ---------- */
+  #hero { height: 420vh; }
+  #hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #hero .ui { position: absolute; inset: 0; padding: 0 var(--gutter); display: grid; grid-template-rows: 1fr auto 1fr; pointer-events: none; }
+  .fakebox {
+    align-self: end; justify-self: start; margin-bottom: 22px; display: inline-flex; align-items: center; gap: 10px;
+    border: 1px solid var(--line); padding: 10px 14px; border-radius: 4px; font: 400 0.85rem var(--mono); color: var(--fg-dim); background: rgba(14,13,11,0.6); backdrop-filter: blur(6px);
   }
-  .terminal .bar { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); align-items: center; }
-  .terminal .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a332c; display: inline-block; }
-  .terminal .bar i:nth-child(1) { background: #ff5f57; } .terminal .bar i:nth-child(2) { background: #febc2e; } .terminal .bar i:nth-child(3) { background: #28c840; }
-  .terminal .bar span { margin-left: auto; color: var(--term-dim); font-family: "JetBrains Mono", monospace; }
-  .terminal pre { margin: 0; padding: 16px; min-height: 330px; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; line-height: 1.6; }
-  .terminal .p { color: var(--term-green); } .terminal .d { color: var(--term-dim); } .terminal .r { color: var(--term-red); } .terminal .a { color: var(--term-amber); } .terminal .g { color: var(--term-green); }
-  .cursor::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--term-amber); }
+  .fakebox b { color: var(--fg); font-weight: 400; }
+  .fakebox .caret { width: 1px; height: 1em; background: var(--signal); animation: blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  .replay { background: none; border: 1px solid rgba(255,255,255,0.15); color: var(--term-dim); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-size: 0.75rem; margin-left: 8px; }
-  .replay:hover { color: var(--term-text); }
-
-  /* loop */
-  .loop { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .steps4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 36px; }
-  @media (max-width: 900px) { .steps4 { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 520px) { .steps4 { grid-template-columns: 1fr; } }
-  .card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px;
-    transition: transform 0.2s, box-shadow 0.2s;
+  .headline { position: relative; height: clamp(2.4em, 20vw, 4.2em); font-size: clamp(2.6rem, 9vw, 9rem); letter-spacing: -0.04em; line-height: 0.92; font-weight: 200; }
+  .headline .h { position: absolute; inset: 0; opacity: 0; transform: translateY(0.25em); transition: none; white-space: nowrap; }
+  .headline .h span { display: inline-block; overflow: hidden; vertical-align: bottom; }
+  .headline .h span > b { display: inline-block; font-weight: inherit; transform: translateY(110%); transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .headline .h.on { opacity: 1; transform: none; }
+  .headline .h.on span > b { transform: none; }
+  .headline .h em { color: var(--signal); font-size: 1.06em; }
+  .headline .h.fixed em { color: var(--fix); }
+  .sub { position: relative; margin-top: 18px; max-width: 34ch; font-size: clamp(1rem, 1.8vw, 1.3rem); color: var(--fg-dim); min-height: 4.4em; }
+  .sub .s { position: absolute; inset: 0 auto auto 0; opacity: 0; transition: opacity 0.4s; max-width: 34ch; }
+  .sub .s.on { opacity: 1; }
+  .sub .s b { color: var(--fg); font-weight: 500; }
+  .sub code { font: 400 0.9em var(--mono); color: var(--fg); background: rgba(239,233,223,0.08); padding: 1px 5px; border-radius: 3px; }
+  .hud {
+    position: absolute; right: var(--gutter); top: 50%; transform: translateY(-50%); text-align: right; pointer-events: none;
   }
-  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
-  .card .n { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 800; margin-bottom: 14px; }
-  .card p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
-  .card code { font-size: 0.8em; }
+  .hud .big { font: 200 clamp(4rem, 14vw, 13rem)/0.9 var(--display); letter-spacing: -0.06em; font-variation-settings: "wdth" 80; color: var(--signal); transition: color 0.4s; }
+  .hud.fixed .big { color: var(--fix); }
+  .hud .lbl { font: 400 0.75rem var(--mono); color: var(--fg-dim); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 6px; }
+  .codecard {
+    margin-top: 18px; max-width: min(92vw, 640px); opacity: 0; transform: translateY(16px); transition: opacity 0.5s, transform 0.5s;
+    border: 1px solid var(--line); background: rgba(22,20,15,0.85); backdrop-filter: blur(8px); border-radius: 6px; padding: 14px 16px; font: 400 0.8rem/1.6 var(--mono);
+  }
+  .codecard.on { opacity: 1; transform: none; }
+  .codecard .path { color: var(--fg-dim); margin-bottom: 6px; display: flex; justify-content: space-between; gap: 16px; }
+  .codecard .l { white-space: pre; overflow-x: auto; }
+  .codecard .bad { background: rgba(255,77,28,0.18); text-decoration: line-through; text-decoration-color: var(--signal); }
+  .codecard .good { background: rgba(182,242,122,0.14); color: var(--fix); }
+  .codecard .good.off { display: none; }
+  .stamp {
+    position: absolute; right: var(--gutter); bottom: 12vh; transform: rotate(-8deg) scale(1.6); opacity: 0; transition: opacity 0.25s, transform 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
+    border: 3px solid var(--fix); color: var(--fix); padding: 10px 16px; font: 700 1.1rem var(--mono); letter-spacing: 0.05em; text-transform: uppercase; border-radius: 6px;
+  }
+  .stamp.on { opacity: 1; transform: rotate(-8deg) scale(1); }
+  .scrollcue { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); font: 400 0.7rem var(--mono); color: var(--fg-dim); letter-spacing: 0.12em; text-transform: uppercase; display: flex; gap: 10px; align-items: center; transition: opacity 0.4s; }
+  .scrollcue i { width: 1px; height: 36px; background: linear-gradient(var(--fg-dim), transparent); display: block; animation: drop 1.6s ease-in-out infinite; }
+  @keyframes drop { 0% { transform: scaleY(0); transform-origin: top; } 50% { transform: scaleY(1); transform-origin: top; } 51% { transform-origin: bottom; } 100% { transform: scaleY(0); transform-origin: bottom; } }
+  .scrollcue.off { opacity: 0; }
+  @media (max-width: 760px) {
+    .hud { top: 18%; transform: none; right: var(--gutter); }
+    .hud .big { font-size: 4.4rem; }
+    .codecard { font-size: 0.72rem; }
+    .stamp { bottom: 30vh; }
+    .sub { min-height: 4.6em; }
+  }
 
-  /* demo */
-  .demo-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 24px; margin-top: 32px; }
-  @media (max-width: 900px) { .demo-grid { grid-template-columns: 1fr; } }
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .panel header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); font-size: 0.85rem; font-weight: 600; flex-wrap: wrap; }
-  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .seg button { background: var(--surface); border: none; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
-  .seg button.on { background: var(--accent); color: #fff; }
-  .app { padding: 16px; }
-  .app input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
-  .comp { position: relative; border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 10px; transition: background 0.1s, border-color 0.1s; }
-  .comp.flash { background: var(--red-soft); border-color: var(--red); }
-  .comp.flash.ok { background: var(--green-soft); border-color: var(--green); }
-  .comp .tag { position: absolute; top: -9px; left: 10px; background: var(--surface); padding: 0 6px; font-size: 0.7rem; color: var(--muted); font-family: "JetBrains Mono", monospace; }
-  .comp .cnt { position: absolute; top: -10px; right: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: 0.72rem; font-family: "JetBrains Mono", monospace; }
-  .rows { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; }
-  .row.sel { outline: 2px solid var(--accent); }
-  .row small { color: var(--muted); }
-  .hint { color: var(--muted); font-size: 0.82rem; padding: 0 16px 14px; }
-  .code { margin: 0; padding: 14px 16px; background: var(--term-bg); color: var(--term-text); font-size: 0.78rem; line-height: 1.6; overflow-x: auto; border-top: 1px solid var(--border); }
-  .code .k { color: #c792ea; } .code .f { color: #82aaff; } .code .s { color: var(--term-green); } .code .c { color: var(--term-dim); } .code .hl { background: rgba(255,138,61,0.18); display: inline-block; width: 100%; }
-  .code .bad { background: rgba(255,107,122,0.18); display: inline-block; width: 100%; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
-  td.num { font-family: "JetBrains Mono", monospace; text-align: right; }
-  th.num { text-align: right; }
-  td .why { color: var(--muted); display: block; font-size: 0.78rem; margin-top: 2px; }
-  .verdict { padding: 12px 16px; font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); }
-  .verdict.red { background: var(--red-soft); color: var(--red); } .verdict.green { background: var(--green-soft); color: var(--green); } .verdict.gray { color: var(--muted); }
-  .rootcause { padding: 12px 16px; font-size: 0.85rem; background: var(--amber-soft); border-bottom: 1px solid var(--border); }
-  .rootcause b { color: var(--amber); }
-  .table-wrap { overflow-x: auto; }
+  /* ---------- manifesto ---------- */
+  #loop { height: 320vh; background: var(--ink-2); }
+  #loop .stage { display: flex; align-items: center; }
+  .track { display: flex; gap: clamp(60px, 8vw, 140px); padding: 0 var(--gutter); will-change: transform; }
+  .word { flex: 0 0 auto; width: min(82vw, 760px); }
+  .word .n { font: 400 0.75rem var(--mono); color: var(--signal); letter-spacing: 0.1em; }
+  .word h2 { font-size: clamp(4rem, 14vw, 13rem); line-height: 0.9; letter-spacing: -0.05em; font-weight: 800; font-variation-settings: "wdth" 85; margin-top: 8px; }
+  .word h2 em { font-weight: 400; font-variation-settings: "wdth" 100; }
+  .word p { margin-top: 22px; max-width: 46ch; font-size: clamp(1rem, 1.6vw, 1.2rem); color: var(--fg-dim); }
+  .word p b { color: var(--fg); font-weight: 500; }
+  .word p code { font: 400 0.9em var(--mono); color: var(--fg); }
+  .rail { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
+  .rail i { position: absolute; top: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 16px var(--signal-glow); }
+  @media (max-width: 760px) {
+    #loop { height: auto; }
+    #loop .stage { position: static; height: auto; display: block; padding: 90px 0; }
+    .track { flex-direction: column; gap: 70px; transform: none !important; }
+    .word { width: auto; }
+    .rail { display: none; }
+  }
 
-  /* how */
-  .how { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; margin-top: 32px; }
-  @media (max-width: 900px) { .how { grid-template-columns: 1fr; } }
-  .tl { display: grid; gap: 14px; }
-  .tl .item { display: grid; grid-template-columns: 36px 1fr; gap: 14px; padding: 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
-  .tl .item:hover, .tl .item.on { background: var(--surface); border-color: var(--border); }
-  .tl .dot { width: 36px; height: 36px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 800; }
-  .tl .item p { color: var(--muted); font-size: 0.92rem; margin-top: 4px; }
-  .json { position: sticky; top: 80px; }
-  .json pre { margin: 0; padding: 18px; background: var(--term-bg); color: var(--term-text); border-radius: var(--radius); font-size: 0.78rem; line-height: 1.6; overflow-x: auto; min-height: 320px; box-shadow: var(--shadow); }
-  .json .k { color: #82aaff; } .json .s { color: var(--term-green); } .json .n { color: var(--term-amber); } .json .c { color: var(--term-dim); }
+  /* ---------- report (paper) ---------- */
+  #report { background: var(--paper); color: var(--ink); padding: 110px 0 120px; color-scheme: light; }
+  #report .inner { padding: 0 var(--gutter); display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(28px, 5vw, 80px); align-items: start; }
+  #report .lede { position: sticky; top: 90px; }
+  #report .kick { font: 400 0.75rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--signal); }
+  #report h2 { font-size: clamp(2.4rem, 5.6vw, 5rem); line-height: 0.95; letter-spacing: -0.04em; font-weight: 700; margin-top: 14px; }
+  #report h2 em { font-weight: 400; }
+  #report .lede p { margin-top: 18px; max-width: 40ch; font-size: 1.05rem; color: rgba(14,13,11,0.7); }
+  #report .lede p b { color: var(--ink); }
+  .sheet { border: 1px solid var(--line-paper); background: var(--paper); box-shadow: 0 30px 60px -30px rgba(14,13,11,0.35); }
+  .sheet .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line-paper); font: 400 0.75rem var(--mono); flex-wrap: wrap; }
+  .toggle { display: inline-flex; border: 1px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .toggle button { font: 500 0.75rem var(--mono); background: transparent; border: 0; padding: 7px 14px; cursor: pointer; color: var(--ink); }
+  .toggle button.on { background: var(--ink); color: var(--paper); }
+  .app { padding: 18px; display: grid; gap: 12px; }
+  .app input { width: 100%; border: 1px solid var(--ink); background: transparent; padding: 12px 14px; font: 400 1rem var(--mono); color: var(--ink); border-radius: 0; outline: none; }
+  .app input:focus { box-shadow: 4px 4px 0 var(--signal); }
+  .cmp { position: relative; border: 1px dashed var(--line-paper); padding: 12px 12px 10px; transition: background 0.12s, border-color 0.12s; }
+  .cmp.flash { background: rgba(255,77,28,0.16); border-color: var(--signal); }
+  .cmp.flash.ok { background: rgba(14,13,11,0.06); border-color: var(--ink); }
+  .cmp .tag { position: absolute; top: -8px; left: 10px; background: var(--paper); padding: 0 6px; font: 400 0.65rem var(--mono); color: rgba(14,13,11,0.6); }
+  .cmp .cnt { position: absolute; top: -9px; right: 10px; background: var(--ink); color: var(--paper); padding: 1px 8px; font: 500 0.65rem var(--mono); border-radius: 999px; }
+  .cmp.many .cnt { background: var(--signal); }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 6px; }
+  .cmp.row { cursor: pointer; display: flex; justify-content: space-between; align-items: baseline; user-select: none; }
+  .cmp.row.sel { background: rgba(14,13,11,0.08); border-style: solid; border-color: var(--ink); }
+  .cmp.row small { font: 400 0.7rem var(--mono); color: rgba(14,13,11,0.5); }
+  .legend { padding: 0 18px 14px; font: 400 0.72rem var(--mono); color: rgba(14,13,11,0.6); }
+  .legend i { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin-right: 4px; background: rgba(255,77,28,0.4); border: 1px solid var(--signal); }
+  .legend i.ok { background: rgba(14,13,11,0.06); border-color: var(--ink); }
+  .out { border-top: 1px solid var(--ink); }
+  .out .rc { padding: 12px 18px; font: 400 0.8rem var(--mono); border-bottom: 1px solid var(--line-paper); line-height: 1.6; }
+  .out .rc b { color: var(--signal); font-weight: 500; }
+  .out table { width: 100%; border-collapse: collapse; font: 400 0.78rem var(--mono); }
+  .out th, .out td { text-align: left; padding: 10px 18px; border-bottom: 1px solid var(--line-paper); vertical-align: top; }
+  .out th { font-weight: 500; color: rgba(14,13,11,0.55); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .out td.n, .out th.n { text-align: right; width: 1%; white-space: nowrap; }
+  .out td .why { display: block; color: rgba(14,13,11,0.7); font-size: 0.72rem; margin-top: 3px; line-height: 1.5; }
+  .out td .why code { background: rgba(14,13,11,0.07); padding: 0 4px; }
+  .verdict { padding: 14px 18px; font: 500 0.82rem var(--mono); display: flex; align-items: center; gap: 10px; }
+  .verdict.red { background: var(--signal); color: var(--ink); } .verdict.green { background: var(--ink); color: var(--fix); } .verdict.gray { color: rgba(14,13,11,0.55); }
+  .tbl { overflow-x: auto; }
+  .codebox { margin: 0; padding: 16px 18px; background: var(--ink); color: var(--paper); font: 400 0.74rem/1.65 var(--mono); overflow-x: auto; }
+  .codebox .k { color: #c9b8ff; } .codebox .f { color: #8fd3ff; } .codebox .s { color: var(--fix); } .codebox .c { color: rgba(239,233,223,0.45); }
+  .codebox .bad { background: rgba(255,77,28,0.22); display: inline-block; width: 100%; } .codebox .good { background: rgba(182,242,122,0.14); display: inline-block; width: 100%; }
+  @media (max-width: 900px) { #report .inner { grid-template-columns: minmax(0, 1fr); } #report .lede { position: static; } }
 
-  /* integrations */
-  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 28px; }
-  .tabs button { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 8px 16px; cursor: pointer; font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--muted); }
-  .tabs button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
-  .tabpanel { display: none; margin-top: 18px; }
-  .tabpanel.on { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: start; }
-  @media (max-width: 900px) { .tabpanel.on { grid-template-columns: 1fr; } }
-  .tabpanel ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); }
-  .tabpanel li { margin: 6px 0; }
-  .block { position: relative; }
-  .block pre { margin: 0; padding: 18px; background: var(--term-bg); color: var(--term-text); border-radius: var(--radius); font-size: 0.8rem; line-height: 1.6; overflow-x: auto; box-shadow: var(--shadow); }
-  .block .copy { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.08); color: var(--term-dim); border: none; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: inherit; font-size: 0.75rem; }
-  .block .copy:hover { color: var(--term-text); }
+  /* ---------- doors ---------- */
+  #doors { padding: 120px 0; }
+  #doors .inner { padding: 0 var(--gutter); }
+  #doors h2 { font-size: clamp(2.2rem, 6vw, 5.5rem); letter-spacing: -0.04em; line-height: 0.95; font-weight: 700; max-width: 14ch; }
+  #doors h2 em { font-weight: 400; }
+  .door { border-top: 1px solid var(--line); }
+  .door:last-child { border-bottom: 1px solid var(--line); }
+  .door summary { list-style: none; display: grid; grid-template-columns: 70px 1fr auto; gap: 16px; align-items: baseline; padding: 26px 0; cursor: pointer; }
+  .door summary::-webkit-details-marker { display: none; }
+  .door summary .i { font: 400 0.8rem var(--mono); color: var(--signal); }
+  .door summary h3 { font-size: clamp(1.4rem, 3.4vw, 2.6rem); letter-spacing: -0.03em; font-weight: 600; transition: transform 0.3s; }
+  .door summary:hover h3 { transform: translateX(10px); }
+  .door summary .plus { font: 300 2rem/1 var(--display); color: var(--fg-dim); transition: transform 0.3s; }
+  .door[open] summary .plus { transform: rotate(45deg); }
+  .door .body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 32px; padding: 0 0 36px 70px; }
+  .door .body p { color: var(--fg-dim); max-width: 44ch; font-size: 1.02rem; }
+  .door .body p b { color: var(--fg); font-weight: 500; }
+  .door .body ul { margin: 14px 0 0; padding-left: 16px; color: var(--fg-dim); font-size: 0.95rem; }
+  .door .body li { margin: 6px 0; }
+  .door .body code { font: 400 0.88em var(--mono); color: var(--fg); }
+  .door pre { margin: 0; border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; font: 400 0.76rem/1.65 var(--mono); overflow-x: auto; background: var(--ink-2); position: relative; }
+  .door pre .c { color: var(--fg-dim); } .door pre .s { color: var(--fix); } .door pre .k { color: #c9b8ff; }
+  .copy { position: absolute; top: 10px; right: 10px; background: rgba(239,233,223,0.08); color: var(--fg-dim); border: 0; border-radius: 4px; padding: 5px 9px; font: 500 0.68rem var(--mono); cursor: pointer; }
+  .copy:hover { color: var(--fg); }
+  @media (max-width: 760px) { .door summary { grid-template-columns: 40px 1fr auto; } .door .body { grid-template-columns: 1fr; padding-left: 0; } }
 
-  /* proof */
-  .proof { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .apps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 28px; }
-  @media (max-width: 900px) { .apps { grid-template-columns: repeat(2, 1fr); } }
-  .apps .card { padding: 16px; }
-  .apps .card b { display: block; }
-  .apps .card span { color: var(--muted); font-size: 0.85rem; }
-  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
-  @media (max-width: 760px) { .facts { grid-template-columns: 1fr; } }
+  /* ---------- evidence ---------- */
+  #evidence { padding: 0 0 120px; }
+  .ticker { overflow: hidden; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 0; white-space: nowrap; }
+  .ticker .in { display: inline-flex; gap: 48px; padding-right: 48px; animation: tick 40s linear infinite; font-size: clamp(1.2rem, 3vw, 2rem); letter-spacing: -0.02em; font-weight: 500; }
+  .ticker .in span::after { content: "✦"; color: var(--signal); margin-left: 48px; font-size: 0.8em; }
+  @keyframes tick { to { transform: translateX(-50%); } }
+  .figures { display: grid; grid-template-columns: repeat(4, 1fr); border-left: 1px solid var(--line); margin: 0 var(--gutter); margin-top: 80px; }
+  .figures div { border-right: 1px solid var(--line); padding: 28px 24px 32px; }
+  .figures b { display: block; font: 200 clamp(3rem, 7vw, 6.4rem)/1 var(--display); letter-spacing: -0.05em; font-variation-settings: "wdth" 80; }
+  .figures b em { color: var(--signal); font-size: 0.9em; }
+  .figures span { display: block; margin-top: 14px; color: var(--fg-dim); font-size: 0.95rem; max-width: 24ch; }
+  @media (max-width: 900px) { .figures { grid-template-columns: repeat(2, 1fr); } .figures div:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
 
-  /* faq */
-  details { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 0 18px; margin-top: 10px; }
-  summary { cursor: pointer; padding: 14px 0; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
-  summary::after { content: "+"; color: var(--muted); font-size: 1.2rem; }
-  details[open] summary::after { content: "–"; }
-  details p { color: var(--muted); padding-bottom: 16px; font-size: 0.95rem; }
+  /* ---------- receipt ---------- */
+  #receipt { padding: 0 var(--gutter) 140px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
+  #receipt h2 { font-size: clamp(2.2rem, 5.5vw, 5rem); letter-spacing: -0.04em; line-height: 0.95; font-weight: 700; max-width: 12ch; }
+  #receipt h2 em { font-weight: 400; }
+  #receipt p { margin-top: 18px; color: var(--fg-dim); max-width: 40ch; font-size: 1.05rem; }
+  #receipt p b { color: var(--fg); font-weight: 500; }
+  .paperroll { background: var(--paper); color: var(--ink); padding: 26px 24px 34px; font: 400 0.76rem/1.7 var(--mono); position: relative; transform: rotate(-1deg); box-shadow: 0 30px 50px -30px rgba(0,0,0,0.8); min-height: 420px;
+    -webkit-mask: linear-gradient(#000 0 0) top/100% calc(100% - 14px) no-repeat, radial-gradient(circle at 7px 100%, transparent 7px, #000 7.5px) bottom/14px 14px repeat-x; mask: linear-gradient(#000 0 0) top/100% calc(100% - 14px) no-repeat, radial-gradient(circle at 7px 100%, transparent 7px, #000 7.5px) bottom/14px 14px repeat-x; }
+  .paperroll .line { opacity: 0; transform: translateY(6px); transition: opacity 0.3s, transform 0.3s; white-space: pre-wrap; }
+  .paperroll .line.on { opacity: 1; transform: none; }
+  .paperroll .r { color: var(--signal); } .paperroll .d { color: rgba(14,13,11,0.55); } .paperroll b { font-weight: 500; }
+  .paperroll .hr { border-top: 1px dashed rgba(14,13,11,0.3); margin: 10px 0; }
+  @media (max-width: 900px) { #receipt { grid-template-columns: 1fr; } }
 
-  footer { padding: 40px 0 60px; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--border); }
-  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .fade { opacity: 0; transform: translateY(14px); transition: opacity 0.6s, transform 0.6s; }
-  .fade.in { opacity: 1; transform: none; }
-  @media (prefers-reduced-motion: reduce) { .fade { opacity: 1; transform: none; transition: none; } .cursor::after { animation: none; } }
+  /* ---------- end ---------- */
+  #end { min-height: 90vh; display: grid; place-items: center; text-align: center; padding: 80px var(--gutter); border-top: 1px solid var(--line); position: relative; overflow: hidden; }
+  #end::before { content: ""; position: absolute; inset: auto -20% -60% -20%; height: 80%; background: radial-gradient(ellipse at 50% 100%, var(--signal-glow), transparent 60%); opacity: 0.6; pointer-events: none; }
+  #end .cmd { font: 200 clamp(1.9rem, 8.5vw, 9rem)/1 var(--display); letter-spacing: -0.05em; font-variation-settings: "wdth" 80; cursor: pointer; display: inline-block; transition: font-variation-settings 0.5s, color 0.3s; }
+  #end .cmd:hover { font-variation-settings: "wdth" 100, "wght" 800; color: var(--signal); }
+  #end .cmd .mark { font: inherit; color: var(--signal); }
+  #end small { display: block; margin-top: 22px; font: 400 0.75rem var(--mono); color: var(--fg-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+  #end .btns { margin-top: 44px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--fg); padding: 14px 22px; border-radius: 999px; font-weight: 500; font-size: 0.95rem; transition: background 0.25s, color 0.25s; }
+  .btn:hover { background: var(--fg); color: var(--ink); }
+  .btn.fill { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+  .btn.fill:hover { background: var(--fg); border-color: var(--fg); }
+  footer { padding: 30px var(--gutter) 40px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font: 400 0.75rem var(--mono); color: var(--fg-dim); border-top: 1px solid var(--line); }
+  footer a:hover { color: var(--fg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .grain, .ticker .in, .scrollcue i, .fakebox .caret { animation: none; }
+    .headline .h span > b, .headline .h, .sub .s, .codecard, .stamp, .paperroll .line, .door summary h3 { transition: none; }
+  }
 </style>
 </head>
 <body>
+<div class="grain" aria-hidden="true"></div>
+<div class="cursor" aria-hidden="true"><div class="dot"></div><div class="label"></div></div>
+
 <nav>
-  <div class="wrap">
-    <a class="brand" href="#top"><span>🥓</span> crispy-profiling</a>
-    <div class="links">
-      <a href="#demo">Demo</a>
-      <a href="#how">How it works</a>
-      <a href="#integrations">Integrations</a>
-      <a href="#faq">FAQ</a>
-      <a class="keep" href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">GitHub</a>
-      <a class="keep" href="https://www.npmjs.com/package/crispy-profiling" target="_blank" rel="noopener">npm</a>
-      <button class="theme" id="theme" title="Toggle theme" aria-label="Toggle theme">◐</button>
-    </div>
+  <a class="wordmark" href="#top"><i></i>crispy‑profiling <span class="mono" style="opacity:.6">v0.4.0</span></a>
+  <div class="right">
+    <a class="hide" href="#report">Try it</a>
+    <a class="hide" href="#doors">Install</a>
+    <a href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://www.npmjs.com/package/crispy-profiling" target="_blank" rel="noopener">npm</a>
   </div>
 </nav>
 
-<header class="hero" id="top">
-  <div class="wrap">
-    <div>
-      <div class="pill">🟢 v0.4.0 · MIT · React 18.3 & 19</div>
-      <h1 style="margin-top:18px">Snapshot testing for <em>React re-renders</em>.</h1>
-      <p class="lead">Your app feels slow when you type or click? crispy opens it in headless Chromium, counts every component render, explains <b>why</b> each one happened and prints the line to fix. Then it fails the PR that brings the renders back.</p>
-      <div class="install mono">
-        <span id="install-cmd">npx crispy scan</span>
-        <button class="copy" data-copy="npm i -D crispy-profiling && npx crispy install && npx crispy scan">copy</button>
-      </div>
-      <div class="cta">
-        <a class="btn primary" href="#demo">Try the interactive demo ↓</a>
-        <a class="btn" href="https://github.com/edgeorgie/crispy-profiling#quick-start" target="_blank" rel="noopener">Read the docs</a>
-      </div>
-      <div class="stats">
-        <div><b>0 lines</b>of config to start</div>
-        <div><b>0 changes</b>to your app code</div>
-        <div><b>5 real apps</b>validated, 5 fixable findings</div>
-        <div><b>byte-for-byte</b>reproducible reports</div>
-      </div>
-    </div>
-    <div class="terminal" aria-label="Animated terminal showing npx crispy scan">
-      <div class="bar"><i></i><i></i><i></i><span>zsh — my-react-app <button class="replay" id="replay">↻ replay</button></span></div>
-      <pre id="term"></pre>
-    </div>
-  </div>
-</header>
-
-<section class="loop">
-  <div class="wrap">
-    <div class="kicker">The loop</div>
-    <h2>Find → explain → fix → verify</h2>
-    <p class="lead">Every finding carries its fix. Every fix becomes a test that keeps it fixed.</p>
-    <div class="steps4">
-      <div class="card fade"><div class="n">1</div><h3>Find</h3><p><code>npx crispy scan</code> detects Vite/Next.js, starts your dev server, visits routes and tries the safe interactions: buttons, tabs, inputs, links. Never anything named delete, pay, submit…</p></div>
-      <div class="card fade"><div class="n">2</div><h3>Explain</h3><p>Each render is classified: <b>props</b>, <b>state</b>, <b>context</b> or <b>parent</b>. Avoidable ones get a root cause: a recreated callback, an inline object, a context value rebuilt on every render.</p></div>
-      <div class="card fade"><div class="n">3</div><h3>Fix</h3><p>The report points at <code>src/App.tsx:222 (App)</code> and says what to do: <code>useCallback</code>, <code>useMemo</code>, hoist, <code>React.memo</code>. Agents apply it through the MCP server.</p></div>
-      <div class="card fade"><div class="n">4</div><h3>Verify</h3><p><code>npx crispy test</code> records <code>crispy.snap.json</code>. In CI the GitHub Action fails the PR that adds renders and comments the cause and the fix.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="demo">
-  <div class="wrap">
-    <div class="kicker">Interactive demo</div>
-    <h2>Type in the app. Watch what re-renders.</h2>
-    <p class="lead">A small list app, instrumented the way crispy sees it. Every keystroke in the search box updates <code>App</code> state. Switch between the naive code and the fix to see what crispy reports.</p>
-    <div class="demo-grid">
-      <div class="panel">
-        <header>
-          <span>Your app <span style="color:var(--muted);font-weight:500">(simulated)</span></span>
-          <div class="seg" role="tablist" aria-label="Code variant">
-            <button class="on" data-variant="naive">naive</button>
-            <button data-variant="fixed">with the fix</button>
-          </div>
-        </header>
-        <div class="app">
-          <div class="comp" id="c-App"><span class="tag">App</span><span class="cnt" id="n-App">0 renders</span>
-            <div class="comp" id="c-Header" style="margin-top:14px"><span class="tag">Header</span><span class="cnt" id="n-Header">0</span>
-              <input id="search" placeholder="Type to search members…" autocomplete="off" />
-            </div>
-            <div class="rows" id="rows"></div>
-            <div class="comp" id="c-Status"><span class="tag">Status</span><span class="cnt" id="n-Status">0</span><small id="status">8 members · none selected</small></div>
-          </div>
+<!-- ======================= HERO: the invisible work ======================= -->
+<section id="hero" class="pin" aria-label="One keystroke wakes up a thousand components">
+  <div class="stage" id="top">
+    <canvas id="storm"></canvas>
+    <div class="hud num" id="hud"><div class="big" id="hudn">0</div><div class="lbl" id="hudl">components rendered</div></div>
+    <div class="ui">
+      <div></div>
+      <div>
+        <div class="fakebox" aria-hidden="true">search <b id="typed"></b><i class="caret"></i></div>
+        <h1 class="headline" aria-label="One keystroke. One line. One fix. One test that keeps it fixed.">
+          <div class="h on" data-h="0"><span><b>One&nbsp;</b></span><span><b><em>keystroke.</em></b></span></div>
+          <div class="h" data-h="1"><span><b>One&nbsp;</b></span><span><b><em>line.</em></b></span></div>
+          <div class="h fixed" data-h="2"><span><b>One&nbsp;</b></span><span><b><em>fix.</em></b></span></div>
+          <div class="h fixed" data-h="3"><span><b>Kept&nbsp;</b></span><span><b><em>fixed.</em></b></span></div>
+        </h1>
+        <div class="sub">
+          <p class="s on" data-s="0">You typed <b>one letter</b>. React ran <b>1,227 components</b>. <b>1,206</b> of them had nothing new to show. You felt it as lag. Nobody saw it.</p>
+          <p class="s" data-s="1"><b>crispy</b> saw it. It opens your app in headless Chromium, counts every render, and names the line: <code>src/App.tsx:222</code>.</p>
+          <p class="s" data-s="2">Wrap the callback. Memoize the row. Same keystroke, <b>21 renders</b>. The report is byte-for-byte reproducible, so the number is a fact, not a feeling.</p>
+          <p class="s" data-s="3"><code>npx crispy test</code> snapshots the counts. The pull request that brings the 1,206 back <b>fails</b>, with the cause and the fix in the comment.</p>
         </div>
-        <p class="hint">🔴 flash = rendered with nothing new to show (avoidable) · 🟢 flash = rendered for a real change. Click a row to select it.</p>
-        <pre class="code" id="code"></pre>
-      </div>
-      <div class="panel">
-        <header><span>crispy report · scenario <span class="mono" style="font-weight:500">search</span></span><button class="btn" id="reset" style="padding:5px 10px;font-size:0.78rem">reset counts</button></header>
-        <div class="rootcause" id="rootcause"></div>
-        <div class="table-wrap">
-        <table>
-          <thead><tr><th>Component</th><th class="num">Renders</th><th class="num">Avoidable</th><th>Why it rendered / how to fix</th></tr></thead>
-          <tbody id="report"></tbody>
-        </table>
+        <div class="codecard" id="codecard">
+          <div class="path"><span>src/App.tsx:222 (App)</span><span>Row · 20 renders · 20 avoidable</span></div>
+          <div class="l bad" id="badline">onSelect={(id) =&gt; setSelected(id)}</div>
+          <div class="l good off" id="goodline">onSelect={useCallback((id) =&gt; setSelected(id), [])}</div>
         </div>
-        <div class="verdict gray" id="verdict">Type something above to profile the scenario.</div>
+      </div>
+      <div></div>
+    </div>
+    <div class="stamp" id="stamp">🟢 crispy test · pass</div>
+    <div class="scrollcue" id="cue"><i></i>scroll</div>
+  </div>
+</section>
+
+<!-- ======================= THE LOOP ======================= -->
+<section id="loop" class="pin" aria-label="Find, explain, fix, verify">
+  <div class="stage">
+    <div class="rail" aria-hidden="true"><i id="railDot"></i></div>
+    <div class="track" id="track">
+      <div class="word"><div class="n">01 — 04</div><h2>Find <em>it.</em></h2><p><code>npx crispy scan</code> detects Vite or Next.js, starts your dev server, visits a few routes and tries the safe interactions: buttons, tabs, inputs, links. <b>Never</b> anything named delete, pay, sign out or submit, in several languages. Read-only: writes never leave the browser.</p></div>
+      <div class="word"><div class="n">02 — 04</div><h2>Explain <em>it.</em></h2><p>Every render gets a reason: <b>props</b>, <b>state</b>, <b>context</b> or <b>parent</b>. The avoidable ones get a root cause: a callback recreated on every render, an inline object with equal data, a context value rebuilt each time. Plain English first, the technical detail after.</p></div>
+      <div class="word"><div class="n">03 — 04</div><h2>Fix <em>it.</em></h2><p>Each finding points at a file and a line and says what to do: <code>useCallback</code>, <code>useMemo</code>, hoist, <code>React.memo</code>. Your coding agent can apply it through the MCP server and <b>measure</b> that it worked, instead of guessing.</p></div>
+      <div class="word"><div class="n">04 — 04</div><h2>Keep it <em>fixed.</em></h2><p><code>npx crispy test</code> records <code>crispy.snap.json</code>. Commit it. In CI the GitHub Action fails the pull request that adds renders and posts one comment with the cause and the fix. The snapshot is the <b>gate</b>; milliseconds are only information.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= REPORT: interactive ======================= -->
+<section id="report" aria-label="Interactive report">
+  <div class="inner">
+    <div class="lede">
+      <div class="kick">Try it here</div>
+      <h2>Type. Click. <em>Read the bill.</em></h2>
+      <p>A small list app, instrumented the way crispy sees it. Every keystroke updates <b>App</b> state. Switch between the naive code and the fix crispy suggested, and watch the report change.</p>
+      <p style="font-size:0.9rem">Red flash: rendered with nothing new to show. Dark flash: rendered for a real change.</p>
+    </div>
+    <div class="sheet">
+      <div class="head"><span>scenario · search · 3 runs</span>
+        <div class="toggle" role="tablist"><button class="on" data-variant="naive">naive</button><button data-variant="fixed">with the fix</button></div>
+      </div>
+      <div class="app">
+        <div class="cmp" id="c-App"><span class="tag">App</span><span class="cnt" id="n-App">0</span>
+          <div class="cmp" id="c-Header" style="margin-top:8px"><span class="tag">Header</span><span class="cnt" id="n-Header">0</span>
+            <input id="search" placeholder="type a name…" autocomplete="off" aria-label="Search members" />
+          </div>
+          <div class="grid" id="rows"></div>
+          <div class="cmp" id="c-Status" style="margin-top:10px"><span class="tag">Status</span><span class="cnt" id="n-Status">0</span><small class="mono" id="status">8 members · none selected</small></div>
+        </div>
+      </div>
+      <div class="legend"><i></i> avoidable &nbsp; <i class="ok"></i> real change &nbsp; · click a row to select it</div>
+      <pre class="codebox" id="code"></pre>
+      <div class="out">
+        <div class="rc" id="rootcause"></div>
+        <div class="tbl"><table>
+          <thead><tr><th>Component</th><th class="n">Renders</th><th class="n">Avoidable</th><th>Why it rendered · how to fix</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table></div>
+        <div class="verdict gray" id="verdict">Type in the box to profile the scenario.</div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="how" class="loop">
-  <div class="wrap">
-    <div class="kicker">How it works</div>
-    <h2>The same hook React DevTools uses. No instrumentation in your code.</h2>
-    <div class="how">
-      <div class="tl" id="tl">
-        <div class="item on" data-step="0"><div class="dot">1</div><div><h3>Open the app in headless Chromium</h3><p>playwright-core drives a real browser. crispy starts your dev server (<code>webServer</code>) or attaches to a running URL. Everything is read-only: non-GET requests and WebSocket messages never leave the browser.</p></div></div>
-        <div class="item" data-step="1"><div class="dot">2</div><div><h3>Record every render</h3><p>A small hook registers as <code>__REACT_DEVTOOLS_GLOBAL_HOOK__</code> before React loads and sees each commit: which fibers rendered, with which props, state and context.</p></div></div>
-        <div class="item" data-step="2"><div class="dot">3</div><div><h3>Classify and settle</h3><p>Per scenario step (click, fill, press, navigate, <code>expect</code>), renders are grouped by phase and compared with the previous props to decide: changed, shallow-equal, recreated callback, context, parent.</p></div></div>
-        <div class="item" data-step="3"><div class="dot">4</div><div><h3>Deterministic report</h3><p>Sorted, timestamp-free JSON that only changes when your code changes. Budgets, baseline comparison, Markdown for PR comments, and snapshots for <code>crispy test</code>.</p></div></div>
-      </div>
-      <div class="json"><pre id="json"></pre></div>
-    </div>
-  </div>
-</section>
-
-<section id="integrations">
-  <div class="wrap">
-    <div class="kicker">Integrations</div>
-    <h2>One tool, four doors.</h2>
-    <p class="lead">Use it from your terminal, from CI, or let your coding agent measure its own fix instead of guessing.</p>
-    <div class="tabs" role="tablist">
-      <button class="on" data-tab="cli">CLI</button>
-      <button data-tab="action">GitHub Action</button>
-      <button data-tab="mcp">MCP server</button>
-      <button data-tab="skill">Agent Skill & plugin</button>
-    </div>
-
-    <div class="tabpanel on" data-tab="cli">
-      <div><h3>From your terminal</h3><ul>
-        <li><code>scan</code> finds and profiles interactions with zero config and writes <code>crispy.config.json</code>.</li>
-        <li><code>run</code> prints every component with its causes and the fix for a one-off look.</li>
-        <li><code>test</code> records or checks <code>crispy.snap.json</code>; <code>--ci</code> fails on regressions.</li>
-        <li><code>compare</code> diffs two reports with a threshold. Exit codes: 0 ok · 1 regression · 2 usage.</li>
-      </ul></div>
-      <div class="block"><button class="copy" data-copy="npm i -D crispy-profiling
+<!-- ======================= FOUR DOORS ======================= -->
+<section id="doors" aria-label="Ways to use crispy">
+  <div class="inner">
+    <h2>One tool. <em>Four doors.</em></h2>
+    <div style="height:48px"></div>
+    <details class="door" open>
+      <summary><span class="i">01</span><h3>Terminal</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>Zero config to the first finding.</b> Then a snapshot you commit, and a test that reads it.</p>
+          <ul><li><code>scan</code> finds and profiles interactions, writes <code>crispy.config.json</code>.</li><li><code>run</code> prints every component with its causes and the fix.</li><li><code>test</code> records or checks <code>crispy.snap.json</code>; <code>--ci</code> fails on regressions.</li><li><code>compare</code> diffs two reports. Exit codes: 0 ok · 1 regression · 2 usage.</li></ul></div>
+        <pre><button class="copy" data-copy="npm i -D crispy-profiling
 npx crispy install
 npx crispy scan
-npx crispy test">copy</button><pre><span class="c"># install once</span>
-npm i -D crispy-profiling
-npx crispy install        <span class="c"># Chromium, or set CRISPY_CHROMIUM_PATH</span>
-
-<span class="c"># zero config: find, profile, explain</span>
-npx crispy scan
-
-<span class="c"># record the snapshot, commit it, guard the flows</span>
-npx crispy test
-npx crispy test --ci       <span class="c"># fails when a component adds renders</span>
-
-<span class="c"># one-off deep look at a flow</span>
-npx crispy run -s search --markdown report.md</pre></div>
-    </div>
-
-    <div class="tabpanel" data-tab="action">
-      <div><h3>In every pull request</h3><ul>
-        <li>Installs Chromium and its libraries itself: no browser setup in the workflow.</li>
-        <li>Fails when any component renders more than the committed snapshot allows.</li>
-        <li>One PR comment, updated on every push, with the cause, where it renders and the fix.</li>
-        <li><code>scenarios</code> input splits a slow suite across a job matrix.</li>
-      </ul></div>
-      <div class="block"><button class="copy" data-copy="name: crispy
+npx crispy test">copy</button>npm i -D crispy-profiling
+npx crispy install        <span class="c"># Chromium once; or CRISPY_CHROMIUM_PATH</span>
+npx crispy scan           <span class="c"># find · explain · write the config</span>
+npx crispy test           <span class="c"># record crispy.snap.json, commit it</span>
+npx crispy test --ci      <span class="c"># fail when a component adds renders</span></pre>
+      </div>
+    </details>
+    <details class="door">
+      <summary><span class="i">02</span><h3>GitHub Action</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>Fails the pull request that adds renders.</b> Installs Chromium itself. One PR comment, updated on every push, with the cause, the place and the fix.</p>
+          <ul><li>Pin <code>@v0</code> or a release tag.</li><li><code>scenarios</code> input splits a slow suite across a job matrix.</li><li>About 20–25 s per scenario on a GitHub runner.</li></ul></div>
+        <pre><button class="copy" data-copy="name: crispy
 on: pull_request
 permissions: { contents: read, pull-requests: write }
 jobs:
@@ -439,7 +408,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - uses: edgeorgie/crispy-profiling@v0">copy</button><pre><span class="k">name</span>: crispy
+      - uses: edgeorgie/crispy-profiling@v0">copy</button><span class="k">name</span>: crispy
 <span class="k">on</span>: pull_request
 <span class="k">permissions</span>: { contents: read, pull-requests: write }
 <span class="k">jobs</span>:
@@ -450,20 +419,19 @@ jobs:
       - <span class="k">uses</span>: actions/setup-node@v4
         <span class="k">with</span>: { node-version: 22 }
       - <span class="k">run</span>: npm ci
-      - <span class="k">uses</span>: <span class="s">edgeorgie/crispy-profiling@v0</span>   <span class="c"># starts your dev server, runs crispy test --ci</span></pre></div>
-    </div>
-
-    <div class="tabpanel" data-tab="mcp">
-      <div><h3>For AI coding agents</h3><ul>
-        <li>Tools: <code>scan_app</code>, <code>profile_url</code>, <code>test_render_snapshots</code>, <code>compare_reports</code>, <code>inspect_component</code>.</li>
-        <li>Claude Code, Cursor, Codex, Copilot & co. <b>measure</b> a re-render fix before and after, instead of guessing.</li>
-        <li>Deterministic counts make a reliable reward signal: same code, same numbers.</li>
-      </ul></div>
-      <div class="block"><button class="copy" data-copy='{
+      - <span class="k">uses</span>: <span class="s">edgeorgie/crispy-profiling@v0</span></pre>
+      </div>
+    </details>
+    <details class="door">
+      <summary><span class="i">03</span><h3>MCP server</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>For the agent that writes the fix.</b> Claude Code, Cursor, Codex, Copilot & co. profile before and after, and get the same numbers for the same code.</p>
+          <ul><li>Tools: <code>scan_app</code>, <code>profile_url</code>, <code>test_render_snapshots</code>, <code>compare_reports</code>, <code>inspect_component</code>.</li><li>Listed in the MCP Registry as <code>io.github.edgeorgie/crispy-profiling</code>.</li></ul></div>
+        <pre><button class="copy" data-copy='{
   "mcpServers": {
     "crispy-profiling": { "command": "npx", "args": ["-y", "crispy-profiling@latest", "mcp"] }
   }
-}'>copy</button><pre><span class="c">// .mcp.json / mcp.json</span>
+}'>copy</button><span class="c">// .mcp.json</span>
 {
   <span class="k">"mcpServers"</span>: {
     <span class="k">"crispy-profiling"</span>: {
@@ -472,306 +440,306 @@ jobs:
     }
   }
 }
-
-<span class="c"># Claude Code one-liner</span>
-claude mcp add crispy-profiling -- npx -y crispy-profiling@latest mcp</pre></div>
-    </div>
-
-    <div class="tabpanel" data-tab="skill">
-      <div><h3>Skill + Claude Code plugin</h3><ul>
-        <li>The <b>react-render-profiling</b> Agent Skill teaches the agent when to profile, how to read a report and how to apply each hint.</li>
-        <li>The plugin bundles the MCP server and the skill in two commands.</li>
-        <li>Also listed in the MCP Registry as <code>io.github.edgeorgie/crispy-profiling</code>.</li>
-      </ul></div>
-      <div class="block"><button class="copy" data-copy="/plugin marketplace add edgeorgie/crispy-profiling
-/plugin install crispy-profiling@crispy-profiling">copy</button><pre><span class="c"># inside Claude Code</span>
+<span class="c"># Claude Code</span>
+claude mcp add crispy-profiling -- npx -y crispy-profiling@latest mcp</pre>
+      </div>
+    </details>
+    <details class="door">
+      <summary><span class="i">04</span><h3>Skill & plugin</h3><span class="plus">+</span></summary>
+      <div class="body">
+        <div><p><b>The know-how, packaged.</b> The <code>react-render-profiling</code> Agent Skill teaches when to profile, how to read a report and how to apply each hint. The Claude Code plugin bundles it with the MCP server.</p></div>
+        <pre><button class="copy" data-copy="/plugin marketplace add edgeorgie/crispy-profiling
+/plugin install crispy-profiling@crispy-profiling">copy</button><span class="c"># inside Claude Code</span>
 /plugin marketplace add edgeorgie/crispy-profiling
 /plugin install crispy-profiling@crispy-profiling
 
-<span class="c"># then ask</span>
-<span class="d">"Why does the members list re-render when I type? Profile it and fix it."</span></pre></div>
-    </div>
+<span class="c"># then just ask</span>
+<span class="s">"Why does the list re-render when I type? Profile it, fix it, prove it."</span></pre>
+      </div>
+    </details>
   </div>
 </section>
 
-<section class="proof">
-  <div class="wrap">
-    <div class="kicker">Validated on real apps</div>
-    <h2>Five open-source apps. A fixable re-render problem in each.</h2>
-    <div class="apps">
-      <div class="card fade"><b>Redux Essentials</b><span>React 18 · tutorial app</span></div>
-      <div class="card fade"><b>Next.js App Router Playground</b><span>React 19 · Next.js</span></div>
-      <div class="card fade"><b>Excalidraw</b><span>large canvas app</span></div>
-      <div class="card fade"><b>shadcn-admin</b><span>first root causes in 2.5 min, zero config</span></div>
-      <div class="card fade"><b>react-admin</b><span>admin framework demo</span></div>
-    </div>
-    <div class="facts">
-      <div class="card fade"><h3>Deterministic by design</h3><p>Sorted output, no timestamps, wall-clock data only behind <code>timings</code>. Two reports of the same scenario differ only when the code changed.</p></div>
-      <div class="card fade"><h3>Read-only by default</h3><p>Requests other than GET and WebSocket messages the page sends are blocked in the browser. An interaction that tried to write is reported and not saved.</p></div>
-      <div class="card fade"><h3>Status: early (0.x)</h3><p>Improving every week. Bug reports, wrong hints and case studies are the most valuable contribution right now.</p></div>
-    </div>
+<!-- ======================= EVIDENCE ======================= -->
+<section id="evidence" aria-label="Validated on real apps">
+  <div class="ticker" aria-hidden="true"><div class="in" id="ticker"></div></div>
+  <div class="figures">
+    <div><b>0</b><span>lines of config before the first finding</span></div>
+    <div><b>0</b><span>changes to your app: it uses the hook React DevTools uses</span></div>
+    <div><b>5<em>/5</em></b><span>open-source apps profiled, a fixable re-render problem found in each</span></div>
+    <div><b>2.5<em>′</em></b><span>to the first root causes on shadcn-admin, without a line of config</span></div>
   </div>
 </section>
 
-<section id="faq">
-  <div class="wrap">
-    <div class="kicker">FAQ</div>
-    <h2>Questions people ask first</h2>
-    <details><summary>How is this different from React DevTools or why-did-you-render?</summary><p>Those run in your browser while you look. crispy runs headless, on demand, from the CLI, CI or an agent, and produces a reproducible report with the fix attached. It uses the same DevTools hook, so no code changes are needed, and the numbers are stable enough to snapshot and diff across commits.</p></details>
-    <details><summary>Does it need changes in my app?</summary><p>No. It injects the DevTools hook before React loads in headless Chromium. Point it at a development or preview build (dev builds expose component names; production builds work with source maps for original names).</p></details>
-    <details><summary>Which React versions?</summary><p>Tested on React 19, validated on 18.3 and 19.0 apps. React 16.8–17 expose the same hook but are not tested.</p></details>
-    <details><summary>Will it click "delete" in my app?</summary><p>No. <code>scan</code> only tries safe interactions and skips anything named delete, pay, sign out, submit… in several languages. Every command is read-only: writes never leave the browser unless you pass <code>--allow-writes</code>.</p></details>
-    <details><summary>Is a render count really stable in CI?</summary><p>Per-component render counts are reproducible for the same code. Commit counts and effect cascades can vary with load timing, so snapshots store them as ranges. Timings (ms) are informative, never the gate.</p></details>
-    <details><summary>What does it cost?</summary><p>MIT licensed, free. About 20–25 s per scenario per CI run on a GitHub runner, plus one minute to install Chromium. Split scenarios across a job matrix when it grows.</p></details>
+<!-- ======================= RECEIPT ======================= -->
+<section id="receipt" aria-label="What a scan prints">
+  <div>
+    <h2>What it <em>prints.</em></h2>
+    <p>No dashboards. A short receipt: the root causes first, each with the file, the line and the fix. Everything else is in the JSON for when you want it. <b>Reports are deterministic</b>: sorted, no timestamps, so two runs of the same code are identical.</p>
   </div>
+  <div class="paperroll" id="roll" aria-label="Terminal output of npx crispy scan"></div>
 </section>
 
-<section>
-  <div class="wrap" style="text-align:center">
-    <h2>Measure the fix. Keep it fixed.</h2>
-    <p class="lead" style="margin:14px auto 0">Three commands to your first finding.</p>
-    <div class="install mono" style="margin-top:24px"><span>npm i -D crispy-profiling && npx crispy install && npx crispy scan</span><button class="copy" data-copy="npm i -D crispy-profiling && npx crispy install && npx crispy scan">copy</button></div>
-    <div class="cta" style="justify-content:center">
-      <a class="btn primary" href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">★ Star on GitHub</a>
-      <a class="btn" href="https://www.npmjs.com/package/crispy-profiling" target="_blank" rel="noopener">View on npm</a>
+<!-- ======================= END ======================= -->
+<section id="end" aria-label="Get started">
+  <div>
+    <div class="cmd" id="cmd" data-copy="npm i -D crispy-profiling && npx crispy install && npx crispy scan"><span class="mark">$</span> npx crispy scan</div>
+    <small id="cmdhint">click to copy the three install lines</small>
+    <div class="btns">
+      <a class="btn fill" href="https://github.com/edgeorgie/crispy-profiling#quick-start" target="_blank" rel="noopener">Quick start</a>
+      <a class="btn" href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">Star on GitHub</a>
     </div>
   </div>
 </section>
-
 <footer>
-  <div class="wrap">
-    <div>🥓 crispy-profiling · MIT · <a href="https://github.com/edgeorgie/crispy-profiling/blob/develop/CHANGELOG.md" target="_blank" rel="noopener">changelog</a> · <a href="https://github.com/edgeorgie/crispy-profiling/issues" target="_blank" rel="noopener">issues</a></div>
-    <div>Built in the open, with AI coding agents, by <a href="https://github.com/edgeorgie" target="_blank" rel="noopener">Edwin Jorge</a>.</div>
-  </div>
+  <span>crispy‑profiling · MIT · early (0.x), improving every week</span>
+  <span>Built in the open, with AI coding agents, by <a href="https://github.com/edgeorgie" target="_blank" rel="noopener">Edwin Jorge</a> · <a href="https://github.com/edgeorgie/crispy-profiling/blob/develop/CHANGELOG.md" target="_blank" rel="noopener">changelog</a></span>
 </footer>
 
 <script>
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const ease = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const span = (p, a, b) => clamp((p - a) / (b - a), 0, 1);
 
-  // theme
-  const root = document.documentElement;
-  try { const t = localStorage.getItem('crispy-theme'); if (t) root.dataset.theme = t; } catch {}
-  $('#theme').addEventListener('click', () => {
-    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    root.dataset.theme = dark ? 'light' : 'dark';
-    try { localStorage.setItem('crispy-theme', root.dataset.theme); } catch {}
-  });
-
-  // copy buttons
-  $$('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'copied'; setTimeout(() => (b.textContent = 'copy'), 1200); } catch { b.textContent = 'select & copy'; }
-  }));
-
-  // reveal
-  const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && e.target.classList.add('in')), { threshold: 0.15 });
-  $$('.fade').forEach((el) => io.observe(el));
-  // Safety net for printing, thumbnails and browsers without the observer.
-  setTimeout(() => $$('.fade').forEach((el) => el.classList.add('in')), 2500);
-
-  // ---------- hero terminal ----------
-  const LINES = [
-    ['<span class="p">$</span> npx crispy scan', 400],
-    ['<span class="d">[crispy] Vite app detected: npm run dev → http://localhost:5173</span>', 350],
-    ['<span class="d">[crispy] visiting / … 3 interactions found: search, select-row, sort</span>', 500],
-    ['<span class="d">[crispy] profiling search … select-row … sort … done (3 runs each)</span>', 900],
-    ['', 100],
-    ['<span class="a">Root causes — fix these first</span>', 300],
-    ['<span class="r">●</span> <b>App</b> hands <b>Row</b> a new function on every render → Row re-rendered <b>20×</b> with nothing new to show', 250],
-    ['  <span class="d">src/App.tsx:222 (App)</span>: `onSelect` is a new function with the same code in `App`:', 150],
-    ['  wrap it in <span class="g">useCallback</span> with the values it uses as dependencies, then wrap Row in <span class="g">React.memo</span>.', 250],
-    ['<span class="r">●</span> <b>Status</b>: `style` is recreated with equal data in `App` → <span class="g">hoist it</span> out of the component.', 300],
-    ['', 100],
-    ['<span class="d">Tried: search, select-row, sort · Not tried: 1 risky name skipped (sign out)</span>', 250],
-    ['<span class="g">✓</span> saved crispy.config.json — run <b>npx crispy test</b> to record the snapshot', 0],
-  ];
-  const term = $('#term');
-  let run = 0;
-  async function play() {
-    const me = ++run; term.innerHTML = ''; let html = '';
-    for (const [line, wait] of LINES) {
-      if (me !== run) return;
-      html += line + '\n'; term.innerHTML = html + '<span class="cursor"></span>';
-      await new Promise((r) => setTimeout(r, wait));
-    }
-    if (me === run) term.innerHTML = html + '<span class="p">$</span> <span class="cursor"></span>';
+  /* ---------- cursor ---------- */
+  const cur = $('.cursor');
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches && !reduced) {
+    document.body.classList.add('cursor-on');
+    let cx = innerWidth / 2, cy = innerHeight / 2, tx = cx, ty = cy;
+    addEventListener('mousemove', (e) => { tx = e.clientX; ty = e.clientY; const t = e.target.closest('a, button, summary, .cmp.row, .cmd'); cur.classList.toggle('big', !!t); const lbl = e.target.closest('[data-cursor]'); cur.classList.toggle('has', !!lbl); if (lbl) $('.label', cur).textContent = lbl.dataset.cursor; });
+    (function loop() { cx = lerp(cx, tx, 0.35); cy = lerp(cy, ty, 0.35); cur.style.transform = `translate(${cx}px, ${cy}px)`; requestAnimationFrame(loop); })();
   }
-  $('#replay').addEventListener('click', play);
-  play();
 
-  // ---------- interactive demo ----------
+  /* ---------- copy ---------- */
+  const copy = async (text, el, done = 'copied') => { try { await navigator.clipboard.writeText(text); const old = el.textContent; el.textContent = done; setTimeout(() => (el.textContent = old), 1400); } catch {} };
+  $$('.copy').forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, b)));
+  $('#cmd').addEventListener('click', () => copy($('#cmd').dataset.copy, $('#cmdhint'), 'copied: npm i -D crispy-profiling && npx crispy install && npx crispy scan'));
+
+  /* ---------- scroll engine: one smoothed progress per pinned scene ---------- */
+  const scenes = $$('.pin').map((el) => ({ el, p: 0, t: 0, fn: null }));
+  const measure = () => scenes.forEach((s) => { const r = s.el.getBoundingClientRect(); s.top = r.top + scrollY; s.len = Math.max(1, s.el.offsetHeight - innerHeight); });
+  addEventListener('resize', measure); measure();
+  const onFrame = () => {
+    for (const s of scenes) {
+      s.t = clamp((scrollY - s.top) / s.len, 0, 1);
+      s.p = reduced ? s.t : lerp(s.p, s.t, 0.12);
+      if (Math.abs(s.p - s.t) < 0.0005) s.p = s.t;
+      s.fn && s.fn(s.p);
+    }
+    requestAnimationFrame(onFrame);
+  };
+
+  /* ---------- HERO: the storm ---------- */
+  const canvas = $('#storm'), ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+  const fit = () => { DPR = Math.min(devicePixelRatio || 1, 2); W = canvas.clientWidth; H = canvas.clientHeight; canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); layout(); };
+  // Deterministic pseudo-random, so the tree is the same on every visit.
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const nodes = [], edges = [];
+  const NAMES = ['App', 'Layout', 'Header', 'Search', 'List', 'Row', 'Avatar', 'Badge', 'Status', 'Footer', 'Menu', 'Item', 'Cell', 'Icon', 'Tooltip'];
+  (function build() {
+    nodes.push({ d: 0, name: 'App', parent: -1, keep: true });
+    const ring = (count, depth, parentsFrom, parentsTo) => { for (let i = 0; i < count; i++) { const parent = parentsFrom + Math.floor(rnd() * (parentsTo - parentsFrom)); const name = depth === 1 ? NAMES[1 + (i % 4)] : depth === 2 ? NAMES[4 + (i % 6)] : NAMES[9 + (i % 6)]; nodes.push({ d: depth, name, parent, keep: false, jit: rnd() }); edges.push([parent, nodes.length - 1]); } };
+    ring(6, 1, 0, 1); ring(36, 2, 1, 7); ring(84, 3, 7, 43); ring(100, 4, 43, 127);
+    // The components that still render after the fix: App, Header, Search, and the rows that match.
+    nodes[1].keep = true; nodes[2].keep = true; nodes[3].keep = true;
+    let kept = 3; for (let i = 7; i < nodes.length && kept < 20; i++) if (nodes[i].name === 'Row' || nodes[i].name === 'Item') { nodes[i].keep = true; kept++; }
+  })();
+  function layout() {
+    const cx = W * (W < 760 ? 0.5 : 0.62), cy = H * (W < 760 ? 0.36 : 0.5), R = Math.min(W, H) * (W < 760 ? 0.46 : 0.42);
+    const perDepth = [1, 6, 36, 84, 100];
+    const idx = [0, 0, 0, 0, 0];
+    for (const n of nodes) {
+      const k = idx[n.d]++;
+      const r = n.d === 0 ? 0 : R * (0.22 + 0.78 * (n.d - 1) / 3) * (1 + (n.jit || 0) * 0.08);
+      const a = (k / perDepth[n.d]) * Math.PI * 2 + n.d * 0.6;
+      n.x = cx + Math.cos(a) * r; n.y = cy + Math.sin(a) * r * 0.86;
+      n.delay = n.d / 5 + (n.jit || 0) * 0.08; // cascade order: parent → children
+    }
+  }
+  addEventListener('resize', fit); fit();
+  const hudn = $('#hudn'), hudl = $('#hudl'), hud = $('#hud'), typed = $('#typed'), codecard = $('#codecard'), goodline = $('#goodline'), badline = $('#badline'), stamp = $('#stamp'), cue = $('#cue'), headline = $('.headline');
+  const heads = $$('.headline .h'), subs = $$('.sub .s');
+  const fmt = (n) => Math.round(n).toLocaleString('en-US');
+  let shown = -1;
+  function showState(i) { if (i === shown) return; shown = i; heads.forEach((h, k) => h.classList.toggle('on', k === i)); subs.forEach((s, k) => s.classList.toggle('on', k === i)); }
+  function drawStorm(p) {
+    // Phases of the scroll: 0–.28 storm · .28–.52 the line · .52–.76 the fix · .76–1 the test
+    const storm = span(p, 0.02, 0.26), focus = span(p, 0.3, 0.5), fix = span(p, 0.55, 0.74), test = span(p, 0.8, 0.95);
+    ctx.clearRect(0, 0, W, H);
+    typed.textContent = storm > 0.02 ? 'a' : '';
+    // Kinetic weight: the headline gets heavier as the renders pile up, then light again when fixed.
+    const w = fix > 0 ? lerp(800, 300, ease(fix)) : lerp(200, 800, ease(storm));
+    headline.style.fontWeight = Math.round(w);
+    // Edges
+    ctx.lineWidth = 1;
+    for (const [a, b] of edges) {
+      const A = nodes[a], B = nodes[b];
+      const lit = clamp((storm - B.delay) * 4, 0, 1) * (1 - focus) + (B.keep ? fix : 0) * 0.5;
+      const path = (B.name === 'Row' && A.name === 'List') || B.name === 'List' ? focus : 0;
+      ctx.strokeStyle = `rgba(239,233,223,${0.05 + lit * 0.18 + path * 0.5})`;
+      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    }
+    // Nodes
+    let count = 0;
+    for (const n of nodes) {
+      const t = clamp((storm - n.delay) * 4, 0, 1);
+      const isPath = focus > 0 && (n.name === 'Row' || n.name === 'List' || n.d === 0);
+      let glow = t * (1 - focus * 0.92);
+      if (isPath) glow = Math.max(glow, focus);
+      if (fix > 0) glow = n.keep ? fix * 0.9 : glow * (1 - fix);
+      if (t > 0.5) count++;
+      const r = 1.6 + n.d * 0.1 + glow * (n.d === 0 ? 7 : isPath ? 4 : 2.6);
+      const green = fix > 0 && n.keep;
+      if (glow > 0.02) { ctx.shadowBlur = 14 * glow; ctx.shadowColor = green ? 'rgba(182,242,122,0.9)' : 'rgba(255,77,28,0.9)'; }
+      ctx.fillStyle = green ? `rgba(182,242,122,${0.35 + glow * 0.65})` : glow > 0.02 ? `rgba(255,77,28,${0.3 + glow * 0.7})` : 'rgba(239,233,223,0.28)';
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    }
+    // Fade the storm during the fix so the page breathes.
+    if (fix > 0 && fix < 1) { ctx.fillStyle = `rgba(14,13,11,${0.35 * Math.sin(fix * Math.PI)})`; ctx.fillRect(0, 0, W, H); }
+    // HUD
+    const total = 1227, kept = 21;
+    let n = storm * total; if (focus > 0) n = total; if (fix > 0) n = lerp(total, kept, ease(fix));
+    hudn.textContent = fmt(n);
+    hud.classList.toggle('fixed', fix > 0.5);
+    hudl.textContent = fix > 0.5 ? 'renders · same keystroke' : focus > 0.5 ? '1,206 avoidable · 1 cause' : 'components rendered';
+    hud.style.opacity = storm > 0.05 ? 1 : 0;
+    // States
+    showState(p < 0.3 ? 0 : p < 0.55 ? 1 : p < 0.8 ? 2 : 3);
+    codecard.classList.toggle('on', p > 0.34 && p < 0.86);
+    const swapped = fix > 0.45; goodline.classList.toggle('off', !swapped); badline.style.display = swapped ? 'none' : '';
+    stamp.classList.toggle('on', test > 0.3);
+    cue.classList.toggle('off', p > 0.04);
+  }
+  scenes[0].fn = drawStorm;
+
+  /* ---------- THE LOOP: horizontal scroll ---------- */
+  const track = $('#track'), railDot = $('#railDot');
+  scenes[1].fn = (p) => {
+    if (innerWidth <= 760) return;
+    const max = track.scrollWidth - innerWidth + parseFloat(getComputedStyle(track).paddingLeft);
+    track.style.transform = `translateX(${-max * p}px)`;
+    railDot.style.left = `calc(${p * 100}% - 4px)`;
+  };
+
+  /* ---------- REPORT: simulated app ---------- */
   const MEMBERS = ['Ada', 'Grace', 'Linus', 'Margaret', 'Dennis', 'Barbara', 'Ken', 'Hedy'];
-  const state = { variant: 'naive', query: '', selected: null, counts: {}, avoidable: {}, sawEvent: false };
+  const S = { variant: 'naive', query: '', selected: null, prevSel: null, counts: {}, avoid: {}, touched: false };
   const rowsEl = $('#rows');
   MEMBERS.forEach((m, i) => {
-    const el = document.createElement('div');
-    el.className = 'comp row'; el.id = 'c-Row' + i;
+    const el = document.createElement('div'); el.className = 'cmp row'; el.id = 'c-Row' + i; el.dataset.cursor = 'select';
     el.innerHTML = `<span class="tag">Row</span><span class="cnt" id="n-Row${i}">0</span><span>${m}</span><small>#${i + 1}</small>`;
-    el.addEventListener('click', () => { state.selected = state.selected === i ? null : i; commit('select'); });
+    el.addEventListener('click', () => { S.selected = S.selected === i ? null : i; commit('select'); });
     rowsEl.appendChild(el);
   });
-  const names = ['App', 'Header', 'Status', ...MEMBERS.map((_, i) => 'Row' + i)];
-  const reset = () => { names.forEach((n) => { state.counts[n] = 0; state.avoidable[n] = 0; }); state.sawEvent = false; paintCounts(); report(); };
-
+  const NAMES2 = ['App', 'Header', 'Status', ...MEMBERS.map((_, i) => 'Row' + i)];
+  const resetCounts = () => { NAMES2.forEach((n) => { S.counts[n] = 0; S.avoid[n] = 0; }); S.touched = false; paint(); report(); };
   function render(name, avoidable) {
-    state.counts[name]++; if (avoidable) state.avoidable[name]++;
+    S.counts[name]++; if (avoidable) S.avoid[name]++;
     const el = $('#c-' + name); if (!el) return;
-    el.classList.remove('flash', 'ok'); void el.offsetWidth;
-    el.classList.add('flash'); if (!avoidable) el.classList.add('ok');
-    setTimeout(() => el.classList.remove('flash', 'ok'), 220);
+    el.classList.remove('flash', 'ok'); void el.offsetWidth; el.classList.add('flash'); if (!avoidable) el.classList.add('ok');
+    setTimeout(() => el.classList.remove('flash', 'ok'), 240);
   }
   function commit(kind) {
-    state.sawEvent = true;
-    render('App', false); // own state changed
-    const naive = state.variant === 'naive';
-    // Header shows the query: real change on typing, avoidable on select.
-    render('Header', kind !== 'type' && naive);
-    if (kind === 'type' && !naive) { /* memoized Header only re-renders when its props change */ }
+    S.touched = true; const naive = S.variant === 'naive';
+    render('App', false);
+    if (kind === 'type') render('Header', false); else if (naive) render('Header', true);
     MEMBERS.forEach((m, i) => {
-      const visible = m.toLowerCase().includes(state.query.toLowerCase());
-      const el = $('#c-Row' + i); el.style.display = visible ? '' : 'none';
-      el.classList.toggle('sel', state.selected === i);
+      const visible = m.toLowerCase().includes(S.query.toLowerCase());
+      const el = $('#c-Row' + i); el.style.display = visible ? '' : 'none'; el.classList.toggle('sel', S.selected === i);
       if (!visible) return;
-      if (naive) render('Row' + i, !(kind === 'select' && (state.selected === i || state.prevSel === i)));
-      else if (kind === 'select' && (state.selected === i || state.prevSel === i)) render('Row' + i, false);
+      const changed = kind === 'select' && (S.selected === i || S.prevSel === i);
+      if (naive) render('Row' + i, !changed); else if (changed) render('Row' + i, false);
     });
-    state.prevSel = state.selected;
-    // Status: inline style object → avoidable in naive; hoisted in fixed, re-renders only on select.
-    if (naive) render('Status', kind !== 'select');
-    else if (kind === 'select') render('Status', false);
-    $('#status').textContent = `${MEMBERS.filter((m) => m.toLowerCase().includes(state.query.toLowerCase())).length} members · ${state.selected == null ? 'none selected' : MEMBERS[state.selected] + ' selected'}`;
-    paintCounts(); report();
+    S.prevSel = S.selected;
+    if (naive) render('Status', kind !== 'select'); else if (kind === 'select') render('Status', false);
+    const visible = MEMBERS.filter((m) => m.toLowerCase().includes(S.query.toLowerCase())).length;
+    $('#status').textContent = `${visible} members · ${S.selected == null ? 'none selected' : MEMBERS[S.selected] + ' selected'}`;
+    paint(); report();
   }
-  function paintCounts() {
-    names.forEach((n) => { const el = $('#n-' + n); if (el) el.textContent = n === 'App' ? state.counts[n] + ' renders' : state.counts[n]; });
-  }
-  $('#search').addEventListener('input', (e) => { state.query = e.target.value; commit('type'); });
-  $('#reset').addEventListener('click', () => { state.query = ''; $('#search').value = ''; state.selected = null; reset(); commit('type'); reset(); });
-  $$('.seg button').forEach((b) => b.addEventListener('click', () => {
-    $$('.seg button').forEach((x) => x.classList.toggle('on', x === b));
-    state.variant = b.dataset.variant; reset(); paintCode();
-  }));
-
+  function paint() { NAMES2.forEach((n) => { const el = $('#n-' + n); if (!el) return; el.textContent = S.counts[n]; $('#c-' + n).classList.toggle('many', S.avoid[n] >= 3); }); }
+  $('#search').addEventListener('input', (e) => { S.query = e.target.value; commit('type'); });
+  $$('.toggle button').forEach((b) => b.addEventListener('click', () => { $$('.toggle button').forEach((x) => x.classList.toggle('on', x === b)); S.variant = b.dataset.variant; resetCounts(); paintCode(); }));
   function paintCode() {
-    const naive = state.variant === 'naive';
-    $('#code').innerHTML = naive
-      ? `<span class="c">// App.tsx — naive</span>
+    $('#code').innerHTML = S.variant === 'naive'
+      ? `<span class="c">// App.tsx — as written</span>
 <span class="k">function</span> <span class="f">App</span>() {
   <span class="k">const</span> [query, setQuery] = <span class="f">useState</span>(<span class="s">''</span>);
   <span class="k">const</span> [selected, setSelected] = <span class="f">useState</span>(<span class="k">null</span>);
-  <span class="k">return</span> (&lt;&gt;
+  <span class="k">return</span> &lt;&gt;
     &lt;<span class="f">Header</span> query={query} onChange={setQuery} /&gt;
-    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m}
-<span class="bad">      onSelect={(id) =&gt; setSelected(id)}            <span class="c">// ← new function every render</span></span>
-      selected={selected === m.id} /&gt;)}
-<span class="bad">    &lt;<span class="f">Status</span> style={{ opacity: 0.7 }} count={n} /&gt;  <span class="c">// ← new object every render</span></span>
-  &lt;/&gt;);
+    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m} selected={selected === m.id}
+<span class="bad">      onSelect={(id) =&gt; setSelected(id)} /&gt;)}       <span class="c">// new function every render</span></span>
+<span class="bad">    &lt;<span class="f">Status</span> style={{ opacity: 0.7 }} count={n} /&gt;   <span class="c">// new object every render</span></span>
+  &lt;/&gt;;
 }`
       : `<span class="c">// App.tsx — with the fix crispy suggested</span>
-<span class="hl"><span class="k">const</span> statusStyle = { opacity: 0.7 };                 <span class="c">// hoisted</span></span>
+<span class="good"><span class="k">const</span> statusStyle = { opacity: 0.7 };                   <span class="c">// hoisted</span></span>
 <span class="k">function</span> <span class="f">App</span>() {
   <span class="k">const</span> [query, setQuery] = <span class="f">useState</span>(<span class="s">''</span>);
   <span class="k">const</span> [selected, setSelected] = <span class="f">useState</span>(<span class="k">null</span>);
-<span class="hl">  <span class="k">const</span> onSelect = <span class="f">useCallback</span>((id) =&gt; setSelected(id), []);</span>
-  <span class="k">return</span> (&lt;&gt;
+<span class="good">  <span class="k">const</span> onSelect = <span class="f">useCallback</span>((id) =&gt; setSelected(id), []);</span>
+  <span class="k">return</span> &lt;&gt;
     &lt;<span class="f">Header</span> query={query} onChange={setQuery} /&gt;
-    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m} onSelect={onSelect}
-      selected={selected === m.id} /&gt;)}
+    {members.map(m =&gt; &lt;<span class="f">Row</span> key={m.id} member={m} selected={selected === m.id} onSelect={onSelect} /&gt;)}
     &lt;<span class="f">Status</span> style={statusStyle} count={n} /&gt;
-  &lt;/&gt;);
+  &lt;/&gt;;
 }
-<span class="hl"><span class="k">const</span> Row = <span class="f">React.memo</span>(RowImpl); <span class="k">const</span> Status = <span class="f">React.memo</span>(StatusImpl);</span>`;
+<span class="good"><span class="k">const</span> Row = <span class="f">memo</span>(RowImpl); <span class="k">const</span> Status = <span class="f">memo</span>(StatusImpl); <span class="k">const</span> Header = <span class="f">memo</span>(HeaderImpl);</span>`;
   }
-
   function report() {
-    const naive = state.variant === 'naive';
+    const naive = S.variant === 'naive';
     const rows = MEMBERS.map((_, i) => 'Row' + i);
-    const rowRenders = rows.reduce((a, n) => a + state.counts[n], 0);
-    const rowAvoid = rows.reduce((a, n) => a + state.avoidable[n], 0);
+    const rr = rows.reduce((a, n) => a + S.counts[n], 0), ra = rows.reduce((a, n) => a + S.avoid[n], 0);
+    const below = ra + S.avoid.Status + S.avoid.Header;
     const data = [
-      ['Row', rowRenders, rowAvoid, naive
-        ? 'recreated callbacks · rendered at <code>src/App.tsx:222 (App)</code> · <code>onSelect</code> is a new function with the same code in <code>App</code>: wrap it in useCallback, then wrap Row in React.memo.'
-        : 'props changed only when a row was selected · <code>React.memo</code> + stable <code>onSelect</code>.'],
-      ['Status', state.counts.Status, state.avoidable.Status, naive
-        ? 'recreated props · <code>style</code> is recreated with equal data in <code>App</code>: hoist it out of the component or wrap it in useMemo.'
-        : 'hoisted <code>style</code> · renders only when <code>count</code> changes.'],
-      ['Header', state.counts.Header, state.avoidable.Header, naive ? 'parent rendered · props equal on select: wrap in React.memo.' : 'own prop <code>query</code> changed.'],
-      ['App', state.counts.App, 0, `own state · state updates here cause ${rowAvoid + state.avoidable.Status + state.avoidable.Header} avoidable render(s) below.`],
+      ['Row', rr, ra, naive ? 'recreated callbacks · <code>src/App.tsx:222 (App)</code> · <code>onSelect</code> is a new function with the same code in <code>App</code>: wrap it in useCallback, then wrap Row in React.memo.' : 'props changed only when a row was selected · <code>memo</code> + stable <code>onSelect</code>.'],
+      ['Status', S.counts.Status, S.avoid.Status, naive ? 'recreated props · <code>style</code> is recreated with equal data in <code>App</code>: hoist it out of the component or wrap it in useMemo.' : 'hoisted <code>style</code> · renders only when <code>count</code> changes.'],
+      ['Header', S.counts.Header, S.avoid.Header, naive ? 'parent rendered · props equal on select: wrap it in React.memo.' : 'own prop <code>query</code> changed.'],
+      ['App', S.counts.App, 0, `own state · state updates here cause ${below} avoidable render(s) below.`],
     ];
-    $('#report').innerHTML = data.map(([n, r, a, why]) => `<tr><td><b class="mono">${n}</b></td><td class="num">${r}</td><td class="num" style="color:${a ? 'var(--red)' : 'var(--green)'}">${a}</td><td><span class="why">${why}</span></td></tr>`).join('');
-    const totalAvoid = rowAvoid + state.avoidable.Status + state.avoidable.Header;
+    $('#tbody').innerHTML = data.map(([n, r, a, why]) => `<tr><td><b>${n}</b></td><td class="n">${r}</td><td class="n" style="color:${a ? 'var(--signal)' : 'inherit'}">${a}</td><td><span class="why">${why}</span></td></tr>`).join('');
     $('#rootcause').innerHTML = naive
-      ? `<b>Root causes — fix these first:</b> <code>App</code> recreates <code>onSelect</code> and <code>style</code> on every render → ${totalAvoid} avoidable render(s) in this scenario.`
-      : `<b>Root causes:</b> none. ${state.counts.App} App render(s), ${totalAvoid} avoidable below.`;
+      ? `<b>Root causes — fix these first.</b> <code>App</code> hands <code>Row</code> a new function and <code>Status</code> a new object on every render → ${below} avoidable render(s) in this scenario.`
+      : `<b>Root causes:</b> none. ${S.counts.App} App render(s), ${below} avoidable below.`;
     const v = $('#verdict');
-    if (!state.sawEvent) { v.className = 'verdict gray'; v.textContent = 'Type something above to profile the scenario.'; return; }
-    if (naive) { v.className = 'verdict red'; v.innerHTML = `🔴 crispy test --ci: regressed · Row renders ${rowRenders} (${rowAvoid} avoidable) → exit 1, PR comment posted with the fix`; }
-    else { v.className = 'verdict green'; v.innerHTML = `🟢 crispy test --ci: pass · Row renders ${rowRenders}, 0 avoidable → exit 0`; }
+    if (!S.touched) { v.className = 'verdict gray'; v.textContent = 'Type in the box to profile the scenario.'; return; }
+    if (naive) { v.className = 'verdict red'; v.textContent = `🔴 crispy test --ci · regressed · Row ${rr} renders, ${ra} avoidable → exit 1, PR comment with the fix`; }
+    else { v.className = 'verdict green'; v.textContent = `🟢 crispy test --ci · pass · Row ${rr} renders, 0 avoidable → exit 0`; }
   }
-  reset(); paintCode();
+  resetCounts(); paintCode();
 
-  // ---------- how it works JSON ----------
-  const STEPS = [
-`<span class="c">// crispy.config.json (written by scan)</span>
-{
-  <span class="k">"baseUrl"</span>: <span class="s">"http://localhost:5173"</span>,
-  <span class="k">"webServer"</span>: { <span class="k">"command"</span>: <span class="s">"npm run dev"</span> },
-  <span class="k">"scenarios"</span>: [{
-    <span class="k">"name"</span>: <span class="s">"search"</span>,
-    <span class="k">"path"</span>: <span class="s">"/"</span>,
-    <span class="k">"steps"</span>: [
-      { <span class="k">"fill"</span>: <span class="s">"input[placeholder*=search]"</span>, <span class="k">"value"</span>: <span class="s">"ada"</span> },
-      { <span class="k">"expect"</span>: <span class="s">"text=Ada"</span> }
-    ]
-  }]
-}`,
-`<span class="c">// what the injected hook records, per commit</span>
-{
-  <span class="k">"commit"</span>: <span class="n">7</span>,
-  <span class="k">"renders"</span>: [
-    { <span class="k">"component"</span>: <span class="s">"App"</span>,  <span class="k">"reason"</span>: <span class="s">"state"</span> },
-    { <span class="k">"component"</span>: <span class="s">"Row"</span>,  <span class="k">"reason"</span>: <span class="s">"props"</span>,
-      <span class="k">"changed"</span>: [<span class="s">"onSelect"</span>], <span class="k">"equal"</span>: <span class="n">true</span> },
-    { <span class="k">"component"</span>: <span class="s">"Status"</span>, <span class="k">"reason"</span>: <span class="s">"props"</span>,
-      <span class="k">"changed"</span>: [<span class="s">"style"</span>],    <span class="k">"equal"</span>: <span class="n">true</span> }
-  ]
-}`,
-`<span class="c">// classified: why did Row render?</span>
-{
-  <span class="k">"component"</span>: <span class="s">"Row"</span>,
-  <span class="k">"renders"</span>: { <span class="k">"median"</span>: <span class="n">20</span> },
-  <span class="k">"avoidable"</span>: <span class="n">0</span>,
-  <span class="k">"callback"</span>: <span class="n">20</span>,
-  <span class="k">"causes"</span>: { <span class="k">"recreatedCallbacks"</span>: <span class="n">20</span> },
-  <span class="k">"renderedAt"</span>: <span class="s">"src/App.tsx:222 (App)"</span>,
-  <span class="k">"hint"</span>: <span class="s">"onSelect is a new function with the same code in App: wrap it in useCallback…"</span>
-}`,
-`<span class="c">// crispy.snap.json (commit it) — the gate in CI</span>
-{
-  <span class="k">"version"</span>: <span class="n">1</span>,
-  <span class="k">"scenarios"</span>: {
-    <span class="k">"search"</span>: {
-      <span class="k">"interaction"</span>: {
-        <span class="k">"App"</span>:    { <span class="k">"renders"</span>: <span class="n">1</span> },
-        <span class="k">"Header"</span>: { <span class="k">"renders"</span>: <span class="n">1</span> },
-        <span class="k">"Row"</span>:    { <span class="k">"renders"</span>: <span class="n">0</span> },   <span class="c">// after the fix</span>
-        <span class="k">"Status"</span>: { <span class="k">"renders"</span>: <span class="n">0</span> }
-      }
-    }
-  }
-}
-<span class="c">// a PR that brings Row back to 20 → 🔴 regressed, exit 1</span>`];
-  const jsonEl = $('#json');
-  const showStep = (i) => { jsonEl.innerHTML = STEPS[i]; $$('#tl .item').forEach((it) => it.classList.toggle('on', +it.dataset.step === i)); };
-  $$('#tl .item').forEach((it) => { it.addEventListener('click', () => showStep(+it.dataset.step)); it.addEventListener('mouseenter', () => showStep(+it.dataset.step)); });
-  showStep(0);
+  /* ---------- ticker ---------- */
+  const apps = ['Redux Essentials', 'Next.js App Router Playground', 'Excalidraw', 'shadcn-admin', 'react-admin'];
+  $('#ticker').innerHTML = [...apps, ...apps].map((a) => `<span>${a}</span>`).join('');
 
-  // ---------- tabs ----------
-  $$('.tabs button').forEach((b) => b.addEventListener('click', () => {
-    $$('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-    $$('.tabpanel').forEach((p) => p.classList.toggle('on', p.dataset.tab === b.dataset.tab));
-  }));
+  /* ---------- receipt ---------- */
+  const LINES = [
+    '<b>$ npx crispy scan</b>',
+    '<span class="d">[crispy] Vite app detected · npm run dev → http://localhost:5173</span>',
+    '<span class="d">[crispy] visiting / · 3 interactions found: search, select-row, sort</span>',
+    '<span class="d">[crispy] profiling search · select-row · sort · 3 runs each</span>',
+    '<div class="hr"></div>',
+    '<b>Root causes — fix these first</b>',
+    '<span class="r">●</span> <b>Row</b> re-rendered 20 times with nothing new to show, because <b>App</b> hands it a new function on every render.',
+    '  <span class="d">src/App.tsx:222 (App)</span> · `onSelect` is a new function with the same code in `App`: wrap it in useCallback with the values it uses as dependencies. Then wrap this component in React.memo.',
+    '<span class="r">●</span> <b>Status</b> · `style` is recreated with equal data in `App`: hoist it out of the component or wrap it in useMemo.',
+    '<div class="hr"></div>',
+    '<span class="d">Tried: search, select-row, sort · Not tried: 1 risky name skipped (sign out)</span>',
+    '<span class="d">Time per phase: search 41 ms JavaScript (58 ms main thread)</span>',
+    '✓ saved crispy.config.json · next: <b>npx crispy test</b>',
+  ];
+  const roll = $('#roll');
+  roll.innerHTML = LINES.map((l) => `<div class="line">${l}</div>`).join('');
+  const lines = $$('.line', roll);
+  new IntersectionObserver((es) => { if (!es[0].isIntersecting) return; lines.forEach((l, i) => setTimeout(() => l.classList.add('on'), reduced ? 0 : 120 * i)); }, { threshold: 0.3 }).observe(roll);
+
+  measure(); onFrame();
 })();
 </script>
 </body>
