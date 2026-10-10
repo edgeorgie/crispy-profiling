@@ -53,6 +53,11 @@ function writeConfig(file: string, baseUrl: string) {
 describe('crispy CLI', () => {
   it('prints help and version', async () => {
     expect((await crispy('--help')).stdout).toContain('crispy run');
+    // A command's help lists only its own options (council round 6).
+    const scan = (await crispy('scan', '--help')).stdout;
+    expect(scan).toContain('--allow-writes');
+    expect(scan).not.toContain('--threshold');
+    expect(scan).not.toContain('crispy compare');
     expect((await crispy('--version')).stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
     expect((await crispy('bogus')).status).toBe(2);
   });
