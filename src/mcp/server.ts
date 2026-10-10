@@ -147,7 +147,13 @@ export function createServer(): McpServer {
           : '';
         return text(
           `${result.scenarios.length} interaction(s) profiled (${result.scenarios.map((s) => s.name).join(', ')}).\n\nTop root causes:\n${causes}${skipped}${notTried}\n\n` +
-            `Scenarios (save under "scenarios" in crispy.config.json):\n${JSON.stringify(result.scenarios)}`,
+            // A complete file, so an agent saves it instead of guessing the top-level shape.
+            'Save this as crispy.config.json (new file), then call test_render_snapshots with {"update": true} to record the baseline BEFORE changing code; flows under "Not tried" need a click step added by hand, with an "expect" step on what should change:\n' +
+            JSON.stringify({
+              $schema: './node_modules/crispy-profiling/schema/crispy.config.schema.json',
+              baseUrl: u.origin,
+              scenarios: result.scenarios,
+            }),
         );
       } catch (err) {
         return fail(err);
