@@ -912,6 +912,68 @@ describe('library factory keys (R4-15)', async () => {
       'styled.div @ src/Card.tsx:27',
     ]);
   });
+
+  it('keys same-named render functions in one file by their definition line (P14)', () => {
+    // A table's column definitions: one `cell` function per column, all in
+    // columns.tsx and all rendered from the same JSX site inside the table.
+    const cell = (renders: number) =>
+      ({
+        renders,
+        mounts: renders,
+        updates: 0,
+        wastedRenders: 0,
+        avoidableRenders: 0,
+        changedProps: {},
+        unstableProps: {},
+        callbackProps: {},
+        callbackRenders: 0,
+        triggeredBy: {},
+        recreatedContextFrom: {},
+        memo: false,
+        locations: { 'src/Table.tsx:40 (Table)': renders },
+        causes: { props: 0, state: 0, context: 0, unstable: 0, callback: 0, parent: 0 },
+        selfDurationMs: 0,
+      }) as RawRun['phases'][string]['components'][string];
+    const run = (components: Record<string, number>, lines: Record<string, string>): RawRun => ({
+      reactVersion: '19',
+      profilingBuild: true,
+      phases: {
+        load: {
+          commits: 1,
+          components: Object.fromEntries(Object.entries(components).map(([k, n]) => [k, cell(n)])),
+        },
+      },
+      vitals: { lcpMs: null, cls: 0, longTasks: 0, totalBlockingMs: 0 },
+      warnings: [],
+      definitions: Object.fromEntries(Object.keys(components).map((k) => [k, 'src/columns.tsx'])),
+      definitionLines: lines,
+    });
+    const keys = (r: RawRun) => Object.keys(r.phases.load?.components ?? {});
+    const before = stabilizeKeys([
+      run({ cell: 1, 'cell#2': 2 }, { cell: 'src/columns.tsx:12', 'cell#2': 'src/columns.tsx:30' }),
+    ]);
+    expect(keys(before.runs[0] as RawRun)).toEqual([
+      'cell (src/columns.tsx:12)',
+      'cell (src/columns.tsx:30)',
+    ]);
+    // A new column in the middle renumbers the raw keys; the stable keys stay.
+    const after = stabilizeKeys([
+      run(
+        { cell: 1, 'cell#2': 3, 'cell#3': 2 },
+        {
+          cell: 'src/columns.tsx:12',
+          'cell#2': 'src/columns.tsx:21',
+          'cell#3': 'src/columns.tsx:30',
+        },
+      ),
+    ]);
+    expect(keys(after.runs[0] as RawRun)).toEqual([
+      'cell (src/columns.tsx:12)',
+      'cell (src/columns.tsx:21)',
+      'cell (src/columns.tsx:30)',
+    ]);
+    expect(after.definedIn['cell (src/columns.tsx:21)']).toBe('src/columns.tsx');
+  });
 });
 
 describe('zero-config setup', async () => {

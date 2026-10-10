@@ -345,6 +345,11 @@ export function applySourceNames(runs: RawRun[]): RawRun[] {
         Object.entries(r.definitions).map(([k, f]) => [rename[k] ?? k, f]),
       ),
     }),
+    ...(r.definitionLines && {
+      definitionLines: Object.fromEntries(
+        Object.entries(r.definitionLines).map(([k, f]) => [rename[k] ?? k, f]),
+      ),
+    }),
     phases: Object.fromEntries(
       Object.entries(r.phases).map(([phase, p]) => [
         phase,
@@ -435,13 +440,37 @@ export function stabilizeKeys(runs: RawRun[]): {
     if (ok) bySite.add(name);
   }
 
+  // Several same-named functions in one file rendered from one site (a table's
+  // `cell` and `header` render functions, one per column, all rendered by the
+  // table): the definition line tells them apart, and adding a column does not
+  // renumber the others the way `cell#2` does. Last resort before numbering.
+  const byLine = new Set<string>();
+  for (const [name, g] of Object.entries(groups)) {
+    if (g.keys.size < 2 || byFile(name) || bySite.has(name)) continue;
+    const ok = runs.every((r) => {
+      const lines = keysOf(r)
+        .filter((k) => base(k) === name)
+        .map((k) => r.definitionLines?.[k]);
+      return lines.every(Boolean) && new Set(lines).size === lines.length;
+    });
+    if (ok) byLine.add(name);
+  }
+
   const definedIn: Record<string, string> = {};
   const renamed = runs.map((r) => {
     const rename: Record<string, string> = {};
     for (const k of keysOf(r)) {
       const f = r.definitions?.[k];
+      const line = byLine.has(base(k)) ? r.definitionLines?.[k] : undefined;
       const site = bySite.has(base(k)) ? siteOf(r, k) : undefined;
-      const key = byFile(base(k)) && f ? `${base(k)} (${f})` : site ? `${base(k)} @ ${site}` : k;
+      const key =
+        byFile(base(k)) && f
+          ? `${base(k)} (${f})`
+          : site
+            ? `${base(k)} @ ${site}`
+            : line
+              ? `${base(k)} (${line})`
+              : k;
       if (key !== k) rename[k] = key;
       if (f) definedIn[key] ??= f;
     }
