@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Docs
+- README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
+
 ### Changed
 - Root causes for recreated props and for state updates now open with a plain sentence ("`Row`
   re-rendered 20 time(s) with nothing new to show, because `App` hands it a new function on every
