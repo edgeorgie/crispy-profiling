@@ -10,15 +10,18 @@ All notable changes to this project are documented here. The format follows
 - "I tried it on my app" issue form (what crispy found, missed or got wrong on a real app), a
   five-line report example in CONTRIBUTING, and a pre-filled issue link after invalid-config
   errors and after the "Not tried" lines of `crispy scan`.
-
-### Docs
-- README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
+- GitHub Action input `scenarios`: run only those scenarios, so a slow snapshot test can be split
+  across runners with a job matrix (README shows the workflow and a time budget per scenario).
+- `examples/` (the workflow and a sample config) now ships inside the npm package.
 
 ### Changed
 - Root causes for recreated props and for state updates now open with a plain sentence ("`Row`
   re-rendered 20 time(s) with nothing new to show, because `App` hands it a new function on every
   render."); the technical cause and the fix follow unchanged.
 - `crispy test` lists the measured time per phase when `timings` is on (render counts stay the gate).
+
+### Docs
+- README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
 
 ## [0.4.0] - 2026-10-10
 
