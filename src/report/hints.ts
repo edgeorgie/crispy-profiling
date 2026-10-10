@@ -371,9 +371,17 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
       .flatMap((k) => phase.components[k]?.locations ?? [])
       .find((l) => l.endsWith(`(${creator})`))
       ?.replace(/ \(.*\)$/, '');
+    // A plain first sentence for people who do not know the jargon yet; the
+    // technical cause and the fix follow it.
+    const handed = e.props.every(isCallback)
+      ? 'a new function'
+      : e.props.some(isCallback)
+        ? 'new functions and objects'
+        : 'a new object';
+    const plain = `\`${e.affected[0]}\` re-rendered ${e.renders} time(s) with nothing new to show, because \`${creator}\` hands it ${handed} on every render.`;
     out.push({
       renders: e.renders,
-      text: `\`${creator}\`${at ? ` (${at})` : ''} recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
+      text: `${plain} \`${creator}\`${at ? ` (${at})` : ''} recreates ${code(e.props.slice(0, 3))}${e.props.length > 3 ? ` and ${e.props.length - 3} more` : ''} → ${e.renders} avoidable render(s) in ${code(e.affected.slice(0, 3))}${e.affected.length > 3 ? ` and ${e.affected.length - 3} more` : ''}: ${fix}.`,
     });
   }
 
@@ -472,7 +480,7 @@ export function rootCauses(phase: PhaseReport, max = 5): RootCause[] {
         : '';
     out.push({
       renders: total,
-      text: `\`${trigger}\` state updates${stateOf(t)} re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
+      text: `Each time \`${trigger}\` updates its state, components below it redraw with nothing changed (${total} render(s)). \`${trigger}\` state updates${stateOf(t)} re-render ${total} unchanged component render(s) below.${memo} Or move that state closer to where it is used.`,
     });
   }
 
