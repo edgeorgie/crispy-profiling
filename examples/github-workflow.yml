@@ -28,3 +28,5 @@ jobs:
       - uses: edgeorgie/crispy-profiling@v0
         with:
           config: crispy.config.json
+          # Many scenarios? Split them across jobs with a matrix and
+          #   scenarios: ${{ matrix.scenarios }}   (names separated by spaces or commas)

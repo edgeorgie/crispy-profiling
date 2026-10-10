@@ -12,28 +12,6 @@ reason, and the exact line to fix.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/edgeorgie/crispy-profiling/badge)](https://scorecard.dev/viewer/?uri=github.com/edgeorgie/crispy-profiling)
 
-![crispy test catches a PR that re-renders 20 rows, explains why and verifies the fix](https://raw.githubusercontent.com/edgeorgie/crispy-profiling/develop/docs/demo.gif)
-
-> **Status: early (0.x), improving every week.** Validated on five open-source apps (Redux
-> Essentials, Next.js App Router Playground, Excalidraw, shadcn-admin, react-admin): it found a
-> fixable re-render problem in each. See [Known limitations](#known-limitations) and the
-> [changelog](CHANGELOG.md). Bug reports, wrong hints and case studies are the most valuable
-> contribution right now.
-
-crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
-tells you **which components rendered, how many times, why** (props / state / context / parent) and
-**which renders were avoidable**. Per-component render counts are reproducible, so two reports of the
-same scenario only differ when the code changed (commit counts and effect cascades can vary with load
-timing; snapshots store them as ranges). That makes it a reliable feedback loop for:
-
-- **AI coding agents**: an MCP server and an [Agent Skill](skills/react-render-profiling/SKILL.md)
-  so Claude Code, Cursor, Codex, Copilot & co. can *measure* a re-render fix instead of guessing.
-- **CI**: render budgets and baseline comparison that fail a PR when a component starts re-rendering.
-- **You**: a CLI that answers "why does this re-render?" without opening DevTools.
-
-No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19 and
-validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are not tested.
-
 ## Quick start
 
 ```bash
@@ -90,6 +68,29 @@ refer to the code the browser runs._
 
 Works with Vite and Next.js (Turbopack and webpack dev servers); framework internals such as the
 Next.js dev overlay are filtered out. Profile the development build.
+
+
+![crispy test catches a PR that re-renders 20 rows, explains why and verifies the fix](https://raw.githubusercontent.com/edgeorgie/crispy-profiling/develop/docs/demo.gif)
+
+> **Status: early (0.x), improving every week.** Validated on five open-source apps (Redux
+> Essentials, Next.js App Router Playground, Excalidraw, shadcn-admin, react-admin): it found a
+> fixable re-render problem in each. See [Known limitations](#known-limitations) and the
+> [changelog](CHANGELOG.md). Bug reports, wrong hints and case studies are the most valuable
+> contribution right now.
+
+crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
+tells you **which components rendered, how many times, why** (props / state / context / parent) and
+**which renders were avoidable**. Per-component render counts are reproducible, so two reports of the
+same scenario only differ when the code changed (commit counts and effect cascades can vary with load
+timing; snapshots store them as ranges). That makes it a reliable feedback loop for:
+
+- **AI coding agents**: an MCP server and an [Agent Skill](skills/react-render-profiling/SKILL.md)
+  so Claude Code, Cursor, Codex, Copilot & co. can *measure* a re-render fix instead of guessing.
+- **CI**: render budgets and baseline comparison that fail a PR when a component starts re-rendering.
+- **You**: a CLI that answers "why does this re-render?" without opening DevTools.
+
+No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19 and
+validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are not tested.
 
 ## Render snapshots (`crispy test`)
 
@@ -331,6 +332,23 @@ summary and the pass/fail result still work.
 If the job is red: open the job summary, fix the cause it names, push again. If the change is intended,
 a person runs `npx crispy test -u` and commits the new snapshot.
 
+Each scenario runs 3 times (`runs`), so a config with many scenarios can take minutes. Split it across
+runners with a matrix and the `scenarios` input (names separated by spaces or commas); each job checks
+only its share of the committed snapshot:
+
+```yaml
+    strategy:
+      matrix:
+        scenarios: ['tasks users', 'settings sidebar-toggle']
+    steps:
+      # checkout, setup-node, npm ci as above
+      - uses: edgeorgie/crispy-profiling@v0
+        with: { scenarios: '${{ matrix.scenarios }}' }
+```
+
+Locally the same split is `npx crispy test -s tasks -s users`. Budget: about 20–25 s per scenario
+per run on a GitHub runner, plus one minute to install Chromium.
+
 The step fails when any component renders more than the committed snapshot allows (or a budget is
 exceeded). The job summary — and one PR comment, updated on every push — lists each regression with
 its cause, where it is rendered and the suggested fix (`comment: false` to disable). `command: run` (with an optional `baseline` report) is available for budget-only or
@@ -399,8 +417,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Contributing
 
-Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) (GitFlow: branch from
-`develop`). AI coding agents: start with [AGENTS.md](AGENTS.md); docs index for LLMs:
+Tried it on your app? Five lines are enough: the app and versions, the command, what crispy printed,
+what you expected, what you changed and what happened to the counts. Open an
+["I tried it on my app"](https://github.com/edgeorgie/crispy-profiling/issues/new?template=tried_it.yml)
+issue; wrong hints have [their own form](https://github.com/edgeorgie/crispy-profiling/issues/new?template=wrong_hint.yml).
+PRs are welcome too — see [CONTRIBUTING.md](CONTRIBUTING.md) (GitFlow: branch from `develop`). AI coding agents: start with [AGENTS.md](AGENTS.md); docs index for LLMs:
 [llms.txt](llms.txt).
 
 ## License

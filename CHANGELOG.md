@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-10
+
+### Added
+- "I tried it on my app" issue form (what crispy found, missed or got wrong on a real app), a
+  five-line report example in CONTRIBUTING, and a pre-filled issue link after invalid-config
+  errors and after the "Not tried" lines of `crispy scan`.
+- GitHub Action input `scenarios`: run only those scenarios, so a slow snapshot test can be split
+  across runners with a job matrix (README shows the workflow and a time budget per scenario).
+- `examples/` (the workflow and a sample config) now ships inside the npm package.
+
+### Changed
+- Same-named render functions defined in one file and rendered from one place (a table's `cell` and
+  `header` functions, one per column) are keyed by their definition line (`cell (src/columns.tsx:30)`)
+  instead of render order (`cell#2`), so adding a column no longer renumbers the other keys in the
+  snapshot. Existing snapshots with `name#N` keys for such functions show a one-time rename.
+- `crispy scan` now clicks clickable-looking elements that are not buttons or links (a `li` or `div`
+  with a pointer cursor and a short text, like a list row), by their text. Those without a short text
+  are still listed under "Not tried".
+- Root causes for recreated props and for state updates now open with a plain sentence ("`Row`
+  re-rendered 20 time(s) with nothing new to show, because `App` hands it a new function on every
+  render."); the technical cause and the fix follow unchanged.
+- `crispy test` lists the measured time per phase when `timings` is on (render counts stay the gate).
+
+### Fixed
+- `crispy test` no longer reports one commit fewer as a 🟢 improvement: one extra commit is tolerated
+  as a scheduling detail, and one fewer is the same noise (it used to add an unrelated row next to a
+  real regression).
+
+### Docs
+- README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
+- Landing page (`site/`, published at https://crispy-profiling.vercel.app): the find → explain → fix →
+  verify story, an interactive report and the four ways to use crispy.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

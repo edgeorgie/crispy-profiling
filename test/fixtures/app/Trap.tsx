@@ -27,6 +27,12 @@ export function Trap() {
           </li>
         ))}
       </ul>
+      {/* Clickable-looking, but no text to click it by: reported as not tried. */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: on purpose */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: on purpose */}
+      <div style={{ cursor: 'pointer' }} onClick={() => setN(n + 1)}>
+        ★
+      </div>
       <button type="button" onClick={() => post('eliminar')}>
         Eliminar
       </button>

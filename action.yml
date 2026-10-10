@@ -26,9 +26,13 @@ inputs:
   comment:
     description: "On pull requests, post the result as one PR comment that is updated on every run (needs `permissions: pull-requests: write`). Passing runs only update an existing comment."
     default: 'true'
+  scenarios:
+    description: "Only run these scenarios (names separated by spaces or commas). Use it with a job matrix to split a slow snapshot test across runners."
+    required: false
+    default: ""
   version:
     description: crispy-profiling version to use (pinned to this release by scripts/sync-version.ts)
-    default: 0.4.0
+    default: 0.5.0
 outputs:
   summary:
     description: Path to the Markdown summary
@@ -55,18 +59,22 @@ runs:
         CRISPY_BASELINE: ${{ inputs.baseline }}
         CRISPY_THRESHOLD: ${{ inputs.threshold }}
         CRISPY_FAIL: ${{ inputs.fail-on-regression }}
+        CRISPY_SCENARIOS: ${{ inputs.scenarios }}
       run: |
         set +e
         mkdir -p .crispy
         summary=".crispy/summary.md"
         log=".crispy/crispy.log"
         rm -f "$summary" "$summary.compare" "$log"
+        # One -s flag per scenario name, so a matrix job runs only its share.
+        only=""
+        for name in ${CRISPY_SCENARIOS//,/ }; do only="$only -s $name"; done
         if [ "$CRISPY_COMMAND" = "test" ]; then
-          "$CRISPY_BIN" test -c "$CRISPY_CONFIG" --ci --markdown "$summary" 2> >(tee "$log" >&2)
+          "$CRISPY_BIN" test -c "$CRISPY_CONFIG" --ci --markdown "$summary" $only 2> >(tee "$log" >&2)
           status=$?
         else
           flag=""; [ "$CRISPY_FAIL" = "true" ] || flag="--no-fail"
-          "$CRISPY_BIN" run -c "$CRISPY_CONFIG" -o "$CRISPY_OUT" --markdown "$summary" $flag 2> >(tee "$log" >&2)
+          "$CRISPY_BIN" run -c "$CRISPY_CONFIG" -o "$CRISPY_OUT" --markdown "$summary" $flag $only 2> >(tee "$log" >&2)
           status=$?
           if [ "$status" -le 1 ] && [ -n "$CRISPY_BASELINE" ] && [ -f "$CRISPY_BASELINE" ]; then
             "$CRISPY_BIN" compare "$CRISPY_BASELINE" "$CRISPY_OUT" --threshold "$CRISPY_THRESHOLD" --markdown "$summary.compare" $flag 2> >(tee -a "$log" >&2)

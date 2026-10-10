@@ -30,9 +30,15 @@ export async function resolveDefinitions(
   cdp: CDPSession,
   scripts: Map<string, string>,
   sourceMaps?: SourceMapResolver,
-): Promise<{ files: Record<string, string>; names: Record<string, string> }> {
+): Promise<{
+  files: Record<string, string>;
+  /** key -> `file:line` of the definition: tells apart same-named functions in one file. */
+  lines: Record<string, string>;
+  names: Record<string, string>;
+}> {
   const keys = await page.evaluate(() => Object.keys((window as any).__CRISPY__?.typeRefs ?? {}));
   const out: Record<string, string> = {};
+  const lines: Record<string, string> = {};
   const names: Record<string, string> = {};
   const objectGroup = 'crispy-definitions';
   try {
@@ -59,6 +65,7 @@ export async function resolveDefinitions(
         location.columnNumber + 1,
       );
       out[key] = mapped?.file ?? shortPath(url);
+      lines[key] = `${out[key]}:${mapped?.line ?? location.lineNumber + 1}`;
       const original = sourceMaps
         ? await originalName(cdp, result.objectId, url, location, sourceMaps)
         : undefined;
@@ -67,7 +74,7 @@ export async function resolveDefinitions(
   } finally {
     await cdp.send('Runtime.releaseObjectGroup', { objectGroup }).catch(() => {});
   }
-  return { files: out, names };
+  return { files: out, lines, names };
 }
 
 /**

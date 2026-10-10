@@ -899,9 +899,11 @@ describe('crispy scan safety (red-team round 9)', () => {
     );
     expect(result.scenarios.some((s) => s.name.includes('add-item'))).toBe(true);
     // What scan did not exercise is said out loud (council round 5).
+    // A clickable row with a short text is clicked by that text (council round 5).
+    expect(result.scenarios.some((s) => s.name.includes('row-a'))).toBe(true);
     const notTried = result.notTried.join('\n');
     expect(notTried).toMatch(
-      /2 clickable-looking element\(s\) that are not buttons or links \(li ×2\)/,
+      /1 clickable-looking element\(s\) without a short text to click them by \(div ×1\)/,
     );
     expect(notTried).toMatch(/skipped on purpose because the name looks risky: .*"Eliminar"/);
     // List rows that differ only by a number are one scenario, not three.
@@ -924,6 +926,16 @@ describe('CPU per phase (timings)', () => {
     expect(causes.some((c) => /≈ \d+ ms of JavaScript/.test(c.text))).toBe(true);
     const plain = (await profile(parseConfig(base))).scenarios.c?.phases;
     expect(plain?.interaction?.cost).toBeUndefined();
+    // crispy test shows the measured time per phase when timings are on (council round 5).
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { runSnapshotTest } = await import('../src/snapshot-test.js');
+    const dir = mkdtempSync(join(tmpdir(), 'crispy-timings-'));
+    const written = await runSnapshotTest(parseConfig({ ...base, timings: true }), {
+      baseDir: dir,
+    });
+    expect(written.markdown).toMatch(/Time per phase[\s\S]*- c \/ interaction: \d+ ms JavaScript/);
   });
 });
 

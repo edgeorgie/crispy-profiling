@@ -344,7 +344,9 @@ export function compareSnapshot(
         ...(uncovered && { uncovered: true }),
         ...(hint && { hint }),
       });
-    } else if (actual.max < lo(expected)) {
+    } else if (actual.max < lo(expected) - slack) {
+      // Symmetric with the regression side: one commit fewer is the same scheduling
+      // detail as one commit more, not an improvement worth a row.
       changes.push({ ...entry, status: 'improved' });
     }
   };
