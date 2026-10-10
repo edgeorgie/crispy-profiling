@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Same-named render functions in one file (a table's `cell` and `header` functions) are keyed by a
+  fingerprint of their source (`cell (src/columns.tsx#1x9k2z)`), not by their line number as in
+  0.5.0: inserting lines above them renamed every key and produced dozens of 🆕 rows and false
+  "⚠️ check the UI" warnings. The fingerprint ignores whitespace and the line numbers the dev JSX
+  transform embeds, so it only changes when the function itself is edited. Snapshots recorded with
+  0.5.0 show those keys as renamed once.
+
 ### Changed
 - MCP `scan_app` ends with a complete `crispy.config.json` to save (`$schema`, `baseUrl` and the
   scenarios) and the next call to make (`test_render_snapshots` with `update: true` to record the
