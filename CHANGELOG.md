@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- When a recreated prop re-renders several components, the root cause says how the renders split
+  ("`Row` (30), `DetailsPanel` (1) and `TicketTable` (1) re-rendered 32 time(s) in total…") instead
+  of attributing the sum to the first one, and the location points at the component that
+  re-rendered most.
+
+### Changed
 - MCP `scan_app` ends with a complete `crispy.config.json` to save (`$schema`, `baseUrl` and the
   scenarios) and the next call to make (`test_render_snapshots` with `update: true` to record the
   baseline before changing code), instead of the scenarios alone. The skill's "First run" says the

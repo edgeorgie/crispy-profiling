@@ -1087,6 +1087,27 @@ describe('root causes (R5-05, R5-06)', async () => {
     expect(causes[1]?.text).toContain('Wrapping `List` in React.memo would skip 13 of them');
   });
 
+  it('says how the renders split when one creator re-renders several components (council round 6)', () => {
+    const row = component(30, 30, 0);
+    row.callbackRenders = s(30);
+    row.callbackProps = { onSelect: 30 };
+    row.creators = { 'onSelect|App': 30 };
+    row.locations = ['src/App.tsx:146 (App)'];
+    const panel = component(1, 1, 0);
+    panel.callbackRenders = s(1);
+    panel.callbackProps = { onClose: 1 };
+    panel.creators = { 'onClose|App': 1 };
+    panel.locations = ['src/App.tsx:148 (App)'];
+    const app = component(1, 1, 0);
+    app.causes.state = 1;
+    const text = rootCauses(phase({ App: app, DetailsPanel: panel, Row: row }))[0]?.text ?? '';
+    expect(text).toContain(
+      '`Row` (30), `DetailsPanel` (1) re-rendered 31 time(s) in total with nothing new to show, because `App` hands them a new function on every render.',
+    );
+    // The location is where the component that re-rendered most is passed the value.
+    expect(text).toContain('`App` (src/App.tsx:146) recreates');
+  });
+
   it('warns that useCallback cannot go inside a .map when the function is made per item', () => {
     const row = component(20, 20, 0);
     row.callbackRenders = s(20);
