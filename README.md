@@ -12,28 +12,6 @@ reason, and the exact line to fix.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/edgeorgie/crispy-profiling/badge)](https://scorecard.dev/viewer/?uri=github.com/edgeorgie/crispy-profiling)
 
-![crispy test catches a PR that re-renders 20 rows, explains why and verifies the fix](https://raw.githubusercontent.com/edgeorgie/crispy-profiling/develop/docs/demo.gif)
-
-> **Status: early (0.x), improving every week.** Validated on five open-source apps (Redux
-> Essentials, Next.js App Router Playground, Excalidraw, shadcn-admin, react-admin): it found a
-> fixable re-render problem in each. See [Known limitations](#known-limitations) and the
-> [changelog](CHANGELOG.md). Bug reports, wrong hints and case studies are the most valuable
-> contribution right now.
-
-crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
-tells you **which components rendered, how many times, why** (props / state / context / parent) and
-**which renders were avoidable**. Per-component render counts are reproducible, so two reports of the
-same scenario only differ when the code changed (commit counts and effect cascades can vary with load
-timing; snapshots store them as ranges). That makes it a reliable feedback loop for:
-
-- **AI coding agents**: an MCP server and an [Agent Skill](skills/react-render-profiling/SKILL.md)
-  so Claude Code, Cursor, Codex, Copilot & co. can *measure* a re-render fix instead of guessing.
-- **CI**: render budgets and baseline comparison that fail a PR when a component starts re-rendering.
-- **You**: a CLI that answers "why does this re-render?" without opening DevTools.
-
-No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19 and
-validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are not tested.
-
 ## Quick start
 
 ```bash
@@ -90,6 +68,29 @@ refer to the code the browser runs._
 
 Works with Vite and Next.js (Turbopack and webpack dev servers); framework internals such as the
 Next.js dev overlay are filtered out. Profile the development build.
+
+
+![crispy test catches a PR that re-renders 20 rows, explains why and verifies the fix](https://raw.githubusercontent.com/edgeorgie/crispy-profiling/develop/docs/demo.gif)
+
+> **Status: early (0.x), improving every week.** Validated on five open-source apps (Redux
+> Essentials, Next.js App Router Playground, Excalidraw, shadcn-admin, react-admin): it found a
+> fixable re-render problem in each. See [Known limitations](#known-limitations) and the
+> [changelog](CHANGELOG.md). Bug reports, wrong hints and case studies are the most valuable
+> contribution right now.
+
+crispy-profiling opens your React app in headless Chromium, runs the interactions you describe, and
+tells you **which components rendered, how many times, why** (props / state / context / parent) and
+**which renders were avoidable**. Per-component render counts are reproducible, so two reports of the
+same scenario only differ when the code changed (commit counts and effect cascades can vary with load
+timing; snapshots store them as ranges). That makes it a reliable feedback loop for:
+
+- **AI coding agents**: an MCP server and an [Agent Skill](skills/react-render-profiling/SKILL.md)
+  so Claude Code, Cursor, Codex, Copilot & co. can *measure* a re-render fix instead of guessing.
+- **CI**: render budgets and baseline comparison that fail a PR when a component starts re-rendering.
+- **You**: a CLI that answers "why does this re-render?" without opening DevTools.
+
+No code changes in your app: it uses the same hook React DevTools uses. Tested on React 19 and
+validated on 18.3 and 19.0 apps; React 16.8–17 expose the same hook but are not tested.
 
 ## Render snapshots (`crispy test`)
 
