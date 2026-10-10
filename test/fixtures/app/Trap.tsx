@@ -37,8 +37,6 @@ export function Trap() {
       <table id="orders">
         <tbody>
           {[1, 2, 3, 4, 5].map((r) => (
-            // biome-ignore lint/a11y/useKeyWithClickEvents: a clickable table row
-            // biome-ignore lint/a11y/noStaticElementInteractions: on purpose
             <tr key={r} style={{ cursor: 'pointer' }} onClick={() => setN(n + r)}>
               <td>Order {r}</td>
               <td>Customer {r}</td>

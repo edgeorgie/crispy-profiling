@@ -345,9 +345,9 @@ export function applySourceNames(runs: RawRun[]): RawRun[] {
         Object.entries(r.definitions).map(([k, f]) => [rename[k] ?? k, f]),
       ),
     }),
-    ...(r.definitionLines && {
-      definitionLines: Object.fromEntries(
-        Object.entries(r.definitionLines).map(([k, f]) => [rename[k] ?? k, f]),
+    ...(r.definitionPrints && {
+      definitionPrints: Object.fromEntries(
+        Object.entries(r.definitionPrints).map(([k, f]) => [rename[k] ?? k, f]),
       ),
     }),
     phases: Object.fromEntries(
@@ -442,18 +442,19 @@ export function stabilizeKeys(runs: RawRun[]): {
 
   // Several same-named functions in one file rendered from one site (a table's
   // `cell` and `header` render functions, one per column, all rendered by the
-  // table): the definition line tells them apart, and adding a column does not
-  // renumber the others the way `cell#2` does. Last resort before numbering.
-  const byLine = new Set<string>();
+  // table): a fingerprint of each function's source tells them apart. Unlike a
+  // line number it survives edits elsewhere in the file, and unlike `cell#2` it
+  // survives a column added before it. Last resort before numbering.
+  const byPrint = new Set<string>();
   for (const [name, g] of Object.entries(groups)) {
     if (g.keys.size < 2 || byFile(name) || bySite.has(name)) continue;
     const ok = runs.every((r) => {
-      const lines = keysOf(r)
+      const prints = keysOf(r)
         .filter((k) => base(k) === name)
-        .map((k) => r.definitionLines?.[k]);
-      return lines.every(Boolean) && new Set(lines).size === lines.length;
+        .map((k) => r.definitionPrints?.[k]);
+      return prints.every(Boolean) && new Set(prints).size === prints.length;
     });
-    if (ok) byLine.add(name);
+    if (ok) byPrint.add(name);
   }
 
   const definedIn: Record<string, string> = {};
@@ -461,15 +462,15 @@ export function stabilizeKeys(runs: RawRun[]): {
     const rename: Record<string, string> = {};
     for (const k of keysOf(r)) {
       const f = r.definitions?.[k];
-      const line = byLine.has(base(k)) ? r.definitionLines?.[k] : undefined;
+      const print = byPrint.has(base(k)) ? r.definitionPrints?.[k] : undefined;
       const site = bySite.has(base(k)) ? siteOf(r, k) : undefined;
       const key =
         byFile(base(k)) && f
           ? `${base(k)} (${f})`
           : site
             ? `${base(k)} @ ${site}`
-            : line
-              ? `${base(k)} (${line})`
+            : print && f
+              ? `${base(k)} (${f}#${print})`
               : k;
       if (key !== k) rename[k] = key;
       if (f) definedIn[key] ??= f;
