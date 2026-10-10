@@ -345,6 +345,11 @@ export function applySourceNames(runs: RawRun[]): RawRun[] {
         Object.entries(r.definitions).map(([k, f]) => [rename[k] ?? k, f]),
       ),
     }),
+    ...(r.definitionLines && {
+      definitionLines: Object.fromEntries(
+        Object.entries(r.definitionLines).map(([k, f]) => [rename[k] ?? k, f]),
+      ),
+    }),
     phases: Object.fromEntries(
       Object.entries(r.phases).map(([phase, p]) => [
         phase,
@@ -404,6 +409,21 @@ export function stabilizeKeys(runs: RawRun[]): {
     return !!g && g.resolvable && (g.keys.size > 1 || g.files.size > 1);
   };
 
+  // Several same-named functions in one file (a table's `cell` and `header`
+  // render functions, one per column): the definition line tells them apart,
+  // and adding a column does not renumber the others the way `cell#2` does.
+  const byLine = new Set<string>();
+  for (const [name, g] of Object.entries(groups)) {
+    if (g.keys.size < 2 || byFile(name)) continue;
+    const ok = runs.every((r) => {
+      const lines = keysOf(r)
+        .filter((k) => base(k) === name)
+        .map((k) => r.definitionLines?.[k]);
+      return lines.every(Boolean) && new Set(lines).size === lines.length;
+    });
+    if (ok) byLine.add(name);
+  }
+
   // When files cannot tell them apart (styled-components, HOC factories, several
   // components in one file), fall back to where each one is rendered: the JSX
   // site does not depend on render order the way `Item#2` does.
@@ -425,7 +445,7 @@ export function stabilizeKeys(runs: RawRun[]): {
     [...g.files].every((f) => LIBRARY_PATH.test(f));
   const bySite = new Set<string>();
   for (const [name, g] of Object.entries(groups)) {
-    if ((g.keys.size < 2 && !isFactory(name, g)) || byFile(name)) continue;
+    if ((g.keys.size < 2 && !isFactory(name, g)) || byFile(name) || byLine.has(name)) continue;
     const ok = runs.every((r) => {
       const sites = keysOf(r)
         .filter((k) => base(k) === name)
@@ -440,8 +460,16 @@ export function stabilizeKeys(runs: RawRun[]): {
     const rename: Record<string, string> = {};
     for (const k of keysOf(r)) {
       const f = r.definitions?.[k];
+      const line = byLine.has(base(k)) ? r.definitionLines?.[k] : undefined;
       const site = bySite.has(base(k)) ? siteOf(r, k) : undefined;
-      const key = byFile(base(k)) && f ? `${base(k)} (${f})` : site ? `${base(k)} @ ${site}` : k;
+      const key =
+        byFile(base(k)) && f
+          ? `${base(k)} (${f})`
+          : line
+            ? `${base(k)} (${line})`
+            : site
+              ? `${base(k)} @ ${site}`
+              : k;
       if (key !== k) rename[k] = key;
       if (f) definedIn[key] ??= f;
     }

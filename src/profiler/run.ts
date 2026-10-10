@@ -571,6 +571,8 @@ async function rewriteLocations(raw: RawRun, sourceMaps: SourceMapResolver): Pro
  */
 export class PageProfiler {
   private definitions: Record<string, string> = {};
+  /** key -> `file:line` of the definition (same ambiguity rules as `definitions`). */
+  private definitionLines: Record<string, string> = {};
   /** key -> name written in the source, when the bundler renamed the function. */
   private sourceNames: Record<string, string> = {};
   private conflictingNames = new Set<string>();
@@ -691,7 +693,10 @@ export class PageProfiler {
       this.cdp,
       this.scripts,
       this.sourceMaps,
-    ).catch(() => ({ files: {}, names: {} }));
+    ).catch(() => {
+      const none: Record<string, string> = {};
+      return { files: none, lines: none, names: none };
+    });
     for (const [k, n] of Object.entries(found.names)) {
       if (this.conflictingNames.has(k)) continue;
       if (this.sourceNames[k] !== undefined && this.sourceNames[k] !== n) {
@@ -701,10 +706,14 @@ export class PageProfiler {
     }
     for (const [k, f] of Object.entries(found.files)) {
       if (this.ambiguous.has(k)) continue;
-      if (this.definitions[k] === undefined) this.definitions[k] = f;
-      else if (this.definitions[k] !== f) {
+      const line = found.lines[k] as string;
+      if (this.definitions[k] === undefined) {
+        this.definitions[k] = f;
+        this.definitionLines[k] = line;
+      } else if (this.definitions[k] !== f || this.definitionLines[k] !== line) {
         this.ambiguous.add(k);
         delete this.definitions[k];
+        delete this.definitionLines[k];
       }
     }
   }
@@ -733,6 +742,7 @@ export class PageProfiler {
     }
     delete raw.hookErrors;
     raw.definitions = { ...this.definitions };
+    if (Object.keys(this.definitionLines).length) raw.definitionLines = { ...this.definitionLines };
     if (Object.keys(this.sourceNames).length) raw.sourceNames = { ...this.sourceNames };
     // Every declared phase is reported, even with no renders: an empty phase is
     // part of the snapshot, so renders appearing there later are a regression.
