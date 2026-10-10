@@ -1,0 +1,43 @@
+name: I tried it on my app
+description: What crispy found, missed, or got wrong on a real app (scan skipped a flow, a config error you did not expect, a confusing message)
+labels: [case-study]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Five lines are enough. The example in [CONTRIBUTING.md](https://github.com/edgeorgie/crispy-profiling/blob/develop/CONTRIBUTING.md#a-five-line-report) shows what helps most.
+  - type: input
+    id: app
+    attributes:
+      label: The app
+      description: Framework and versions, or a public repo.
+      placeholder: Next.js 16 (App Router), React 19.2, 40 routes · or https://github.com/you/app
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: The command
+      placeholder: npx crispy scan   ·   npx crispy test --ci   ·   MCP scan_app
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What crispy printed
+      description: The relevant lines (the "Tried / Not tried" lines, the error, the hint). Attaching .crispy/scan.json or the report helps a lot.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: The flow it should have clicked, the component it should have named, the message you would have understood.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What you changed and what happened to the counts (optional)
+      placeholder: "wrapped onSelect in useCallback: Row 20 → 0 renders on the search scenario"

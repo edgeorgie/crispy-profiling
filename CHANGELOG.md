@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- "I tried it on my app" issue form (what crispy found, missed or got wrong on a real app), a
+  five-line report example in CONTRIBUTING, and a pre-filled issue link after invalid-config
+  errors and after the "Not tried" lines of `crispy scan`.
+
 ### Docs
 - README: the Quick start follows the pitch and the badges, before the demo gif and the status note.
 

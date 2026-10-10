@@ -6,11 +6,30 @@ trying it on real React apps and reporting what it found (or missed).
 
 ## Ways to contribute
 
-- **Try it** on your app and open an issue with the report and what you changed.
+- **Try it** on your app and open an
+  ["I tried it on my app"](https://github.com/edgeorgie/crispy-profiling/issues/new?template=tried_it.yml)
+  issue: what crispy found, missed or got wrong. See [the five-line report](#a-five-line-report).
 - **Report bugs** with the bug template (a minimal component + `crispy.config.json` is ideal).
+- **Report a wrong hint** with the "Wrong or unhelpful fix hint" template: the row from the report
+  and what was actually going on.
 - **Pick an issue** labeled [`good first issue`](https://github.com/edgeorgie/crispy-profiling/labels/good%20first%20issue)
   or [`help wanted`](https://github.com/edgeorgie/crispy-profiling/labels/help%20wanted).
 - **Improve docs** — typos and unclear explanations count.
+
+### A five-line report
+
+The most useful issue right now fits in five lines. Example:
+
+```text
+App: Next.js 16 App Router, React 19.2, ~40 routes (private repo)
+Command: npx crispy scan
+Printed: Not tried: 12 clickable-looking element(s) without a short text to click them by (li ×12)
+Expected: the order rows (an <li> with an onClick) to be clicked, like the buttons were
+Changed: nothing yet; the rows are the flow that feels slow
+```
+
+Attach `.crispy/scan.json` or the report when you have it. Counts before and after a change
+("Row 20 → 0 on search") are the best possible evidence for a hint.
 
 ## Development setup
 
