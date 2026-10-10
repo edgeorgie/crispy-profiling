@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- A class component could be reported under an unrelated name (`class App` in Excalidraw showed as
+  `props`, the name of its constructor parameter): the name from the source map is only used when it
+  is the bundler's suffixed rename of the same function (`Member2` → `Member`).
+
+### Fixed
 - Same-named render functions in one file (a table's `cell` and `header` functions) are keyed by a
   fingerprint of their source (`cell (src/columns.tsx#1x9k2z)`), not by their line number as in
   0.5.0: inserting lines above them renamed every key and produced dozens of 🆕 rows and false
