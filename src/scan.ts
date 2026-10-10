@@ -437,6 +437,8 @@ export async function scan(config: CrispyConfig, options: ScanOptions = {}): Pro
         runs: options.runs ?? 2,
         // A guessed interaction that does not work should not hold the scan for long.
         timeoutMs: Math.min(config.timeoutMs, 10_000),
+        // Cost in ms per cause, so a first-time user sees whether a cause is worth fixing.
+        timings: true,
         scenarios,
       },
       {

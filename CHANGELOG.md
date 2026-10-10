@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- `crispy scan` now measures time while it profiles, so every root cause says what it costs
+  ("≈ 11 ms of JavaScript") and a first-time user can tell whether it is worth fixing. Saved
+  scenarios and snapshots are unaffected (timings are not recorded in them).
+
 - `crispy scan <url>` with no config now starts this project's detected dev command when the URL is
   the project's own dev address (an already running server is reused). Before, it failed with
   "Nothing is listening" even though crispy knew the command.
