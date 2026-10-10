@@ -25,38 +25,55 @@ import { isCI } from './util/ci.js';
 import { issueLink } from './util/issues.js';
 import { VERSION } from './version.js';
 
-const HELP = `crispy ${VERSION} — deterministic React render profiling
-
-Usage:
-  crispy scan [url] [options]               Zero config: find interactions, profile them, save them
+/** One block per command, so `crispy <command> --help` prints only that command's options. */
+const COMMAND_HELP: Record<string, string> = {
+  scan: `  crispy scan [url] [options]               Zero config: find interactions, profile them, save them
           --routes <n>         Routes to visit (default 3)
           --actions <n>        Interactions per route (default 5)
-          --allow-writes       Let interactions send POST/PUT/DELETE (blocked by default)
-  crispy init [--base-url <url>]            Create ${DEFAULT_CONFIG_FILE}
-  crispy install [--with-deps] [--verbose]  Download the Chromium build crispy uses
-  crispy login [-c <config>] [--path /login] Sign in by hand in a browser window; saves the session
-  crispy run [options]                      Run scenarios and write a report
+          --allow-writes       Let interactions send POST/PUT/DELETE (blocked by default)`,
+  init: `  crispy init [--base-url <url>]            Create ${DEFAULT_CONFIG_FILE}`,
+  install: '  crispy install [--with-deps] [--verbose]  Download the Chromium build crispy uses',
+  login:
+    '  crispy login [-c <config>] [--path /login] Sign in by hand in a browser window; saves the session',
+  run: `  crispy run [options]                      Run scenarios and write a report
       -c, --config <file>      Config file (default: ${DEFAULT_CONFIG_FILE})
       -o, --out <file>         JSON report path (default: .crispy/report.json)
       -s, --scenario <name>    Only run this scenario (repeatable)
           --markdown <file>    Also write a Markdown summary
-          --no-fail            Exit 0 even if budgets are exceeded
-  crispy test [options]                     Check render counts against the committed snapshot
+          --no-fail            Exit 0 even if budgets are exceeded`,
+  test: `  crispy test [options]                     Check render counts against the committed snapshot
       -c, --config <file>      Config file (default: ${DEFAULT_CONFIG_FILE})
       -u, --update             Accept current counts as the new snapshot
           --ci / --no-ci       Fail if the snapshot is missing (default: on in CI)
       -s, --scenario <name>    Only run this scenario (repeatable)
-          --markdown <file>    Also write the result as Markdown
-  crispy compare <base.json> <head.json> [options]
+          --markdown <file>    Also write the result as Markdown`,
+  compare: `  crispy compare <base.json> <head.json> [options]
           --threshold <pct>    Allowed render increase in % (default: 10)
           --min-delta <n>      Minimum absolute increase to count (default: 1)
           --markdown <file>    Write the comparison as Markdown
           --json <file>        Write the comparison as JSON
-          --no-fail            Exit 0 even if there are regressions
-  crispy mcp                                Start the MCP server on stdio
+          --no-fail            Exit 0 even if there are regressions`,
+  mcp: '  crispy mcp                                Start the MCP server on stdio',
+};
+
+const EXIT_CODES =
+  'Exit codes: 0 ok · 1 budget violation, regression or failed expect · 2 usage or runtime error (a step crispy could not run)';
+
+const HELP = `crispy ${VERSION} — deterministic React render profiling
+
+Usage:
+${Object.values(COMMAND_HELP).join('\n')}
   crispy --version | --help
 
-Exit codes: 0 ok · 1 budget violation / regression · 2 usage or runtime error`;
+Details for one command: crispy <command> --help
+
+${EXIT_CODES}`;
+
+/** The help of one command, or the whole help for an unknown command. */
+function helpFor(command: string | undefined): string {
+  const block = command ? COMMAND_HELP[command] : undefined;
+  return block ? `crispy ${VERSION}\n\n${block}\n\n${EXIT_CODES}` : HELP;
+}
 
 const log = (msg: string) => process.stderr.write(`${msg}\n`);
 
@@ -80,7 +97,7 @@ async function main(argv: string[]): Promise<number> {
   }
   // `crispy <command> --help` shows the help instead of an unknown-option error.
   if (rest.includes('--help') || rest.includes('-h')) {
-    console.log(HELP);
+    console.log(helpFor(command));
     return 0;
   }
   if (command === '--version' || command === '-v') {

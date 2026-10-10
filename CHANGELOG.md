@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- `crispy <command> --help` prints only that command's usage and options (it printed the whole help).
+
+### Docs
+- README: a three-point "New to this?" block under the quick start (nothing is edited or sent,
+  what a root cause is and what "No avoidable renders" and `Not tried` mean, what 🟢/🔴 mean) and
+  a line in the glossary on why `React.memo` needs stable props.
+
+### Changed
 - When a recreated prop re-renders several components, the root cause says how the renders split
   ("`Row` (30), `DetailsPanel` (1) and `TicketTable` (1) re-rendered 32 time(s) in total…") instead
   of attributing the sum to the first one, and the location points at the component that
