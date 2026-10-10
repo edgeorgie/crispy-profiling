@@ -1,6 +1,6 @@
 {
   "name": "crispy-profiling",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "crispy-profiling: React re-render profiler and snapshot tests. Finds unnecessary re-renders, explains why, and fails CI on regressions. CLI, MCP server and Agent Skill.",
   "keywords": [
     "crispy-profiling",
