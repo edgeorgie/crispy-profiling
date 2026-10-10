@@ -49,7 +49,9 @@ from `crispy-profiling/playwright` to the relevant test over writing a new scena
    returns the scenarios for you to save; it neither starts the server nor writes files.) If the
    page is not this app (another project on the port), stop that app or use another port before
    trusting any number.
-3. Fix the top root cause, then `npx crispy-profiling test` to record the snapshot.
+3. Record the baseline **before** changing code: `npx crispy-profiling test` (MCP: save the config
+   `scan_app` returns, then `test_render_snapshots` with `update: true`). Then fix the top root cause,
+   run the test again and keep the change only on 🟢 (and if the UI still updates).
 
 ## Workflow
 

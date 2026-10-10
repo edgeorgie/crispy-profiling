@@ -7,12 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- MCP `scan_app` ends with a complete `crispy.config.json` to save (`$schema`, `baseUrl` and the
+  scenarios) and the next call to make (`test_render_snapshots` with `update: true` to record the
+  baseline before changing code), instead of the scenarios alone. The skill's "First run" says the
+  same order: baseline first, then the fix.
 - `crispy scan` now clicks icon-only buttons (a star or an arrow repeated on every row: one click
   per icon), clicks the second row of a table or list whose rows have a pointer cursor but no
   short text, and types the page's most frequent letter instead of always `e`, so a search over
   "Task 1…20" no longer empties the list and leaves the rows unprofiled.
-
-### Changed
 - A scenario whose step fails (a selector that no longer matches, a failed `expect`) no longer costs
   the whole run: `crispy run` and `crispy test` skip it, name it in the output and keep the results
   of the other scenarios (snapshot entries of the skipped scenario are left as they were). The exit
