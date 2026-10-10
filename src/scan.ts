@@ -198,6 +198,38 @@ function discoverInPage(risky: string): Found {
       });
     }
   }
+  // Elements that look clickable (cursor: pointer) but are not buttons, links, tabs or
+  // fields: a React onClick on a <li> or <div> is invisible to the queries above. The
+  // outermost one counts (children inherit the cursor). With a short visible text it is
+  // clicked through that text; without one it is only reported as not tried.
+  const pointer: Record<string, number> = {};
+  const nativeControl = 'a[href], button, input, select, textarea, label, summary, [role]';
+  for (const el of Array.from(document.body.querySelectorAll('*')).slice(0, 4000)) {
+    if (!visible(el) || el.closest(nativeControl) !== null) continue;
+    if (getComputedStyle(el).cursor !== 'pointer') continue;
+    const parent = el.parentElement;
+    if (parent && getComputedStyle(parent).cursor === 'pointer') continue;
+    const tag = el.tagName.toLowerCase();
+    const raw = (el as HTMLElement).innerText;
+    const name = norm(raw);
+    const short = name.length > 0 && name.length <= 40 && !multiline(raw);
+    if (short && isRisky(name)) {
+      if (!riskyNames.includes(name) && riskyNames.length < 5) riskyNames.push(name);
+      continue;
+    }
+    const key = `${tag}|${name}`;
+    if (short && meaningful(name) && !seen.has(key)) {
+      seen.add(key);
+      actions.push({
+        kind: 'click',
+        selector: `${tag}:has-text(${quote(name)}) >> nth=0`,
+        name,
+        rank: inMain(el) ? 3 : 4,
+      });
+      continue;
+    }
+    pointer[tag] = (pointer[tag] ?? 0) + 1;
+  }
   // Stable sort: by rank, then DOM order.
   const ranked = actions
     .map((a, i) => [a, i] as const)
@@ -210,19 +242,6 @@ function discoverInPage(risky: string): Found {
           norm((b as HTMLElement).innerText || (b as HTMLInputElement).value),
         ),
     );
-  // Elements that look clickable (cursor: pointer) but are not buttons, links, tabs or
-  // fields: a React onClick on a <li> or <div> is invisible to the discovery above.
-  // Only the outermost one counts, because the cursor is inherited by the children.
-  const pointer: Record<string, number> = {};
-  const nativeControl = 'a[href], button, input, select, textarea, label, summary, [role]';
-  for (const el of Array.from(document.body.querySelectorAll('*')).slice(0, 4000)) {
-    if (!visible(el) || el.closest(nativeControl) !== null) continue;
-    if (getComputedStyle(el).cursor !== 'pointer') continue;
-    const parent = el.parentElement;
-    if (parent && getComputedStyle(parent).cursor === 'pointer') continue;
-    const tag = el.tagName.toLowerCase();
-    pointer[tag] = (pointer[tag] ?? 0) + 1;
-  }
   return {
     actions: ranked.map(([a]) => a),
     links,
@@ -363,7 +382,7 @@ async function discover(
   const pointerTags = Object.entries(pointer).sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]));
   if (pointerTags.length) {
     notTried.push(
-      `${pointerTags.reduce((n, [, c]) => n + c, 0)} clickable-looking element(s) that are not buttons or links (${pointerTags.map(([t, c]) => `${t} ×${c}`).join(', ')}): scan only clicks buttons, links, tabs, switches, checkboxes and fields, so add a click step by hand if they matter.`,
+      `${pointerTags.reduce((n, [, c]) => n + c, 0)} clickable-looking element(s) without a short text to click them by (${pointerTags.map(([t, c]) => `${t} ×${c}`).join(', ')}): scan clicks buttons, links, tabs, switches, checkboxes, fields and elements with a pointer cursor and a short text, so add a click step by hand for the rest.`,
     );
   }
   if (risky.size) {

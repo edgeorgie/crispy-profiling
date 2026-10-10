@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- `crispy scan` now clicks clickable-looking elements that are not buttons or links (a `li` or `div`
+  with a pointer cursor and a short text, like a list row), by their text. Those without a short text
+  are still listed under "Not tried".
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

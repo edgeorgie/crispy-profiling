@@ -899,9 +899,11 @@ describe('crispy scan safety (red-team round 9)', () => {
     );
     expect(result.scenarios.some((s) => s.name.includes('add-item'))).toBe(true);
     // What scan did not exercise is said out loud (council round 5).
+    // A clickable row with a short text is clicked by that text (council round 5).
+    expect(result.scenarios.some((s) => s.name.includes('row-a'))).toBe(true);
     const notTried = result.notTried.join('\n');
     expect(notTried).toMatch(
-      /2 clickable-looking element\(s\) that are not buttons or links \(li ×2\)/,
+      /1 clickable-looking element\(s\) without a short text to click them by \(div ×1\)/,
     );
     expect(notTried).toMatch(/skipped on purpose because the name looks risky: .*"Eliminar"/);
     // List rows that differ only by a number are one scenario, not three.
