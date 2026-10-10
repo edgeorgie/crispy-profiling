@@ -500,25 +500,31 @@ async function runStep(
       return setPhase(page, step.name);
     case 'expect': {
       const target = page.locator(step.selector);
+      // Text and visibility are checked on the visible matches: a selector often also
+      // hits a hidden duplicate (a mobile menu, a screen-reader label) that would
+      // otherwise fail a step whose visible element is right.
+      const visible = target.locator('visible=true');
       // The step before has settled: a short grace period is enough.
       const deadline = Date.now() + Math.min(timeoutMs, 5000);
       let seen = '';
+      let n = 0;
+      let shown = 0;
       for (;;) {
-        const n = await target.count();
-        const text = n > 0 ? ((await target.first().textContent()) ?? '') : '';
+        n = await target.count();
+        const texts = n > 0 ? await visible.allTextContents() : [];
+        shown = texts.length;
+        const text = texts[0] ?? (n > 0 ? ((await target.first().textContent()) ?? '') : '');
         const ok =
           step.count !== undefined
             ? n === step.count
-            : n > 0 &&
-              (step.text !== undefined
-                ? text.includes(withEnv(step.text))
-                : await target.first().isVisible());
+            : shown > 0 &&
+              (step.text === undefined || texts.some((t) => t.includes(withEnv(step.text ?? ''))));
         if (ok) return;
         seen =
           step.count !== undefined
             ? `${n} match(es)`
             : n
-              ? `text "${text.slice(0, 80)}"`
+              ? `text "${text.slice(0, 80)}"${shown ? '' : ' (hidden)'}`
               : 'nothing';
         if (Date.now() > deadline) break;
         await page.waitForTimeout(POLL_MS * 4);
@@ -529,8 +535,15 @@ async function runStep(
           : step.text !== undefined
             ? `text "${step.text}"`
             : 'a visible element';
+      // A count that is right once hidden duplicates are left out: say how to count them.
+      const tip =
+        step.count !== undefined && n !== step.count && shown === step.count
+          ? ` ${shown} of the ${n} matches are visible: use "${step.selector} >> visible=true" to count only those.`
+          : n > 1
+            ? ` (${n} elements match, ${shown} visible)`
+            : '';
       throw new Error(
-        `expect failed: "${step.selector}" should show ${want}, found ${seen}. The UI did not update as expected: if a change just made it render less (e.g. a React.memo), undo that change rather than the expect step.`,
+        `expect failed: "${step.selector}" should show ${want}, found ${seen}.${tip} The UI did not update as expected: if a change just made it render less (e.g. a React.memo), undo that change rather than the expect step.`,
       );
     }
   }
