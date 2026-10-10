@@ -332,6 +332,23 @@ summary and the pass/fail result still work.
 If the job is red: open the job summary, fix the cause it names, push again. If the change is intended,
 a person runs `npx crispy test -u` and commits the new snapshot.
 
+Each scenario runs 3 times (`runs`), so a config with many scenarios can take minutes. Split it across
+runners with a matrix and the `scenarios` input (names separated by spaces or commas); each job checks
+only its share of the committed snapshot:
+
+```yaml
+    strategy:
+      matrix:
+        scenarios: ['tasks users', 'settings sidebar-toggle']
+    steps:
+      # checkout, setup-node, npm ci as above
+      - uses: edgeorgie/crispy-profiling@v0
+        with: { scenarios: '${{ matrix.scenarios }}' }
+```
+
+Locally the same split is `npx crispy test -s tasks -s users`. Budget: about 20–25 s per scenario
+per run on a GitHub runner, plus one minute to install Chromium.
+
 The step fails when any component renders more than the committed snapshot allows (or a budget is
 exceeded). The job summary — and one PR comment, updated on every push — lists each regression with
 its cause, where it is rendered and the suggested fix (`comment: false` to disable). `command: run` (with an optional `baseline` report) is available for budget-only or
