@@ -499,6 +499,32 @@ describe('render snapshot comparison (round-2 fixes)', async () => {
     expect(snapshotToMarkdown(r, 'crispy.snap.json')).toContain('from 1 cause');
   });
 
+  it('follows a cause that is itself part of a bigger one up to the top (council round 5, P13)', async () => {
+    const { snapshotToMarkdown } = await import('../src/report/snapshot.js');
+    // AppSidebar's store subscription re-renders NavGroup (its child, no trigger recorded
+    // because NavGroup also subscribes), and NavGroup's state re-renders the links below.
+    const tree = (renders: number) => {
+      const sidebar = component(renders, renders, 0);
+      sidebar.causes.state = renders;
+      const nav = component(renders, renders, 0);
+      nav.causes.state = renders;
+      nav.locations = ['src/AppSidebar.tsx:31 (AppSidebar)'];
+      const link = component(renders, renders, renders - 1);
+      link.avoidableRenders = s(renders - 1);
+      link.triggeredBy = { NavGroup: renders };
+      link.locations = ['src/NavGroup.tsx:47 (NavGroup)'];
+      return report({ interaction: phase({ AppSidebar: sidebar, NavGroup: nav, Link: link }) });
+    };
+    const r = compareSnapshot(toSnapshot(tree(1)), tree(6));
+    expect(r.regressions.filter((c) => c.component === 'Link').map((c) => c.rootCause)).toEqual([
+      'AppSidebar',
+      'AppSidebar',
+    ]);
+    const md = snapshotToMarkdown(r, 'crispy.snap.json');
+    expect(md).toContain('from 1 cause');
+    expect(md.split('\n').filter((l) => l.startsWith('| ❌'))).toHaveLength(1);
+  });
+
   it('stores flaky counts as ranges and only fails outside them (R2-14)', () => {
     const flaky = make(10, 0);
     const item = flaky.scenarios.home?.phases.interaction?.components.Item;
