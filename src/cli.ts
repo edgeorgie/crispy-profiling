@@ -22,6 +22,7 @@ import { scan, scanConfig } from './scan.js';
 import { runSnapshotTest } from './snapshot-test.js';
 import type { CrispyReport } from './types.js';
 import { isCI } from './util/ci.js';
+import { issueLink } from './util/issues.js';
 import { VERSION } from './version.js';
 
 const HELP = `crispy ${VERSION} — deterministic React render profiling
@@ -212,6 +213,10 @@ async function main(argv: string[]): Promise<number> {
       }
       lines.push('', `Tried: ${result.scenarios.map((s) => s.name).join(', ')}.`);
       for (const line of result.notTried) lines.push(`Not tried: ${line}`);
+      if (result.notTried.length)
+        lines.push(
+          `Should it have tried one of those? One click to tell us: ${issueLink('tried_it', 'scan did not try: ')}`,
+        );
       lines.push(
         '',
         hasConfig
