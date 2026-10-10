@@ -901,6 +901,15 @@ describe('crispy scan safety (red-team round 9)', () => {
     // What scan did not exercise is said out loud (council round 5).
     // A clickable row with a short text is clicked by that text (council round 5).
     expect(result.scenarios.some((s) => s.name.includes('row-a'))).toBe(true);
+    // Icon-only buttons are clicked once per icon; a table of pointer rows gets its
+    // second row clicked through an anchored selector (council round 6).
+    const steps = result.scenarios.flatMap((s) => s.steps);
+    expect(
+      steps.some((st) => 'selector' in st && st.selector === 'role=button[name="☆"] >> nth=0'),
+    ).toBe(true);
+    expect(
+      steps.some((st) => 'selector' in st && st.selector === '#orders tbody > tr >> nth=1'),
+    ).toBe(true);
     const notTried = result.notTried.join('\n');
     expect(notTried).toMatch(
       /1 clickable-looking element\(s\) without a short text to click them by \(div ×1\)/,
