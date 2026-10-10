@@ -70,7 +70,8 @@
   .cursor.big .dot { width: 56px; height: 56px; }
   .cursor .label { position: absolute; left: 18px; top: -8px; font: 500 0.7rem var(--mono); color: #fff; white-space: nowrap; opacity: 0; transition: opacity 0.2s; }
   .cursor.has .label { opacity: 1; }
-  @media (hover: hover) and (pointer: fine) { .cursor { display: block; } body.cursor-on { cursor: none; } body.cursor-on a, body.cursor-on button { cursor: none; } }
+  @media (hover: hover) and (pointer: fine) { .cursor { display: block; } body.cursor-on { cursor: none; } body.cursor-on a, body.cursor-on button, body.cursor-on summary { cursor: none; } body.cursor-on input { cursor: text; } }
+  body.cursor-on input:hover ~ .cursor, body.typing .cursor { opacity: 0; }
 
   /* ---------- pinned scenes ---------- */
   .pin { position: relative; }
@@ -121,10 +122,28 @@
     border: 3px solid var(--fix); color: var(--fix); padding: 10px 16px; font: 700 1.1rem var(--mono); letter-spacing: 0.05em; text-transform: uppercase; border-radius: 6px;
   }
   .stamp.on { opacity: 1; transform: rotate(-8deg) scale(1); }
-  .scrollcue { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); font: 400 0.7rem var(--mono); color: var(--fg-dim); letter-spacing: 0.12em; text-transform: uppercase; display: flex; gap: 10px; align-items: center; transition: opacity 0.4s; }
-  .scrollcue i { width: 1px; height: 36px; background: linear-gradient(var(--fg-dim), transparent); display: block; animation: drop 1.6s ease-in-out infinite; }
-  @keyframes drop { 0% { transform: scaleY(0); transform-origin: top; } 50% { transform: scaleY(1); transform-origin: top; } 51% { transform-origin: bottom; } 100% { transform: scaleY(0); transform-origin: bottom; } }
-  .scrollcue.off { opacity: 0; }
+  /* Step indicator: tells the visitor the hero is a 4-step story driven by scroll, and lets them jump. */
+  .steps { position: absolute; left: var(--gutter); right: var(--gutter); bottom: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .steps button { background: none; border: 0; padding: 10px 0 0; text-align: left; cursor: pointer; color: var(--fg-dim); font: 400 0.68rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; position: relative; }
+  .steps button::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--line); }
+  .steps button::after { content: ""; position: absolute; left: 0; top: 0; height: 2px; width: calc(var(--fill, 0) * 100%); background: var(--signal); transition: width 0.1s linear; }
+  .steps button.done::after, .steps button.fixed.done::after { background: var(--fix); }
+  .steps button.on { color: var(--fg); }
+  .steps button:hover { color: var(--fg); }
+  .steps .hint { position: absolute; right: 0; top: -22px; color: var(--fg-dim); font: 400 0.68rem var(--mono); letter-spacing: 0.1em; text-transform: uppercase; transition: opacity 0.4s; display: flex; gap: 8px; align-items: center; }
+  .steps .hint i { display: inline-block; animation: nudge 1.4s ease-in-out infinite; }
+  @keyframes nudge { 50% { transform: translateY(4px); } }
+  .steps .hint.off { opacity: 0; }
+  .cta-hero { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; pointer-events: auto; }
+  .cta-hero .btn { padding: 11px 18px; font-size: 0.88rem; }
+  .legend-hero { position: absolute; right: var(--gutter); top: calc(50% + clamp(3rem, 8vw, 7.4rem)); text-align: right; font: 400 0.68rem var(--mono); color: var(--fg-dim); letter-spacing: 0.06em; line-height: 1.9; pointer-events: none; transition: opacity 0.4s; }
+  .legend-hero i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); margin-left: 8px; vertical-align: 1px; }
+  .legend-hero i.k { background: var(--fix); } .legend-hero i.d { background: rgba(239,233,223,0.35); }
+  @media (max-width: 760px) {
+    .steps { gap: 6px; }
+    .steps button { font-size: 0.58rem; letter-spacing: 0.04em; }
+    .legend-hero { top: auto; bottom: 84px; left: var(--gutter); text-align: left; }
+  }
   @media (max-width: 760px) {
     .hud { top: 18%; transform: none; right: var(--gutter); }
     .hud .big { font-size: 4.4rem; }
@@ -144,6 +163,11 @@
   .word p { margin-top: 22px; max-width: 46ch; font-size: clamp(1rem, 1.6vw, 1.2rem); color: var(--fg-dim); }
   .word p b { color: var(--fg); font-weight: 500; }
   .word p code { font: 400 0.9em var(--mono); color: var(--fg); }
+  .loophint { position: absolute; left: var(--gutter); top: 84px; font: 400 0.68rem var(--mono); color: var(--fg-dim); letter-spacing: 0.1em; text-transform: uppercase; transition: opacity 0.4s; display: flex; gap: 10px; align-items: center; }
+  .loophint i { display: inline-block; animation: nudge 1.4s ease-in-out infinite; }
+  .loophint.off { opacity: 0; }
+  .loopnav { position: absolute; right: var(--gutter); top: 84px; display: flex; gap: 14px; font: 400 0.68rem var(--mono); color: var(--fg-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+  .loopnav b { font-weight: 400; transition: color 0.2s; } .loopnav b.on { color: var(--signal); }
   .rail { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
   .rail i { position: absolute; top: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 16px var(--signal-glow); }
   @media (max-width: 760px) {
@@ -151,7 +175,7 @@
     #loop .stage { position: static; height: auto; display: block; padding: 90px 0; }
     .track { flex-direction: column; gap: 70px; transform: none !important; }
     .word { width: auto; }
-    .rail { display: none; }
+    .rail, .loophint, .loopnav { display: none; }
   }
 
   /* ---------- report (paper) ---------- */
@@ -163,13 +187,26 @@
   #report h2 em { font-weight: 400; }
   #report .lede p { margin-top: 18px; max-width: 40ch; font-size: 1.05rem; color: rgba(14,13,11,0.7); }
   #report .lede p b { color: var(--ink); }
+  /* How-to chips: the three things to do in the demo, ticked as the visitor does them. */
+  .howto { display: grid; gap: 8px; margin-top: 24px; }
+  .howto div { display: flex; gap: 12px; align-items: baseline; font-size: 0.95rem; color: rgba(14,13,11,0.75); transition: color 0.3s; }
+  .howto div b { font: 500 0.7rem var(--mono); width: 22px; height: 22px; flex: none; border: 1px solid var(--ink); border-radius: 50%; display: inline-grid; place-items: center; transform: translateY(3px); transition: background 0.3s, color 0.3s; }
+  .howto div.done { color: rgba(14,13,11,0.45); text-decoration: line-through; }
+  .howto div.done b { background: var(--ink); color: var(--fix); }
+  .howto div.next b { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+  .play { margin-top: 18px; display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 999px; font: 500 0.82rem var(--mono); cursor: pointer; }
+  .play:hover { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+  .play:disabled { opacity: 0.5; cursor: default; }
   .sheet { border: 1px solid var(--line-paper); background: var(--paper); box-shadow: 0 30px 60px -30px rgba(14,13,11,0.35); }
+  .sheet .head .lbl { color: rgba(14,13,11,0.55); margin-right: 6px; }
   .sheet .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line-paper); font: 400 0.75rem var(--mono); flex-wrap: wrap; }
   .toggle { display: inline-flex; border: 1px solid var(--ink); border-radius: 999px; overflow: hidden; }
   .toggle button { font: 500 0.75rem var(--mono); background: transparent; border: 0; padding: 7px 14px; cursor: pointer; color: var(--ink); }
   .toggle button.on { background: var(--ink); color: var(--paper); }
   .app { padding: 18px; display: grid; gap: 12px; }
   .app input { width: 100%; border: 1px solid var(--ink); background: transparent; padding: 12px 14px; font: 400 1rem var(--mono); color: var(--ink); border-radius: 0; outline: none; }
+  .app input.pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 4px 4px 0 var(--signal); } }
   .app input:focus { box-shadow: 4px 4px 0 var(--signal); }
   .cmp { position: relative; border: 1px dashed var(--line-paper); padding: 12px 12px 10px; transition: background 0.12s, border-color 0.12s; }
   .cmp.flash { background: rgba(255,77,28,0.16); border-color: var(--signal); }
@@ -206,6 +243,7 @@
   #doors .inner { padding: 0 var(--gutter); }
   #doors h2 { font-size: clamp(2.2rem, 6vw, 5.5rem); letter-spacing: -0.04em; line-height: 0.95; font-weight: 700; max-width: 14ch; }
   #doors h2 em { font-weight: 400; }
+  #doors .lead { margin-top: 18px; color: var(--fg-dim); max-width: 48ch; font-size: 1.05rem; }
   .door { border-top: 1px solid var(--line); }
   .door:last-child { border-bottom: 1px solid var(--line); }
   .door summary { list-style: none; display: grid; grid-template-columns: 70px 1fr auto; gap: 16px; align-items: baseline; padding: 26px 0; cursor: pointer; }
@@ -270,7 +308,7 @@
   footer a:hover { color: var(--fg); }
 
   @media (prefers-reduced-motion: reduce) {
-    .grain, .ticker .in, .scrollcue i, .fakebox .caret { animation: none; }
+    .grain, .ticker .in, .steps .hint i, .loophint i, .fakebox .caret, .app input.pulse { animation: none; }
     .headline .h span > b, .headline .h, .sub .s, .codecard, .stamp, .paperroll .line, .door summary h3 { transition: none; }
   }
 </style>
@@ -282,6 +320,7 @@
 <nav>
   <a class="wordmark" href="#top"><i></i>crispy‑profiling <span class="mono" style="opacity:.6">v0.4.0</span></a>
   <div class="right">
+    <a class="hide" href="#loop">How it works</a>
     <a class="hide" href="#report">Try it</a>
     <a class="hide" href="#doors">Install</a>
     <a href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">GitHub</a>
@@ -294,10 +333,11 @@
   <div class="stage" id="top">
     <canvas id="storm"></canvas>
     <div class="hud num" id="hud"><div class="big" id="hudn">0</div><div class="lbl" id="hudl">components rendered</div></div>
+    <div class="legend-hero" id="legend">a React app, as crispy sees it: 227 components<br>rendered with nothing new to show <i></i><br>rendered for a reason <i class="k"></i> · idle <i class="d"></i></div>
     <div class="ui">
       <div></div>
       <div>
-        <div class="fakebox" aria-hidden="true">search <b id="typed"></b><i class="caret"></i></div>
+        <div class="fakebox" aria-hidden="true"><span style="opacity:.6">the app's search box ·</span> <b id="typed"></b><i class="caret"></i></div>
         <h1 class="headline" aria-label="One keystroke. One line. One fix. One test that keeps it fixed.">
           <div class="h on" data-h="0"><span><b>One&nbsp;</b></span><span><b><em>keystroke.</em></b></span></div>
           <div class="h" data-h="1"><span><b>One&nbsp;</b></span><span><b><em>line.</em></b></span></div>
@@ -315,17 +355,29 @@
           <div class="l bad" id="badline">onSelect={(id) =&gt; setSelected(id)}</div>
           <div class="l good off" id="goodline">onSelect={useCallback((id) =&gt; setSelected(id), [])}</div>
         </div>
+        <div class="cta-hero" id="ctahero">
+          <a class="btn fill" href="#report">Try it on a demo app</a>
+          <a class="btn" href="#doors">Run it on yours</a>
+        </div>
       </div>
       <div></div>
     </div>
     <div class="stamp" id="stamp">🟢 crispy test · pass</div>
-    <div class="scrollcue" id="cue"><i></i>scroll</div>
+    <div class="steps" id="steps" aria-label="Story steps">
+      <div class="hint" id="cue"><i>↓</i> scroll to see what happened</div>
+      <button data-p="0.0">01 keystroke</button>
+      <button data-p="0.32">02 the line</button>
+      <button class="fixed" data-p="0.57">03 the fix</button>
+      <button class="fixed" data-p="0.82">04 kept fixed</button>
+    </div>
   </div>
 </section>
 
 <!-- ======================= THE LOOP ======================= -->
 <section id="loop" class="pin" aria-label="Find, explain, fix, verify">
   <div class="stage">
+    <div class="loophint" id="loophint"><i>↓</i> keep scrolling · the four steps move sideways</div>
+    <div class="loopnav" id="loopnav" aria-hidden="true"><b class="on">find</b><b>explain</b><b>fix</b><b>verify</b></div>
     <div class="rail" aria-hidden="true"><i id="railDot"></i></div>
     <div class="track" id="track">
       <div class="word"><div class="n">01 — 04</div><h2>Find <em>it.</em></h2><p><code>npx crispy scan</code> detects Vite or Next.js, starts your dev server, visits a few routes and tries the safe interactions: buttons, tabs, inputs, links. <b>Never</b> anything named delete, pay, sign out or submit, in several languages. Read-only: writes never leave the browser.</p></div>
@@ -342,17 +394,22 @@
     <div class="lede">
       <div class="kick">Try it here</div>
       <h2>Type. Click. <em>Read the bill.</em></h2>
-      <p>A small list app, instrumented the way crispy sees it. Every keystroke updates <b>App</b> state. Switch between the naive code and the fix crispy suggested, and watch the report change.</p>
-      <p style="font-size:0.9rem">Red flash: rendered with nothing new to show. Dark flash: rendered for a real change.</p>
+      <p>A small list app, instrumented the way crispy sees it. Every keystroke updates <b>App</b> state; the report on the right is what crispy would print.</p>
+      <div class="howto" id="howto">
+        <div class="next"><b>1</b><span>Type a letter in the app's search box. Watch the rows flash red: they rendered with nothing new to show.</span></div>
+        <div><b>2</b><span>Click a row. A dark flash means it rendered for a real change.</span></div>
+        <div><b>3</b><span>Switch the code to <em>with the fix</em> and type again. Read the verdict at the bottom of the report.</span></div>
+      </div>
+      <button class="play" id="play">▶ do it for me</button>
     </div>
     <div class="sheet">
       <div class="head"><span>scenario · search · 3 runs</span>
-        <div class="toggle" role="tablist"><button class="on" data-variant="naive">naive</button><button data-variant="fixed">with the fix</button></div>
+        <div><span class="lbl">code:</span><div class="toggle" role="tablist"><button class="on" data-variant="naive">as written</button><button data-variant="fixed">with the fix</button></div></div>
       </div>
       <div class="app">
         <div class="cmp" id="c-App"><span class="tag">App</span><span class="cnt" id="n-App">0</span>
           <div class="cmp" id="c-Header" style="margin-top:8px"><span class="tag">Header</span><span class="cnt" id="n-Header">0</span>
-            <input id="search" placeholder="type a name…" autocomplete="off" aria-label="Search members" />
+            <input id="search" class="pulse" placeholder="type a letter here, e.g. a" autocomplete="off" aria-label="Search members" />
           </div>
           <div class="grid" id="rows"></div>
           <div class="cmp" id="c-Status" style="margin-top:10px"><span class="tag">Status</span><span class="cnt" id="n-Status">0</span><small class="mono" id="status">8 members · none selected</small></div>
@@ -376,6 +433,7 @@
 <section id="doors" aria-label="Ways to use crispy">
   <div class="inner">
     <h2>One tool. <em>Four doors.</em></h2>
+    <p class="lead">Pick the one you will use first. Each opens with the commands to copy. Start with the terminal: three lines to the first finding.</p>
     <div style="height:48px"></div>
     <details class="door" open>
       <summary><span class="i">01</span><h3>Terminal</h3><span class="plus">+</span></summary>
@@ -484,7 +542,7 @@ claude mcp add crispy-profiling -- npx -y crispy-profiling@latest mcp</pre>
 <section id="end" aria-label="Get started">
   <div>
     <div class="cmd" id="cmd" data-copy="npm i -D crispy-profiling && npx crispy install && npx crispy scan"><span class="mark">$</span> npx crispy scan</div>
-    <small id="cmdhint">click to copy the three install lines</small>
+    <small id="cmdhint">click the command to copy the three install lines</small>
     <div class="btns">
       <a class="btn fill" href="https://github.com/edgeorgie/crispy-profiling#quick-start" target="_blank" rel="noopener">Quick start</a>
       <a class="btn" href="https://github.com/edgeorgie/crispy-profiling" target="_blank" rel="noopener">Star on GitHub</a>
@@ -614,17 +672,32 @@ claude mcp add crispy-profiling -- npx -y crispy-profiling@latest mcp</pre>
     codecard.classList.toggle('on', p > 0.34 && p < 0.86);
     const swapped = fix > 0.45; goodline.classList.toggle('off', !swapped); badline.style.display = swapped ? 'none' : '';
     stamp.classList.toggle('on', test > 0.3);
-    cue.classList.toggle('off', p > 0.04);
+    cue.classList.toggle('off', p > 0.04 && p < 0.97 ? false : p >= 0.97);
+    cue.innerHTML = p < 0.04 ? '<i>↓</i> scroll to see what happened' : p < 0.9 ? '<i>↓</i> keep scrolling' : '<i>↓</i> next: try it yourself';
+    legend.style.opacity = storm > 0.05 && p < 0.8 ? 1 : 0;
+    ctahero.style.opacity = p < 0.3 || p > 0.8 ? 1 : 0; ctahero.style.pointerEvents = p < 0.3 || p > 0.8 ? 'auto' : 'none';
+    // Step indicator: fill each segment with the progress inside its range.
+    stepBtns.forEach((b, i) => {
+      const a = STEP_P[i], z = STEP_P[i + 1] ?? 1;
+      const f = span(p, a, z);
+      b.style.setProperty('--fill', f.toFixed(3));
+      b.classList.toggle('on', p >= a && p < z); b.classList.toggle('done', f >= 1);
+    });
   }
+  const legend = $('#legend'), ctahero = $('#ctahero');
+  const stepBtns = $$('#steps button'), STEP_P = stepBtns.map((b) => +b.dataset.p);
+  stepBtns.forEach((b, i) => b.addEventListener('click', () => { const s = scenes[0]; scrollTo({ top: s.top + s.len * (STEP_P[i] + 0.06), behavior: reduced ? 'auto' : 'smooth' }); }));
   scenes[0].fn = drawStorm;
 
   /* ---------- THE LOOP: horizontal scroll ---------- */
-  const track = $('#track'), railDot = $('#railDot');
+  const track = $('#track'), railDot = $('#railDot'), loophint = $('#loophint'), loopnav = $$('#loopnav b');
   scenes[1].fn = (p) => {
     if (innerWidth <= 760) return;
     const max = track.scrollWidth - innerWidth + parseFloat(getComputedStyle(track).paddingLeft);
     track.style.transform = `translateX(${-max * p}px)`;
     railDot.style.left = `calc(${p * 100}% - 4px)`;
+    loophint.classList.toggle('off', p > 0.08);
+    const k = Math.min(3, Math.floor(p * 4 + 0.15)); loopnav.forEach((b, i) => b.classList.toggle('on', i === k));
   };
 
   /* ---------- REPORT: simulated app ---------- */
@@ -663,8 +736,35 @@ claude mcp add crispy-profiling -- npx -y crispy-profiling@latest mcp</pre>
     paint(); report();
   }
   function paint() { NAMES2.forEach((n) => { const el = $('#n-' + n); if (!el) return; el.textContent = S.counts[n]; $('#c-' + n).classList.toggle('many', S.avoid[n] >= 3); }); }
-  $('#search').addEventListener('input', (e) => { S.query = e.target.value; commit('type'); });
-  $$('.toggle button').forEach((b) => b.addEventListener('click', () => { $$('.toggle button').forEach((x) => x.classList.toggle('on', x === b)); S.variant = b.dataset.variant; resetCounts(); paintCode(); }));
+  // How-to chips: tick each step as the visitor does it, point at the next one.
+  const did = { type: false, select: false, fix: false }, chips = $$('#howto > div');
+  function tick(step) {
+    did[step] = true; const keys = ['type', 'select', 'fix']; let nextShown = false;
+    chips.forEach((c, i) => { const done = did[keys[i]]; c.classList.toggle('done', done); const next = !done && !nextShown; c.classList.toggle('next', next); if (next) nextShown = true; });
+    $('#search').classList.toggle('pulse', !did.type);
+  }
+  const search = $('#search');
+  search.addEventListener('input', (e) => { S.query = e.target.value; commit('type'); tick('type'); if (S.variant === 'fixed') tick('fix'); });
+  search.addEventListener('focus', () => document.body.classList.add('typing'));
+  search.addEventListener('blur', () => document.body.classList.remove('typing'));
+  rowsEl.addEventListener('click', () => tick('select'));
+  const setVariant = (v) => { $$('.toggle button').forEach((x) => x.classList.toggle('on', x.dataset.variant === v)); S.variant = v; resetCounts(); paintCode(); if (v === 'fixed') { S.query = ''; search.value = ''; } };
+  $$('.toggle button').forEach((b) => b.addEventListener('click', () => setVariant(b.dataset.variant)));
+  // "Do it for me": plays the three steps so nobody has to guess.
+  const wait = (ms) => new Promise((r) => setTimeout(r, reduced ? 0 : ms));
+  $('#play').addEventListener('click', async (e) => {
+    const btn = e.currentTarget; btn.disabled = true; btn.textContent = '… typing';
+    setVariant('naive'); $('#report').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    await wait(700);
+    for (const ch of ['a', 'ar']) { search.value = ch; S.query = ch; commit('type'); tick('type'); await wait(650); }
+    btn.textContent = '… clicking a row';
+    const first = MEMBERS.findIndex((m) => m.toLowerCase().includes('ar')); S.selected = first; commit('select'); tick('select'); await wait(900);
+    btn.textContent = '… switching to the fix';
+    setVariant('fixed'); await wait(700);
+    for (const ch of ['a', 'ar']) { search.value = ch; S.query = ch; commit('type'); await wait(650); }
+    S.selected = first; commit('select'); tick('fix'); await wait(400);
+    btn.textContent = '▶ play it again'; btn.disabled = false;
+  });
   function paintCode() {
     $('#code').innerHTML = S.variant === 'naive'
       ? `<span class="c">// App.tsx — as written</span>
