@@ -417,8 +417,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Contributing
 
-Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) (GitFlow: branch from
-`develop`). AI coding agents: start with [AGENTS.md](AGENTS.md); docs index for LLMs:
+Tried it on your app? Five lines are enough: the app and versions, the command, what crispy printed,
+what you expected, what you changed and what happened to the counts. Open an
+["I tried it on my app"](https://github.com/edgeorgie/crispy-profiling/issues/new?template=tried_it.yml)
+issue; wrong hints have [their own form](https://github.com/edgeorgie/crispy-profiling/issues/new?template=wrong_hint.yml).
+PRs are welcome too — see [CONTRIBUTING.md](CONTRIBUTING.md) (GitFlow: branch from `develop`). AI coding agents: start with [AGENTS.md](AGENTS.md); docs index for LLMs:
 [llms.txt](llms.txt).
 
 ## License

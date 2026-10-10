@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- "I tried it on my app" issue form (what crispy found, missed or got wrong on a real app), a
+  five-line report example in CONTRIBUTING, and a pre-filled issue link after invalid-config
+  errors and after the "Not tried" lines of `crispy scan`.
 - GitHub Action input `scenarios`: run only those scenarios, so a slow snapshot test can be split
   across runners with a job matrix (README shows the workflow and a time budget per scenario).
 - `examples/` (the workflow and a sample config) now ships inside the npm package.

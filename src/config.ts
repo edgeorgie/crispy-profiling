@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { issueLink } from './util/issues.js';
 
 export const StepSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('click'), selector: z.string().min(1) }),
@@ -307,7 +308,10 @@ export function parseConfig(input: unknown): CrispyConfig {
     }
   }
   if (problems.length)
-    throw new Error(`Invalid crispy config:\n${problems.map((p) => `✖ ${p}`).join('\n')}`);
+    throw new Error(
+      `Invalid crispy config:\n${problems.map((p) => `✖ ${p}`).join('\n')}\n` +
+        `Written by crispy scan or init, or the message is unclear? Tell us: ${issueLink('tried_it', `Config error: ${problems[0]}`)}`,
+    );
   const result = ConfigSchema.safeParse(input);
   if (!result.success) {
     throw new Error(`Invalid crispy config:\n${z.prettifyError(result.error)}`);
