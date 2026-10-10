@@ -6,12 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Changed
-- Same-named render functions defined in one file and rendered from one place (a table's `cell` and
-  `header` functions, one per column) are keyed by their definition line (`cell (src/columns.tsx:30)`)
-  instead of render order (`cell#2`), so adding a column no longer renumbers the other keys in the
-  snapshot. Existing snapshots with `name#N` keys for such functions show a one-time rename.
-
 ### Added
 - "I tried it on my app" issue form (what crispy found, missed or got wrong on a real app), a
   five-line report example in CONTRIBUTING, and a pre-filled issue link after invalid-config
@@ -21,6 +15,10 @@ All notable changes to this project are documented here. The format follows
 - `examples/` (the workflow and a sample config) now ships inside the npm package.
 
 ### Changed
+- Same-named render functions defined in one file and rendered from one place (a table's `cell` and
+  `header` functions, one per column) are keyed by their definition line (`cell (src/columns.tsx:30)`)
+  instead of render order (`cell#2`), so adding a column no longer renumbers the other keys in the
+  snapshot. Existing snapshots with `name#N` keys for such functions show a one-time rename.
 - `crispy scan` now clicks clickable-looking elements that are not buttons or links (a `li` or `div`
   with a pointer cursor and a short text, like a list row), by their text. Those without a short text
   are still listed under "Not tried".
