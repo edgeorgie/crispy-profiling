@@ -11,6 +11,12 @@ All notable changes to this project are documented here. The format follows
   across runners with a job matrix (README shows the workflow and a time budget per scenario).
 - `examples/` (the workflow and a sample config) now ships inside the npm package.
 
+### Changed
+- Root causes for recreated props and for state updates now open with a plain sentence ("`Row`
+  re-rendered 20 time(s) with nothing new to show, because `App` hands it a new function on every
+  render."); the technical cause and the fix follow unchanged.
+- `crispy test` lists the measured time per phase when `timings` is on (render counts stay the gate).
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

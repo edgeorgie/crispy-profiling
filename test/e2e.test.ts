@@ -924,6 +924,16 @@ describe('CPU per phase (timings)', () => {
     expect(causes.some((c) => /≈ \d+ ms of JavaScript/.test(c.text))).toBe(true);
     const plain = (await profile(parseConfig(base))).scenarios.c?.phases;
     expect(plain?.interaction?.cost).toBeUndefined();
+    // crispy test shows the measured time per phase when timings are on (council round 5).
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { runSnapshotTest } = await import('../src/snapshot-test.js');
+    const dir = mkdtempSync(join(tmpdir(), 'crispy-timings-'));
+    const written = await runSnapshotTest(parseConfig({ ...base, timings: true }), {
+      baseDir: dir,
+    });
+    expect(written.markdown).toMatch(/Time per phase[\s\S]*- c \/ interaction: \d+ ms JavaScript/);
   });
 });
 
