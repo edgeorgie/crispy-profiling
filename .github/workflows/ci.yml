@@ -10,7 +10,15 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only cancel superseded PR runs. On `main`/`develop` the run for a given
+  # commit is the ONLY evidence that commit ever built, and both are protected
+  # release paths, so a burst of merges must not leave an intermediate commit
+  # with no completed CI result. That already happened: run 38139061843 (CI,
+  # push, develop) was `cancelled` on 7368bbcd, and 7368bbcd is one of the
+  # commits PR #132 shipped to `main` — a commit in the release history with
+  # no completed CI result. Dependabot lands several merges in a minute here,
+  # so this is a recurring hazard, not a one-off.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
