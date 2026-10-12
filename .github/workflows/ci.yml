@@ -49,6 +49,13 @@ jobs:
           cache: npm
       - name: Validate Claude Code plugin + marketplace
         run: npx -y @anthropic-ai/claude-code plugin validate . && npx -y @anthropic-ai/claude-code plugin validate .claude-plugin/plugin.json
+      # The expected branch is DERIVED from the live repository rather than
+      # restated as a literal here — a hand-maintained copy of the default
+      # branch would drift exactly the way scorecard.yml's own trigger did.
+      - name: Scorecard triggers on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: npx -y tsx scripts/check-scorecard-branch.ts
       - run: npm ci
       - name: Validate server.json against the MCP registry schema
         run: npx tsx scripts/validate-server-json.ts
