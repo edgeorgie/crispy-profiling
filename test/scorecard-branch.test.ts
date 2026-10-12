@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { checkScorecardBranch, parsePushBranches } from '../scripts/check-scorecard-branch.js';
+import {
+  checkDefaultBranchCopy,
+  checkScorecardBranch,
+  parsePushBranches,
+} from '../scripts/check-scorecard-branch.js';
 
 /**
  * `ossf/scorecard-action` only supports the repository's default branch on a
@@ -117,6 +121,67 @@ describe('scorecard branch guard', () => {
       // If the default branch were renamed again, the guard must follow it.
       expect(checkScorecardBranch('trunk', wf('on:\n  push:\n    branches: [trunk]')).code).toBe(0);
       expect(checkScorecardBranch('trunk', good).code).toBe(1);
+    });
+  });
+
+  /**
+   * The blind spot this repo's GitFlow layout creates: CI runs on `develop`,
+   * but the copy of scorecard.yml that governs scanning lives on `main`. The
+   * working-copy check above cannot see a stale copy on the other branch, so
+   * it reports green during exactly the window #132 had to close by hand.
+   */
+  describe('default-branch copy', () => {
+    const good = wf('on:\n  push:\n    branches: [main]');
+    const stale = wf('on:\n  push:\n    branches: [develop]');
+
+    it('passes when the default branch copy triggers on the default branch', () => {
+      expect(checkDefaultBranchCopy('main', good).code).toBe(0);
+    });
+
+    it('catches the real #131/#132 window: develop fixed, main still stale', () => {
+      // The precise case the old single-copy guard went green on: this
+      // checkout (develop) is correct, but `main`'s copy still says
+      // [develop], so Scorecard cannot succeed on any push.
+      const res = checkDefaultBranchCopy('main', stale);
+      expect(res.code).toBe(1);
+      expect(res.message).toMatch(/Only the default branch main is supported/);
+      expect(res.message).toMatch(/a fix merged only to the integration branch is not in force/);
+    });
+
+    it('catches a default-branch copy that quietly gained a second branch', () => {
+      expect(
+        checkDefaultBranchCopy('main', wf('on:\n  push:\n    branches: [main, develop]')).code,
+      ).toBe(1);
+    });
+
+    it('refuses to pass when the fetched copy is missing or blank', () => {
+      // A gate that reads a failed API fetch as "nothing wrong" is the
+      // vacuous pass this whole check exists to prevent. `undefined` (var
+      // never set), '' (fetch failed) and whitespace must all be exit 2, not 0.
+      expect(checkDefaultBranchCopy('main', undefined).code).toBe(2);
+      expect(checkDefaultBranchCopy('main', '').code).toBe(2);
+      expect(checkDefaultBranchCopy('main', '   \n ').code).toBe(2);
+    });
+
+    it('refuses to pass when the expected branch is missing', () => {
+      expect(checkDefaultBranchCopy(undefined, good).code).toBe(2);
+      expect(checkDefaultBranchCopy('', good).code).toBe(2);
+    });
+
+    it('tracks the default branch rather than hardcoding `main`', () => {
+      expect(checkDefaultBranchCopy('trunk', wf('on:\n  push:\n    branches: [trunk]')).code).toBe(
+        0,
+      );
+      expect(checkDefaultBranchCopy('trunk', good).code).toBe(1);
+    });
+
+    it('does not require the two copies to be byte-identical', () => {
+      // A PR on `develop` that legitimately edits this workflow makes the
+      // copies differ until the release merge lands; failing on mere
+      // difference would make correct in-flight work red. Only the semantic
+      // property is asserted.
+      const reworded = `# a comment only on develop\n${good}`;
+      expect(checkDefaultBranchCopy('main', reworded).code).toBe(0);
     });
   });
 });

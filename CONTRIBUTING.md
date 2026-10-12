@@ -85,6 +85,46 @@ The Release workflow publishes to npm (with provenance), the MCP Registry and Gi
 moves the major tag (`v0`) used by the GitHub Action. Re-running it is safe: steps that already
 happened are skipped.
 
+## Known CI hazards
+
+### The default branch is `main`, but work lands on `develop`
+
+`main` is the repository's **default branch**; `develop` is where every `feature/*`, `bugfix/*`,
+`docs/*` and Dependabot PR merges. That split is a standing security-configuration hazard, because
+`ossf/scorecard-action` **hard-refuses any non-default branch** on a push event:
+
+```
+validating options: only default branch is supported
+refs/heads/develop not supported with push event.
+##[error]Only the default branch main is supported.
+```
+
+So `.github/workflows/scorecard.yml` must trigger on `main`, and the copy that actually governs
+scanning is the one committed on `main` — not the one you edit on `develop`. **Any
+security-workflow change is therefore not in force until a `release/*` PR propagates it to
+`main`.** That latency is a property of the layout, not a one-off: it is the window PR #132 had to
+close by hand after #131.
+
+Two mitigations are in place, and one is not:
+
+- `scripts/check-scorecard-branch.ts` (run by the `Plugin & registry manifests` job) grades **both**
+  the working copy in the checkout **and** the copy fetched from the default branch, so a stale
+  trigger already in force fails CI on `develop` instead of hiding behind a green working copy.
+- Adding `develop` to `scorecard.yml`'s push list is **not** an option — see the hard refusal above.
+- The hazard is only *removed* by a repository-settings change no workflow can make: collapse to a
+  single trunk (delete `develop`) or make `develop` the default branch. Until then the guard makes
+  the drift detectable, not absent.
+
+### `Code scanning AI findings on PR #128` is red and is expected
+
+Run [`38072495139`](https://github.com/edgeorgie/crispy-profiling/actions/runs/38072495139)
+(workflow `GitHub Advanced Security`, 2026-10-10) is a permanent `failure` in the Actions history.
+It is **not** a finding in this repository's code: the single failing step reports
+`errorType: 'quota'`, `statusCode: 402`, "You have exceeded your monthly quota" — a billing limit on
+GitHub's hosted Copilot autofix service. It is PR-scoped to the already-merged #128, is not a
+required status check on either protected branch, and the real scanners covering the same commit
+(`CodeQL`, `Scorecard`) succeeded. No code change can clear it; restoring Copilot quota can.
+
 ## Code of conduct
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).

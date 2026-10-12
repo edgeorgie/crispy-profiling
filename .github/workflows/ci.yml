@@ -10,7 +10,15 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only cancel superseded PR runs. On `main`/`develop` the run for a given
+  # commit is the ONLY evidence that commit ever built, and both are protected
+  # release paths, so a burst of merges must not leave an intermediate commit
+  # with no completed CI result. That already happened: run 38139061843 (CI,
+  # push, develop) was `cancelled` on 7368bbcd, and 7368bbcd is one of the
+  # commits PR #132 shipped to `main` — a commit in the release history with
+  # no completed CI result. Dependabot lands several merges in a minute here,
+  # so this is a recurring hazard, not a one-off.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -21,8 +29,8 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -42,8 +50,8 @@ jobs:
     name: Plugin & registry manifests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -52,10 +60,35 @@ jobs:
       # The expected branch is DERIVED from the live repository rather than
       # restated as a literal here — a hand-maintained copy of the default
       # branch would drift exactly the way scorecard.yml's own trigger did.
+      #
+      # Two copies are graded, not one. This repo uses GitFlow: work lands on
+      # `develop`, but the scorecard.yml that governs when Scorecard runs is
+      # the copy on the DEFAULT branch (`main`). Grading only the checkout
+      # would report green on a `develop` build while `main`'s copy is still
+      # broken — the window #132 had to close by hand. So the default
+      # branch's copy is fetched from the API and graded too.
+      #
+      # STANDING HAZARD, documented because the real fix is a settings change
+      # no workflow can make: as long as the default branch is not the branch
+      # work lands on, every security-config change is latent until a release
+      # PR propagates it. Collapsing to a single trunk (or making `develop`
+      # the default) removes the hazard; adding `develop` to scorecard.yml's
+      # push list cannot, because scorecard-action hard-refuses non-default
+      # branches. This guard makes the latency *detectable*, not absent.
       - name: Scorecard triggers on the default branch
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: npx -y tsx scripts/check-scorecard-branch.ts
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # A failed fetch must not look like a pass, and must not fail with a
+          # cryptic `gh` error either: leave the var empty on failure and let
+          # the guard report exit 2 with an explanation of why it refused.
+          DEFAULT_BRANCH_WORKFLOW="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/contents/.github/workflows/scorecard.yml?ref=${DEFAULT_BRANCH}" \
+            --jq .content 2>/dev/null | base64 -d 2>/dev/null || true)"
+          export DEFAULT_BRANCH_WORKFLOW
+          npx -y tsx scripts/check-scorecard-branch.ts
       - run: npm ci
       - name: Validate server.json against the MCP registry schema
         run: npx tsx scripts/validate-server-json.ts
