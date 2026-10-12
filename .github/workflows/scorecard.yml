@@ -2,8 +2,23 @@
 name: Scorecard
 
 on:
+  # MUST be the repository's DEFAULT branch, not the integration branch.
+  # scorecard-action hard-refuses anything else on a push event:
+  #
+  #   validating options: only default branch is supported
+  #   refs/heads/develop not supported with push event.
+  #   ##[error]Only the default branch main is supported.
+  #
+  # This fired on every push to `develop` once the default branch became
+  # `main`, so the only security job in this repo was permanently red while
+  # the README advertised its badge. The `develop` trigger was correct back
+  # when `develop` was the default; nothing in that rename reports that it
+  # invalidated this file.
+  #
+  # Keeping this list in sync with the default branch is load-bearing: point
+  # it at a non-default branch and the job cannot succeed by construction.
   push:
-    branches: [develop]
+    branches: [main]
   schedule:
     - cron: '17 6 * * 1'
   workflow_dispatch:
